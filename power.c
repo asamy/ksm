@@ -8,9 +8,9 @@ static void power_callback(void *ctx, void *arg0, void *arg1)
 
 	VCPU_DEBUG("power: %d\n", arg1);
 	if (arg1 == (void *)0)
-		kum_exit();
+		ksm_exit();
 	else
-		kum_init();
+		ksm_init();
 }
 
 NTSTATUS register_power_callback(PDEV_EXT ext)

@@ -1,14 +1,14 @@
 #include "vcpu.h"
 #include "dpc.h"
 
-struct kum kum = {
+struct ksm ksm = {
 	.active_vcpus = 0,
 	.phi_count = 0,
 	.c_mask = 0,
 	.c_bits = 0,
 };
 
-static NTSTATUS init_msr_bitmap(struct kum *k)
+static NTSTATUS init_msr_bitmap(struct ksm *k)
 {
 	void *msr_bitmap = ExAllocatePool(NonPagedPoolNx, PAGE_SIZE);
 	if (!msr_bitmap)
@@ -58,18 +58,18 @@ static NTSTATUS set_lock_bit(void)
 	return STATUS_HV_ACCESS_DENIED;
 }
 
-static NTSTATUS __kum_init_cpu(struct kum *k)
+static NTSTATUS __ksm_init_cpu(struct ksm *k)
 {
 	NTSTATUS status = set_lock_bit();
 	if (!NT_SUCCESS(status))
 		return status;
 
 	k->kernel_cr3 = __readcr3();
-	return __vmx_vminit(vcpu_init, &kum) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+	return __vmx_vminit(vcpu_init, &ksm) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
-STATIC_DEFINE_DPC(__call_init, __kum_init_cpu, ctx);
-NTSTATUS kum_init(void)
+STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
+NTSTATUS ksm_init(void)
 {
 #ifndef DBG
 	/*  This prevents loading in a nested environment.  */
@@ -88,19 +88,19 @@ NTSTATUS kum_init(void)
 	if (!(__readmsr(MSR_IA32_FEATURE_CONTROL) & FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
 		return STATUS_HV_FEATURE_UNAVAILABLE;
 
-	NTSTATUS status = init_msr_bitmap(&kum);
+	NTSTATUS status = init_msr_bitmap(&ksm);
 	if (!NT_SUCCESS(status))
 		return STATUS_NO_MEMORY;
 
 	/* Caller cr3 (could be user)  */
-	kum.origin_cr3 = __readcr3();
-	kum_init_phi_list();
+	ksm.origin_cr3 = __readcr3();
+	ksm_init_phi_list();
 
-	STATIC_CALL_DPC(__call_init, &kum);
+	STATIC_CALL_DPC(__call_init, &ksm);
 	return STATIC_DPC_RET();
 }
 
-static NTSTATUS __kum_exit_cpu(struct kum *k)
+static NTSTATUS __ksm_exit_cpu(struct ksm *k)
 {
 	VCPU_DEBUG_RAW("going down\n");
 
@@ -117,21 +117,21 @@ static NTSTATUS __kum_exit_cpu(struct kum *k)
 	return err ? STATUS_UNSUCCESSFUL : STATUS_SUCCESS;
 }
 
-STATIC_DEFINE_DPC(__call_exit, __kum_exit_cpu, ctx);
-NTSTATUS kum_exit(void)
+STATIC_DEFINE_DPC(__call_exit, __ksm_exit_cpu, ctx);
+NTSTATUS ksm_exit(void)
 {
-	STATIC_CALL_DPC(__call_exit, &kum);
+	STATIC_CALL_DPC(__call_exit, &ksm);
 
 	NTSTATUS status = STATIC_DPC_RET();
 	if (NT_SUCCESS(status)) {
-		kum_free_phi_list();
-		ExFreePool(kum.msr_bitmap);
+		ksm_free_phi_list();
+		ExFreePool(ksm.msr_bitmap);
 	}
 
 	return status;
 }
 
-struct vcpu *kum_current_cpu(void)
+struct vcpu *ksm_current_cpu(void)
 {
-	return kum.vcpu_list[cpu_nr()];
+	return ksm.vcpu_list[cpu_nr()];
 }

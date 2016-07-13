@@ -251,7 +251,7 @@ static inline bool handle_ept_violation(struct ept *ept, u64 fault_pa,
 	if (ar == EPT_ACCESS_NONE)
 		return !!ept_alloc_page(ept, EPT4(ept, eptp), EPT_ACCESS_ALL, fault_pa);
 
-	struct page_hook_info *h = kum_find_hook_pfn(__pfn(fault_pa));
+	struct page_hook_info *h = ksm_find_hook_pfn(__pfn(fault_pa));
 	if (h) {
 		VCPU_DEBUG_RAW("Found hook\n");
 
@@ -301,7 +301,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 
 void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 {
-	struct vcpu *vcpu = kum_current_cpu();
+	struct vcpu *vcpu = ksm_current_cpu();
 	struct ve_except_info *info = vcpu->ve;
 	struct ept *ept = &vcpu->ept;
 

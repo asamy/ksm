@@ -1,8 +1,5 @@
 #include "vcpu.h"
 
-#define IRQ_INTR_SHIFT		8
-#define IRQ_ERR_SHIFT		11
-
 /* For debugging...  */
 static u16 curr_handler = 0;
 static u16 prev_handler = 0;

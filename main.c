@@ -38,7 +38,7 @@ static PVOID hk_ExAllocatePoolWithTag(_In_ POOL_TYPE PoolType, _In_ SIZE_T    Nu
 {
 	VCPU_DEBUG("ExAllocatePoolWithTAg: %d %d %d\n", PoolType, NumberOfBytes, Tag);
 
-	struct page_hook_info *phi = kum_find_hook(hk_page_idx);
+	struct page_hook_info *phi = ksm_find_hook(hk_page_idx);
 	if (phi)
 		return ((ExAllocatePoolWithTag_t)(uintptr_t)phi->data)(PoolType, NumberOfBytes, Tag);
 
@@ -51,7 +51,7 @@ static NTSTATUS sys_thread(void *null)
 	VCPU_DEBUG_RAW("waiting a bit\n");
 	sleep_ms(2000);
 
-	int m = kum_hook_page(ExAllocatePoolWithTag, hk_ExAllocatePoolWithTag);
+	int m = ksm_hook_page(ExAllocatePoolWithTag, hk_ExAllocatePoolWithTag);
 	if (m >= 0) {
 		hk_page_idx = m;
 
@@ -64,13 +64,13 @@ static NTSTATUS sys_thread(void *null)
 		sleep_ms(500);
 
 		/* Trigger #VE  */
-		struct page_hook_info *phi = kum_find_hook(m);
+		struct page_hook_info *phi = ksm_find_hook(m);
 		u8 *r = (u8 *)(uintptr_t)ExAllocatePoolWithTag;
 		for (u32 i = 0; i < phi->size; ++i)
 			VCPU_DEBUG("0x%X - 0x%X (eq: %s)\n", 
 				   r[i], phi->data[i], r[i] == phi->data[i] ? "yes" : "no");
 		VCPU_DEBUG_RAW("unhooking\n");
-		kum_unhook_page(hk_page_idx);
+		ksm_unhook_page(hk_page_idx);
 	}
 
 	return STATUS_SUCCESS;
@@ -80,7 +80,7 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 {
 	UNREFERENCED_PARAMETER(driverObject);
 	deregister_power_callback(&g_dev_ext);
-	VCPU_DEBUG("ret: 0x%08X\n", kum_exit());
+	VCPU_DEBUG("ret: 0x%08X\n", ksm_exit());
 }
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
@@ -100,7 +100,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		   kentry->path.Buffer);
 	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
 
-	NTSTATUS status = kum_init();
+	NTSTATUS status = ksm_init();
 	if (NT_SUCCESS(status))
 		status = register_power_callback(&g_dev_ext);
 

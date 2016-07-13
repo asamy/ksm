@@ -340,7 +340,6 @@ no_swap:
 
 	test	byte ptr [rbp - 58h], 1
 	jz	intr_ret_noswap
-
 	ldmxcsr	dword ptr[rbp - 54h]
 	movaps	xmm0, xmmword ptr[rbp - 10h]
 	movaps	xmm1, xmmword ptr[rbp + 0h]

@@ -13,7 +13,7 @@
 #define PTE_SHIFT			3
 #define VA_BITS				48
 #define VA_MASK				((1ULL << VA_BITS) - 1)
-#define VA_SHIFT			(63 - 47)
+#define VA_SHIFT			16
 
 #define PTX_MASK			0x1FF
 #define PPI_MASK			0x3FFFF

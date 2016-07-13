@@ -137,7 +137,7 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	/* Control Fields */
 	err |= __vmx_vmwrite(IO_BITMAP_A, 0);
 	err |= __vmx_vmwrite(IO_BITMAP_B, 0);
-	err |= __vmx_vmwrite(MSR_BITMAP, __pa(kum.msr_bitmap));
+	err |= __vmx_vmwrite(MSR_BITMAP, __pa(ksm.msr_bitmap));
 	err |= __vmx_vmwrite(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
 	err |= __vmx_vmwrite(VM_FUNCTION_CTRL, VM_FUNCTION_CTL_EPTP_SWITCHING);
 	err |= __vmx_vmwrite(EPTP_INDEX, EPTP_DEFAULT);
@@ -181,7 +181,7 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= __vmx_vmwrite(GUEST_IA32_DEBUGCTL, __readmsr(MSR_IA32_DEBUGCTLMSR));
 	err |= __vmx_vmwrite(GUEST_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
 	err |= __vmx_vmwrite(GUEST_CR0, cr0);
-	err |= __vmx_vmwrite(GUEST_CR3, kum.origin_cr3);
+	err |= __vmx_vmwrite(GUEST_CR3, ksm.origin_cr3);
 	err |= __vmx_vmwrite(GUEST_CR4, cr4);
 	err |= __vmx_vmwrite(GUEST_ES_BASE, 0);
 	err |= __vmx_vmwrite(GUEST_CS_BASE, 0);
@@ -209,7 +209,7 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= __vmx_vmwrite(HOST_GS_SELECTOR, gs & 0xf8);
 	err |= __vmx_vmwrite(HOST_TR_SELECTOR, tr & 0xf8);
 	err |= __vmx_vmwrite(HOST_CR0, cr0);
-	err |= __vmx_vmwrite(HOST_CR3, kum.kernel_cr3);
+	err |= __vmx_vmwrite(HOST_CR3, ksm.kernel_cr3);
 	err |= __vmx_vmwrite(HOST_CR4, cr4);
 	err |= __vmx_vmwrite(HOST_FS_BASE, __readmsr(MSR_IA32_FS_BASE));
 	err |= __vmx_vmwrite(HOST_GS_BASE, __readmsr(MSR_IA32_GS_BASE));
@@ -239,7 +239,7 @@ static inline void vcpu_launch(void)
 	}
 }
 
-void vcpu_init(uintptr_t sp, uintptr_t ip, struct kum *k)
+void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k)
 {
 	struct vcpu *vcpu = ExAllocatePool(NonPagedPoolNx, sizeof(*vcpu));
 	if (!vcpu)

@@ -2,12 +2,12 @@
 #include "dpc.h"
 #include "ldasm.h"
 
-extern struct kum kum;
+extern struct ksm ksm;
 
 static int find_free_page(void)
 {
-	for (unsigned int i = 0; i < kum.phi_count; ++i)
-		if (kum.phi_pages[i] == KUM_FREE_PAGE)
+	for (unsigned int i = 0; i < ksm.phi_count; ++i)
+		if (ksm.phi_pages[i] == KSM_FREE_PAGE)
 			return i;
 	return -1;
 }
@@ -16,43 +16,43 @@ static void update_commons(uintptr_t va)
 {
 	unsigned int i;
 
-	if (kum.phi_count == 0) {
+	if (ksm.phi_count == 0) {
 		for (i = sizeof(uintptr_t) * CHAR_BIT - 1; i > 0; i--)
 			if (va & ((uintptr_t)1 << i))
 				break;
 
-		kum.c_mask = ~((uintptr_t)1 << i);
-		kum.c_bits = va & kum.c_mask;
+		ksm.c_mask = ~((uintptr_t)1 << i);
+		ksm.c_bits = va & ksm.c_mask;
 		return;
 	}
 
-	uintptr_t m_diff = kum.c_bits ^ (va & kum.c_mask);
-	uintptr_t b_diff = kum.c_bits & m_diff;
-	for (i = 0; i < kum.phi_count; ++i) {
-		kum.phi_pages[i] &= ~m_diff;
-		kum.phi_pages[i] |= b_diff;
+	uintptr_t m_diff = ksm.c_bits ^ (va & ksm.c_mask);
+	uintptr_t b_diff = ksm.c_bits & m_diff;
+	for (i = 0; i < ksm.phi_count; ++i) {
+		ksm.phi_pages[i] &= ~m_diff;
+		ksm.phi_pages[i] |= b_diff;
 	}
 
-	kum.c_mask &= ~m_diff;
-	kum.c_bits &= ~m_diff;
+	ksm.c_mask &= ~m_diff;
+	ksm.c_bits &= ~m_diff;
 }
 
 static inline int __put_page(struct page_hook_info *phi)
 {
 	uintptr_t va = (uintptr_t)phi;
-	int place = kum.phi_count;
-	if (place >= KUM_MAX_PAGES)
+	int place = ksm.phi_count;
+	if (place >= KSM_MAX_PAGES)
 		NT_ASSERT((place = find_free_page()) >= 0);
 
-	kum.phi_pages[place] = (va & ~kum.c_mask) | kum.c_bits;
-	kum.phi_count++;
+	ksm.phi_pages[place] = (va & ~ksm.c_mask) | ksm.c_bits;
+	ksm.phi_count++;
 	return place;
 }
 
 static inline int put_page(struct page_hook_info *phi)
 {
 	uintptr_t va = (uintptr_t)phi;
-	if ((va & kum.c_mask) != kum.c_bits)
+	if ((va & ksm.c_mask) != ksm.c_bits)
 		update_commons(va);
 
 	return __put_page(phi);
@@ -60,11 +60,11 @@ static inline int put_page(struct page_hook_info *phi)
 
 static inline struct page_hook_info *get_page(int i)
 {
-	uintptr_t va = kum.phi_pages[i];
-	if (va == KUM_FREE_PAGE)
+	uintptr_t va = ksm.phi_pages[i];
+	if (va == KSM_FREE_PAGE)
 		return NULL;
 
-	return (struct page_hook_info *)((va & ~kum.c_mask) | kum.c_bits);
+	return (struct page_hook_info *)((va & ~ksm.c_mask) | ksm.c_bits);
 }
 
 #include <pshpack1.h>
@@ -138,7 +138,7 @@ static bool copy_code(void *func, u8 *out, u32 *outlen)
 STATIC_DEFINE_DPC(__do_hook_page, __vmx_vmcall, HYPERCALL_HOOK, ctx);
 STATIC_DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
 
-int kum_hook_page(void *original, void *redirect)
+int ksm_hook_page(void *original, void *redirect)
 {
 	struct page_hook_info *phi = ExAllocatePool(NonPagedPoolExecute, sizeof(*phi));
 	if (!phi)
@@ -177,50 +177,50 @@ int kum_hook_page(void *original, void *redirect)
 	return -STATUS_HV_ACCESS_DENIED;
 }
 
-NTSTATUS kum_unhook_page(int i)
+NTSTATUS ksm_unhook_page(int i)
 {
 	struct page_hook_info *phi = get_page(i);
 	if (!phi)
 		return STATUS_NOT_FOUND;
 
 	STATIC_CALL_DPC(__do_unhook_page, (void *)phi->d_pfn);
-	kum_free_phi(phi);
-	kum.phi_pages[i] = 0;
-	kum.phi_count--;
+	ksm_free_phi(phi);
+	ksm.phi_pages[i] = 0;
+	ksm.phi_count--;
 	return STATIC_DPC_RET();
 }
 
-void kum_init_phi_list(void)
+void ksm_init_phi_list(void)
 {
-	for (unsigned int i = 0; i < KUM_MAX_PAGES; ++i)
-		kum.phi_pages[i] = KUM_FREE_PAGE;
-	kum.phi_count = 0;
-	kum.c_mask = 0;
-	kum.c_bits = 0;
+	for (unsigned int i = 0; i < KSM_MAX_PAGES; ++i)
+		ksm.phi_pages[i] = KSM_FREE_PAGE;
+	ksm.phi_count = 0;
+	ksm.c_mask = 0;
+	ksm.c_bits = 0;
 }
 
-void kum_free_phi(struct page_hook_info *phi)
+void ksm_free_phi(struct page_hook_info *phi)
 {
 	MmFreeContiguousMemory((void *)phi->c_va);
 	ExFreePool(phi);
 }
 
-void kum_free_phi_list(void)
+void ksm_free_phi_list(void)
 {
-	for (unsigned int i = 0; i < kum.phi_count; ++i)
-		if (kum.phi_pages[i] != KUM_FREE_PAGE)
-			kum_free_phi(get_page(i));
-	kum.phi_count = 0;
+	for (unsigned int i = 0; i < ksm.phi_count; ++i)
+		if (ksm.phi_pages[i] != KSM_FREE_PAGE)
+			ksm_free_phi(get_page(i));
+	ksm.phi_count = 0;
 }
 
-struct page_hook_info *kum_find_hook(int i)
+struct page_hook_info *ksm_find_hook(int i)
 {
 	return get_page(i);
 }
 
-struct page_hook_info *kum_find_hook_pfn(uintptr_t pfn)
+struct page_hook_info *ksm_find_hook_pfn(uintptr_t pfn)
 {
-	for (unsigned int i = 0; i < kum.phi_count; ++i)
+	for (unsigned int i = 0; i < ksm.phi_count; ++i)
 		if (get_page(i)->d_pfn == pfn)
 			return get_page(i);
 	return NULL;

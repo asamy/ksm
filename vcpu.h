@@ -6,7 +6,7 @@
 #include "vmx.h"
 #include "asm.h"
 #include "ept.h"
-#include "kum.h"
+#include "ksm.h"
 #include "idt.h"
 
 /* Avoid NT retardism  */
@@ -230,7 +230,7 @@ extern void vcpu_dump_regs(const struct regs *regs, uintptr_t sp);
 extern void vcpu_set_mtf(bool enable);
 
 /* vcpu.c  */
-extern void vcpu_init(uintptr_t sp, uintptr_t ip, struct kum *k);
+extern void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k);
 extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_flush_idt(struct vcpu *vcpu);
 extern bool vcpu_hook_idte(struct vcpu *vcpu, struct shadow_idt_entry *h);
