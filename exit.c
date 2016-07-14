@@ -296,11 +296,15 @@ static inline void vcpu_adjust_rflags(struct guest_context *gc, bool success)
 static bool vcpu_handle_hook(struct vcpu *vcpu, struct page_hook_info *h)
 {
 	struct ept *ept = &vcpu->ept;
-	uintptr_t *epte = ept_pte(ept, EPT4(ept, EPTP_EXHOOK), h->d_pfn << PAGE_SHIFT);
+	uintptr_t dpa = h->d_pfn << PAGE_SHIFT;
+	uintptr_t *epte = ept_pte(ept, EPT4(ept, EPTP_EXHOOK), dpa);
 	__set_epte_ar_pfn(epte, EPT_ACCESS_EXEC, h->c_pfn);
 
-	epte = ept_pte(ept, EPT4(ept, EPTP_RWHOOK), h->d_pfn << PAGE_SHIFT);
+	epte = ept_pte(ept, EPT4(ept, EPTP_RWHOOK), dpa);
 	__set_epte_ar_pfn(epte, EPT_ACCESS_RW, h->c_pfn);
+
+	epte = ept_pte(ept, EPT4(ept, EPTP_NORMAL), dpa);
+	__set_epte_ar(epte, EPT_ACCESS_RW);
 
 	__invept_all();
 	return true;

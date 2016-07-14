@@ -293,9 +293,6 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	bool ret = handle_ept_violation(ept, fault_pa, fault_va, exit, eptp);
 	if (ret)
 		__invept_all();
-	else
-		for (int i = 0; i < 20; ++i)
-			VCPU_DEBUG_RAW("CRUICAL: UNHANDLED VIOLATION\n");
 	return ret;
 }
 
