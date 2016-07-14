@@ -70,9 +70,10 @@ static __forceinline bool is_phys(uintptr_t va)
 #define __EXCEPTION_BITMAP	0
 
 #define HYPERCALL_STOP		0	/* Stop virtualization on this CPU  */
-#define HYPERCALL_IDT		1	/* Hook this CPUs IDT (see idt.h, exit.c)  */
-#define HYPERCALL_HOOK		2	/* Hook page  */
-#define HYPERCALL_UNHOOK	3	/* Unhook page  */
+#define HYPERCALL_IDT		1	/* Hook IDT entry (see idt.h, exit.c)  */
+#define HYPERCALL_UIDT		2	/* Unhook IDT entry  */
+#define HYPERCALL_HOOK		3	/* Hook page  */
+#define HYPERCALL_UNHOOK	4	/* Unhook page  */
 
 struct gp_regs {
 	u64 r15;
@@ -165,9 +166,9 @@ struct vcpu {
 	struct vmcs *vmcs;
 	struct ept ept;
 	struct ve_except_info *ve;
-	struct gdtr g_idt;		/* Guest IDT (emulated)  */
-	struct gdtr idt;		/* Shadow IDT (working)  */
-	void *shadow_idt[0x100];	/* Shadow IDT entries  */
+	struct gdtr g_idt;			/* Guest IDT (emulated)  */
+	struct gdtr idt;			/* Shadow IDT (working)  */
+	struct kidt_entry64 shadow_idt[0x100];	/* Shadow IDT entries  */
 };
 
 #define VCPU_EXIT_IRQL			DISPATCH_LEVEL
@@ -223,6 +224,13 @@ struct vcpu {
 #define VCPU_EXIT_GIRQL()	\
 	KfRaiseIrql(__save_irql)
 
+static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)
+{
+	struct kidt_entry64 *e = idt_entry(vcpu->idt.base, n);
+	memcpy(&vcpu->shadow_idt[n], e, sizeof(*e));
+	__set_intr_gate(n, cs, vcpu->idt.base, (uintptr_t)h);
+}
+
 /* exit.c  */
 extern bool vcpu_handle_exit(struct exit_stack *stack);
 extern void vcpu_handle_fail(struct regs *regs);
@@ -232,8 +240,6 @@ extern void vcpu_set_mtf(bool enable);
 /* vcpu.c  */
 extern void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k);
 extern void vcpu_free(struct vcpu *vcpu);
-extern void vcpu_flush_idt(struct vcpu *vcpu);
-extern bool vcpu_hook_idte(struct vcpu *vcpu, struct shadow_idt_entry *h);
 extern void vcpu_subverted(void);
 
 #endif

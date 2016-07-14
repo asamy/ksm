@@ -12,7 +12,7 @@
 struct page_hook_info {
 	uintptr_t d_pfn;
 	uintptr_t c_pfn;
-	uintptr_t c_va;
+	void *c_va;
 	u32 size;
 	u8 data[128];
 };
@@ -32,6 +32,8 @@ extern struct ksm ksm;
 /* ksm.c  */
 extern NTSTATUS ksm_init(void);
 extern NTSTATUS ksm_exit(void);
+extern NTSTATUS ksm_hook_idt(unsigned n, void *h);
+extern NTSTATUS ksm_free_idt(unsigned n);
 extern struct vcpu *ksm_current_cpu(void);
 
 /* page.c  */

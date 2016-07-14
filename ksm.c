@@ -4,8 +4,8 @@
 struct ksm ksm = {
 	.active_vcpus = 0,
 	.phi_count = 0,
-	.c_mask = 0,
-	.c_bits = 0,
+	.c_mask = ~(1ULL << VA_SHIFT),
+	.c_bits = 1ULL << VA_SHIFT,
 };
 
 static NTSTATUS init_msr_bitmap(struct ksm *k)
@@ -129,6 +129,26 @@ NTSTATUS ksm_exit(void)
 	}
 
 	return status;
+}
+
+STATIC_DEFINE_DPC(__call_idt_hook, __vmx_vmcall, HYPERCALL_IDT, ctx);
+NTSTATUS ksm_hook_idt(unsigned n, void *h)
+{
+	STATIC_CALL_DPC(__call_idt_hook, &(struct shadow_idt_entry) {
+		.n = n,
+		.h = h,
+	});
+	return STATIC_DPC_RET();
+}
+
+STATIC_DEFINE_DPC(__call_idt_unhook, __vmx_vmcall, HYPERCALL_UIDT, ctx);
+NTSTATUS ksm_free_idt(unsigned n)
+{
+	STATIC_CALL_DPC(__call_idt_unhook, &(struct shadow_idt_entry) {
+		.n = n,
+		.h = NULL,
+	});
+	return STATIC_DPC_RET();
 }
 
 struct vcpu *ksm_current_cpu(void)

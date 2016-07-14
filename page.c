@@ -2,14 +2,17 @@
 #include "dpc.h"
 #include "ldasm.h"
 
-extern struct ksm ksm;
-
-static int find_free_page(void)
+static inline int find_free_page(void)
 {
 	for (unsigned int i = 0; i < ksm.phi_count; ++i)
 		if (ksm.phi_pages[i] == KSM_FREE_PAGE)
 			return i;
 	return -1;
+}
+
+static inline uintptr_t va_to_index_bits(uintptr_t va)
+{
+	return (va ^ (va >> ksm.phi_count)) & ksm.c_mask;
 }
 
 static void update_commons(uintptr_t va)
@@ -41,10 +44,10 @@ static inline int __put_page(struct page_hook_info *phi)
 {
 	uintptr_t va = (uintptr_t)phi;
 	int place = ksm.phi_count;
-	if (place >= KSM_MAX_PAGES)
-		NT_ASSERT((place = find_free_page()) >= 0);
+	if (place >= KSM_MAX_PAGES && (place = find_free_page()) < 0)
+		return place;
 
-	ksm.phi_pages[place] = (va & ~ksm.c_mask) | ksm.c_bits;
+	ksm.phi_pages[place] = (va & ~ksm.c_mask) | va_to_index_bits(va);
 	ksm.phi_count++;
 	return place;
 }
@@ -163,7 +166,7 @@ int ksm_hook_page(void *original, void *redirect)
 	memcpy(code_page, aligned, PAGE_SIZE);
 	memcpy(code_page + offset, &trampo, sizeof(trampo));
 
-	phi->c_va = (uintptr_t)code_page;
+	phi->c_va = code_page;
 	phi->c_pfn = __pfn(__pa(code_page));
 	phi->d_pfn = __pfn(__pa(original));
 	KeInvalidateAllCaches();
@@ -201,7 +204,7 @@ void ksm_init_phi_list(void)
 
 void ksm_free_phi(struct page_hook_info *phi)
 {
-	MmFreeContiguousMemory((void *)phi->c_va);
+	MmFreeContiguousMemory(phi->c_va);
 	ExFreePool(phi);
 }
 
@@ -220,8 +223,11 @@ struct page_hook_info *ksm_find_hook(int i)
 
 struct page_hook_info *ksm_find_hook_pfn(uintptr_t pfn)
 {
-	for (unsigned int i = 0; i < ksm.phi_count; ++i)
-		if (get_page(i)->d_pfn == pfn)
-			return get_page(i);
+	for (unsigned int i = 0; i < ksm.phi_count; ++i) {
+		struct page_hook_info *phi = get_page(i);
+		if (phi->d_pfn == pfn)
+			return phi;
+	}
+
 	return NULL;
 }

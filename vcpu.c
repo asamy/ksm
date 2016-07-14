@@ -1,13 +1,5 @@
 #include "vcpu.h"
 
-static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)
-{
-	struct kidt_entry64 e;
-	pack_entry(&e, cs, (uintptr_t)h);
-	put_entry(vcpu->idt.base, n, &e);
-	vcpu->shadow_idt[n] = h;
-}
-
 static inline bool enter_vmx(struct vmcs *vmxon)
 {
 	/* If we're running nested on a hypervisor that does not
@@ -278,7 +270,7 @@ void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k)
 		goto out;
 
 	for (int i = 0; i < 0x100; ++i)
-		vcpu->shadow_idt[i] = NULL;
+		vcpu->shadow_idt[i] = (struct kidt_entry64) { .e32 = (kidt_entry_t) { .p = 0 } };
 
 	uintptr_t stack_top = (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE;
 	uintptr_t stack_data = stack_top - sizeof(void *);
@@ -324,22 +316,6 @@ void vcpu_free(struct vcpu *vcpu)
 
 	ept_exit(&vcpu->ept);
 	ExFreePool(vcpu);
-}
-
-void vcpu_flush_idt(struct vcpu *vcpu)
-{
-	__vmx_vmwrite(GUEST_IDTR_LIMIT, vcpu->idt.limit);
-	__vmx_vmwrite(GUEST_IDTR_BASE, vcpu->idt.base);
-}
-
-bool vcpu_hook_idte(struct vcpu *vcpu, struct shadow_idt_entry *h)
-{
-	u64 cs;
-	__vmx_vmread(GUEST_CS_SELECTOR, &cs);
-
-	vcpu_put_idt(vcpu, (u16)cs, h->n, h->h);
-	vcpu_flush_idt(vcpu);
-	return true;
 }
 
 void vcpu_subverted(void)

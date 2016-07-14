@@ -326,6 +326,34 @@ static inline void vcpu_fail_vmx(struct guest_context *gc)
 	gc->eflags &= ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF | X86_EFLAGS_SF | X86_EFLAGS_OF);
 }
 
+static inline void vcpu_flush_idt(struct vcpu *vcpu)
+{
+	__vmx_vmwrite(GUEST_IDTR_LIMIT, vcpu->idt.limit);
+	__vmx_vmwrite(GUEST_IDTR_BASE, vcpu->idt.base);
+}
+
+static inline bool vcpu_hook_idte(struct vcpu *vcpu, struct shadow_idt_entry *h)
+{
+	u64 cs;
+	__vmx_vmread(GUEST_CS_SELECTOR, &cs);
+
+	vcpu_put_idt(vcpu, (u16)cs, h->n, h->h);
+	vcpu_flush_idt(vcpu);
+	return true;
+}
+
+static inline bool vcpu_unhook_idte(struct vcpu *vcpu, struct shadow_idt_entry *h)
+{
+	struct kidt_entry64 *entry = &vcpu->shadow_idt[h->n];
+	if (!idte_present(entry))
+		return false;
+
+	put_entry(vcpu->idt.base, h->n, entry);
+	vcpu_flush_idt(vcpu);
+	entry->e32.p = 0;
+	return true;
+}
+
 static bool vcpu_handle_vmcall(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
@@ -341,6 +369,10 @@ static bool vcpu_handle_vmcall(struct guest_context *gc)
 		return false;
 	case HYPERCALL_IDT:
 		vcpu_adjust_rflags(gc, vcpu_hook_idte(vcpu, (struct shadow_idt_entry *)arg));
+		vcpu_advance_rip(gc);
+		return true;
+	case HYPERCALL_UIDT:
+		vcpu_adjust_rflags(gc, vcpu_unhook_idte(vcpu, (struct shadow_idt_entry *)arg));
 		vcpu_advance_rip(gc);
 		return true;
 	case HYPERCALL_HOOK:
@@ -683,7 +715,7 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 	VCPU_DEBUG("Loading new IDT (new size: %d old size: %d)  Copying %d entries\n",
 		   idt->limit, vcpu->idt.limit, entries);
 	for (unsigned n = 0; n < entries; ++n)
-		if (!vcpu->shadow_idt[n])
+		if (!idte_present(&vcpu->shadow_idt[n]))
 			memcpy(&shadow[n], &current[n], sizeof(struct kidt_entry64));
 	vcpu_flush_idt(vcpu);
 }

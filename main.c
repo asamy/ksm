@@ -30,21 +30,29 @@ static NTSTATUS sleep_ms(int ms)
 	return KeDelayExecutionThread(KernelMode, FALSE, &ival);
 }
 
-static int hk_page_idx;
-typedef PVOID (*ExAllocatePoolWithTag_t) (_In_ POOL_TYPE PoolType,
-					  _In_ SIZE_T    NumberOfBytes,
-					  _In_ ULONG     Tag);
-static PVOID hk_ExAllocatePoolWithTag(_In_ POOL_TYPE PoolType, _In_ SIZE_T    NumberOfBytes, _In_ ULONG     Tag)
+typedef PVOID(*MmMapLockedPagesSpecifyCache_t)(_In_     PMDLX               MemoryDescriptorList,
+					       _In_     KPROCESSOR_MODE     AccessMode,
+					       _In_     MEMORY_CACHING_TYPE CacheType,
+					       _In_opt_ PVOID               BaseAddress,
+					       _In_     ULONG               BugCheckOnFailure,
+					       _In_     MM_PAGE_PRIORITY    Priority);
+static PVOID hk_MmMapLockedPagesSpecifyCache(_In_     PMDLX               MemoryDescriptorList,
+					     _In_     KPROCESSOR_MODE     AccessMode,
+					     _In_     MEMORY_CACHING_TYPE CacheType,
+					     _In_opt_ PVOID               BaseAddress,
+					     _In_     ULONG               BugCheckOnFailure,
+					     _In_     MM_PAGE_PRIORITY    Priority)
 {
-	/* Very, very, very very very noisy, even if you leave it on for 10 milliseconds...  */
-	VCPU_DEBUG("ExAllocatePoolWithTAg: %d %d %d\n", PoolType, NumberOfBytes, Tag);
+	if (MemoryDescriptorList == (PMDLX)0xdeadbeef)
+		return (PVOID)0xbaadf00d;
 
-	struct page_hook_info *phi = ksm_find_hook(hk_page_idx);
-	if (phi)
-		return ((ExAllocatePoolWithTag_t)(uintptr_t)phi->data)(PoolType, NumberOfBytes, Tag);
-
-	VCPU_DEBUG_RAW("You derped\n");
-	return NULL;
+	VCPU_DEBUG("Mapping via MDL %p Mode %d base: %p\n", MemoryDescriptorList, AccessMode, BaseAddress);
+	return ((MmMapLockedPagesSpecifyCache_t)(uintptr_t)ksm_find_hook(0)->data)(MemoryDescriptorList,
+										   AccessMode,
+										   CacheType,
+										   BaseAddress,
+										   BugCheckOnFailure,
+										   Priority);
 }
 
 static NTSTATUS sys_thread(void *null)
@@ -52,28 +60,28 @@ static NTSTATUS sys_thread(void *null)
 	VCPU_DEBUG_RAW("waiting a bit\n");
 	sleep_ms(2000);
 
-	int m = ksm_hook_page(ExAllocatePoolWithTag, hk_ExAllocatePoolWithTag);
+	int m = ksm_hook_page(MmMapLockedPagesSpecifyCache, hk_MmMapLockedPagesSpecifyCache);
 	if (m >= 0) {
-		hk_page_idx = m;
-
 		VCPU_DEBUG("hooked: %d\n", m);
+		if (MmMapLockedPagesSpecifyCache((PMDLX)0xdeadbeef,
+						 KernelMode,
+						 MmNonCached,
+						 (PVOID)0x00000000,
+						 TRUE,
+						 NormalPagePriority) == (PVOID)0xbaadf00d)
+			VCPU_DEBUG_RAW("We succeeded\n");
+		else
+			VCPU_DEBUG_RAW("we failed\n");
 		sleep_ms(2000);
-
-		void *pool = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, 0);
-		if (pool)
-			ExFreePoolWithTag(pool, 0);
 
 		/* Trigger #VE  */
 		struct page_hook_info *phi = ksm_find_hook(m);
-		u8 *r = (u8 *)(uintptr_t)ExAllocatePoolWithTag;
-		for (u32 i = 0; i < phi->size; ++i)
-			VCPU_DEBUG("0x%X - 0x%X (eq: %s)\n", 
-				   r[i], phi->data[i], r[i] == phi->data[i] ? "yes" : "no");
-		VCPU_DEBUG_RAW("unhooking\n");
-		ksm_unhook_page(hk_page_idx);
+		u8 *r = (u8 *)(uintptr_t)MmMapLockedPagesSpecifyCache;
+		VCPU_DEBUG("Equality: %d\n", memcmp(r, phi->data, phi->size));
+		return ksm_unhook_page(m);
 	}
 
-	return STATUS_SUCCESS;
+	return -m;
 }
 
 static void DriverUnload(PDRIVER_OBJECT driverObject)
