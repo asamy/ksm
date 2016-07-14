@@ -10,13 +10,27 @@ A really simple and lightweight x64 hypervisor written in C for Windows for Inte
 
 ## Brief descriptions of the flow
 
-#### IDT shadowing and EPTP-switching VMFUNC
+#### IDT shadowing
 
-We use 3 EPT pointers, one for executable pages, one for readwrite pages, and last one for normal usage.  (see below)
+- By enabling the descriptor table exiting bit in processor secondary control, we can easily establish this
+- On initial startup, we allocate a completely new IDT base and copy the current one in use to it (also save the old
+												   one)
+- When a VM-exit occurs with an EXIT_REASON_GDT_IDT_ACCESS, we simply just give them the cached one (on sidt) or (on
+														  lidt),
+	we copy the new one's contents, discarding the hooked entries we know about, thus not letting them know about
+	our stuff.
+
+
+#### #VE handling and hook idea
+
+We use 3 EPT pointers, one for executable pages, one for readwrite pages, and last one for normal usage.  (see next
+													   section)
 
 - vcpu.c: in setup_vmcs() where we initially setup the VMCS fields, we then set the relevant fields (VE_INFO_ADDRESS,
 													EPTP_LIST_ADDRESS,
-													...)
+													...) and enable
+relevant bits (VE, VMFUNC, and EPTP Switching CTL in VM_FUNCTION_CTL).
+
 - x64.asm: which contains the #VE handler (__ept_violation) then does the usual interrupt handling and then calls
 	__ept_handle_violation (ept.c) where it actually does what it needs to do.
 - ept.c: in __ept_handle_violation (#VE handler not VM-exit), usually the processor will do the #VE handler instead of
@@ -24,7 +38,7 @@ We use 3 EPT pointers, one for executable pages, one for readwrite pages, and la
 - ept.c: while handling the violation via #VE, we switch vmfunc only when we detect that the faulting address is one of
 	our interest (e.g. a hooked page), then we determine which EPTP we want and do vmfunc with that EPTP index.
 
-#### Execute-only EPT for executable page hooking, RW for read or write access
+##### Execute-only EPT for executable page hooking, RW for read or write access
 
 	(... to avoid a lot of violations, we just mark the page as execute only and replace the _final_ page frame
 	 number so that it just goes straight ahead to our trampoline)
