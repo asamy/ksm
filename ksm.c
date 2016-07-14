@@ -65,7 +65,7 @@ static NTSTATUS __ksm_init_cpu(struct ksm *k)
 		return status;
 
 	k->kernel_cr3 = __readcr3();
-	return __vmx_vminit(vcpu_init, &ksm) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+	return __vmx_vminit(vcpu_init, k) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
 STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);

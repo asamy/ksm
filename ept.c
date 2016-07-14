@@ -122,7 +122,7 @@ static void ept_free_pml4_list(struct ept *ept)
 {
 	for (int i = 0; i < EPTP_USED; ++i)
 		if (ept->pml4_list[i])
-			ExFreePool(ept->pml4_list[i]);
+			ept_free_entries(ept->pml4_list[i], 4);
 }
 
 static bool setup_pml4(uintptr_t *pml4)

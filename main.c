@@ -36,6 +36,7 @@ typedef PVOID (*ExAllocatePoolWithTag_t) (_In_ POOL_TYPE PoolType,
 					  _In_ ULONG     Tag);
 static PVOID hk_ExAllocatePoolWithTag(_In_ POOL_TYPE PoolType, _In_ SIZE_T    NumberOfBytes, _In_ ULONG     Tag)
 {
+	/* Very, very, very very very noisy, even if you leave it on for 10 milliseconds...  */
 	VCPU_DEBUG("ExAllocatePoolWithTAg: %d %d %d\n", PoolType, NumberOfBytes, Tag);
 
 	struct page_hook_info *phi = ksm_find_hook(hk_page_idx);
@@ -61,7 +62,6 @@ static NTSTATUS sys_thread(void *null)
 		void *pool = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, 0);
 		if (pool)
 			ExFreePoolWithTag(pool, 0);
-		sleep_ms(500);
 
 		/* Trigger #VE  */
 		struct page_hook_info *phi = ksm_find_hook(m);

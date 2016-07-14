@@ -795,10 +795,14 @@ static bool vcpu_handle_ept_violation(struct guest_context *gc)
 
 	struct vcpu *vcpu = to_vcpu(gc);
 	if (!ept_handle_violation(vcpu)) {
+#ifdef DBG
 		u64 fault_pa;
 		__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &fault_pa);
 
 		VCPU_BUGCHECK(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, gc->ip, fault_pa);
+#else
+		vcpu_inject_ve(vcpu);
+#endif
 	}
 
 	VCPU_TRACER_END();
