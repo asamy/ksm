@@ -1,6 +1,8 @@
 #ifndef __KSM_H
 #define __KSM_H
 
+#include "types.h"
+
 #include <intrin.h>
 #include <ntddk.h>
 

@@ -22,20 +22,15 @@ static uintptr_t *ept_alloc_entry(struct ept *ept)
 	return __ept_alloc_entry();
 }
 
-static __forceinline uintptr_t page_pa(uintptr_t page)
-{
-	return PAGE_FN(page) << PAGE_SHIFT;
-}
-
-static __forceinline uintptr_t *page_addr(uintptr_t *page)
+static inline uintptr_t *page_addr(uintptr_t *page)
 {
 	if (!*page)
 		return 0;
 
-	return __va(page_pa(*page));
+	return __va(PAGE_PA(*page));
 }
 
-static __forceinline void ept_init_entry(uintptr_t *entry, uint8_t access, uintptr_t phys)
+static inline void ept_init_entry(uintptr_t *entry, uint8_t access, uintptr_t phys)
 {
 	*entry ^= *entry;
 	*entry |= access & EPT_ACCESS_MAX_BITS;
@@ -105,7 +100,7 @@ static void ept_free_prealloc(struct ept *ept)
 static void ept_free_entries(uintptr_t *table, uint32_t lvl)
 {
 	for (int i = 0; i < 512; ++i) {
-		uintptr_t pa = page_pa(table[i]);
+		uintptr_t pa = PAGE_PA(table[i]);
 		if (pa) {
 			uintptr_t *sub_table = __va(pa);
 			if (lvl > 2)
@@ -171,7 +166,7 @@ static inline bool is_dma(u64 addr)
 	return ret;
 }
 
-static __forceinline void setup_eptp(uintptr_t *ptr, uintptr_t pml4_pfn)
+static inline void setup_eptp(uintptr_t *ptr, uintptr_t pml4_pfn)
 {
 	*ptr ^= *ptr;
 	*ptr |= VMX_EPT_DEFAULT_MT;
@@ -233,9 +228,9 @@ void ept_exit(struct ept *ept)
 
 uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys)
 {
-	uintptr_t *pxe = __va(page_pa(pml[__pxe_idx(phys)]));
-	uintptr_t *ppe = __va(page_pa(pxe[__ppe_idx(phys)]));
-	uintptr_t *pde = __va(page_pa(ppe[__pde_idx(phys)]));
+	uintptr_t *pxe = page_addr(&pml[__pxe_idx(phys)]);
+	uintptr_t *ppe = page_addr(&pxe[__ppe_idx(phys)]);
+	uintptr_t *pde = page_addr(&ppe[__pde_idx(phys)]);
 	return &pde[__pte_idx(phys)];
 }
 

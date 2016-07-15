@@ -27,7 +27,6 @@ struct kidt_entry64 {
 	u32 zero;
 };
 #include <poppack.h>
-static_assert(sizeof(struct kidt_entry64) == 16, "dun goof'd");
 
 #define LOW_U16_U64(x) ((u64)(x) & 0xFFFF)
 #define MID_U16_U64(x) (((u64)(x) >> 16) & 0xFFFF)

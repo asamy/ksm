@@ -5,19 +5,23 @@
 #include "x86.h"
 #include "vmx.h"
 #include "asm.h"
-#include "ept.h"
 #include "ksm.h"
+#include "ept.h"
 #include "idt.h"
+
+#ifndef NonPagedPoolNx
+#define NonPagedPoolNx	512
+#endif
 
 /* Avoid NT retardism  */
 #define container_of(address, type, field)	CONTAINING_RECORD(address, type, field)
 
-static __forceinline uintptr_t __pa(uintptr_t *va)
+static inline uintptr_t __pa(uintptr_t *va)
 {
 	return (uintptr_t)MmGetPhysicalAddress((void *)va).QuadPart;
 }
 
-static __forceinline uintptr_t *__va(uintptr_t phys)
+static inline uintptr_t *__va(uintptr_t phys)
 {
 	PHYSICAL_ADDRESS p;
 	p.QuadPart = phys;
@@ -25,41 +29,41 @@ static __forceinline uintptr_t *__va(uintptr_t phys)
 	return (uintptr_t *)MmGetVirtualForPhysical(p);
 }
 
-static __forceinline uintptr_t __pfn(uintptr_t phys)
+static inline uintptr_t __pfn(uintptr_t phys)
 {
 	return phys >> PAGE_SHIFT;
 }
 
-static __forceinline uintptr_t *va_to_pxe(uintptr_t va)
+static inline uintptr_t *va_to_pxe(uintptr_t va)
 {
 	uintptr_t off = (va >> PXI_SHIFT) & PTX_MASK;
 	return (uintptr_t *)(PXE_BASE + off * sizeof(uintptr_t));
 }
 
-static __forceinline uintptr_t *va_to_ppe(uintptr_t va)
+static inline uintptr_t *va_to_ppe(uintptr_t va)
 {
 	uintptr_t off = (va >> PPI_SHIFT) & PPI_MASK;
 	return (uintptr_t *)(PPE_BASE + off * sizeof(uintptr_t));
 }
 
-static __forceinline uintptr_t *va_to_pde(uintptr_t va)
+static inline uintptr_t *va_to_pde(uintptr_t va)
 {
 	uintptr_t off = (va >> PDI_SHIFT) & PDI_MASK;
 	return (uintptr_t *)(PDE_BASE + off * sizeof(uintptr_t));
 }
 
-static __forceinline uintptr_t *va_to_pte(uintptr_t va)
+static inline uintptr_t *va_to_pte(uintptr_t va)
 {
 	uintptr_t off = (va >> PTI_SHIFT) & PTI_MASK;
 	return (uintptr_t *)(PTE_BASE + off * sizeof(uintptr_t));
 }
 
-static __forceinline void *pte_to_va(uintptr_t *pte)
+static inline void *pte_to_va(uintptr_t *pte)
 {
 	return (void *)((((uintptr_t)pte - PTE_BASE) << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
 }
 
-static __forceinline bool is_phys(uintptr_t va)
+static inline bool is_phys(uintptr_t va)
 {
 	return *va_to_pxe(va) & PAGE_PRESENT && *va_to_ppe(va) & PAGE_PRESENT &&
 		(((*va_to_pde(va) & 0x81) == 0x81) || *va_to_pte(va) & PAGE_PRESENT);

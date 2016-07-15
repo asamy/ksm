@@ -1,10 +1,17 @@
 #ifndef __KERNEL_DPC_H
 #define __KERNEL_DPC_H
 
+#ifdef MINGW
+#define _In_
+#define _In_opt_
+#endif
+
 NTKERNELAPI
+#ifndef MINGW
 _IRQL_requires_max_(APC_LEVEL)
 _IRQL_requires_min_(PASSIVE_LEVEL)
 _IRQL_requires_same_
+#endif
 VOID
 KeGenericCallDpc(
 	_In_ PKDEFERRED_ROUTINE Routine,
@@ -12,16 +19,20 @@ KeGenericCallDpc(
 );
 
 NTKERNELAPI
+#ifndef MINGW
 _IRQL_requires_(DISPATCH_LEVEL)
 _IRQL_requires_same_
+#endif
 VOID
 KeSignalCallDpcDone(
 	_In_ PVOID SystemArgument1
 );
 
 NTKERNELAPI
+#ifndef MINGW
 _IRQL_requires_(DISPATCH_LEVEL)
 _IRQL_requires_same_
+#endif
 LOGICAL
 KeSignalCallDpcSynchronize(
 	_In_ PVOID SystemArgument2

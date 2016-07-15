@@ -1,7 +1,7 @@
 #ifndef __ASM_H
 #define __ASM_H
 
-#ifndef _AMD64_
+#if !defined(_AMD64_) && !defined(__x86_64) && !defined(_M_AMD64) && !defined(__M_X64)
 #error only 64-bit is supported
 #endif
 
@@ -33,7 +33,6 @@ static inline void __invept_gpa(u64 ptr, u64 gpa)
 	invept_t i;
 	i.ptr = ptr;
 	i.gpa = gpa;
-
 
 	__invept(VMX_EPT_EXTENT_CONTEXT, &i);
 }
