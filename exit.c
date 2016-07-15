@@ -72,13 +72,13 @@ static bool vcpu_handle_except_nmi(struct guest_context *gc)
 	u32 intr_type = intr_info & INTR_INFO_INTR_TYPE_MASK;
 	u8 vector = intr_info & INTR_INFO_VECTOR_MASK;
 
-	size_t instr_len;
-	__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, &instr_len);
-
+	size_t instr_len = 0;
 	if (intr_type & INTR_TYPE_HARD_EXCEPTION && vector == X86_TRAP_PF)
 		__writecr2(vmcs_read(EXIT_QUALIFICATION));
 	else if (intr_type & INTR_TYPE_SOFT_EXCEPTION && vector == X86_TRAP_BP)
 		instr_len = 1;
+	else
+		__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, &instr_len);
 
 	if (!vcpu_inject_irq(instr_len, intr_type, vector, intr_info & INTR_INFO_DELIVER_CODE_MASK))
 		VCPU_BUGCHECK(VCPU_IRQ_NOT_HANDLED, gc->ip, intr_type, vector);
