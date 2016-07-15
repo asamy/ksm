@@ -272,13 +272,6 @@ void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k)
 	for (int i = 0; i < 0x100; ++i)
 		vcpu->shadow_idt[i] = (struct kidt_entry64) { .e32 = (kidt_entry_t) { .p = 0 } };
 
-	uintptr_t stack_top = (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE;
-	uintptr_t stack_data = stack_top - sizeof(void *);
-	uintptr_t stack_base = stack_data - sizeof(void *);
-
-	*(uintptr_t *)stack_base = -1ULL;
-	*(struct vcpu **)stack_data = vcpu;
-
 	vcpu->nr = cpu_nr();
 	k->vcpu_list[cpu_nr()] = vcpu;
 
@@ -288,7 +281,7 @@ void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k)
 	if (!init_vmcs(vcpu->vmcs))
 		goto out_off;
 
-	if (setup_vmcs(vcpu, sp, ip, stack_base))
+	if (setup_vmcs(vcpu, sp, ip, (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE))
 		vcpu_launch();
 
 out_off:

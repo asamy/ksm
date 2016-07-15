@@ -103,38 +103,23 @@ struct regs {
 	uintptr_t eflags;
 };
 
-struct exit_stack {
-	struct gp_regs regs;
-	uintptr_t pad;
-	struct vcpu *vcpu;
-};
-
 struct guest_context {
-	struct exit_stack *stack;
+	struct gp_regs *regs;
+	struct vcpu *vcpu;
 	u64 eflags;
 	u64 ip;
 	u64 cr8;
 	KIRQL irql;
 };
 
-static inline struct gp_regs *__gp_regs(struct exit_stack *stack)
+static inline struct vcpu *to_vcpu(struct guest_context *gc)
 {
-	return &stack->regs;
+	return gc->vcpu;
 }
 
 static inline struct gp_regs *gp_regs(struct guest_context *gc)
 {
-	return __gp_regs(gc->stack);
-}
-
-static inline struct vcpu *__to_vcpu(struct exit_stack *stack)
-{
-	return stack->vcpu;
-}
-
-static inline struct vcpu *to_vcpu(struct guest_context *gc)
-{
-	return __to_vcpu(gc->stack);
+	return gc->regs;
 }
 
 static inline uintptr_t *gp_reg(struct gp_regs *regs, unsigned index)
@@ -236,7 +221,7 @@ static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)
 }
 
 /* exit.c  */
-extern bool vcpu_handle_exit(struct exit_stack *stack);
+extern bool vcpu_handle_exit(struct gp_regs *regs);
 extern void vcpu_handle_fail(struct regs *regs);
 extern void vcpu_dump_regs(const struct regs *regs, uintptr_t sp);
 extern void vcpu_set_mtf(bool enable);

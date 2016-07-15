@@ -32,6 +32,9 @@ static void update_commons(uintptr_t va)
 	uintptr_t m_diff = ksm.c_bits ^ (va & ksm.c_mask);
 	uintptr_t b_diff = ksm.c_bits & m_diff;
 	for (i = 0; i < ksm.phi_count; ++i) {
+		if (ksm.phi_pages[i] == KSM_FREE_PAGE)
+			continue;
+
 		ksm.phi_pages[i] &= ~m_diff;
 		ksm.phi_pages[i] |= b_diff;
 	}

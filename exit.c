@@ -180,7 +180,7 @@ static bool vcpu_handle_cpuid(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	struct gp_regs *gp = gp_regs(gc);
+	struct gp_regs *gp = gc->regs;
 	int cpuid[4];
 	__cpuidex((int *)cpuid, gp->ax, gp->cx);
 
@@ -991,7 +991,7 @@ static bool(*g_handlers[]) (struct guest_context *) = {
 	[EXIT_REASON_PCOMMIT] = vcpu_nop
 };
 
-bool vcpu_handle_exit(struct exit_stack *stack)
+bool vcpu_handle_exit(struct gp_regs *regs)
 {
 	KIRQL irql = KeGetCurrentIrql();
 	uintptr_t cr8 = __readcr8();
@@ -999,7 +999,8 @@ bool vcpu_handle_exit(struct exit_stack *stack)
 		KfRaiseIrql(VCPU_EXIT_IRQL);
 
 	struct guest_context gc = {
-		.stack = stack,
+		.regs = regs,
+		.vcpu = ksm_current_cpu(),
 		.cr8 = cr8,
 		.irql = irql,
 	};
@@ -1016,18 +1017,16 @@ bool vcpu_handle_exit(struct exit_stack *stack)
 
 	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY) {
 		vcpu_dump_regs(&(struct regs) {
-			.gp = stack->regs,
+			.gp = *regs,
 			.eflags = eflags,
-		}, stack->regs.sp);
+		}, regs->sp);
 
 		u64 exit_qualification;
 		__vmx_vmread(EXIT_QUALIFICATION, &exit_qualification);
 		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, gc.ip, exit_qualification, curr_handler);
 	}
 
-	struct vcpu *vcpu = __to_vcpu(stack);
 	bool ret = g_handlers[curr_handler](&gc);
-
 	if (gc.irql < VCPU_EXIT_IRQL)
 		KeLowerIrql(gc.irql);
 
