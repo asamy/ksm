@@ -66,45 +66,22 @@ static bool vcpu_handle_except_nmi(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	u32 intr_info;
+	u64 intr_info;
 	__vmx_vmread(VM_EXIT_INTR_INFO, &intr_info);
 
 	u32 intr_type = intr_info & INTR_INFO_INTR_TYPE_MASK;
 	u8 vector = intr_info & INTR_INFO_VECTOR_MASK;
 
-	u64 ec = 0;
-	if (intr_info & INTR_INFO_DELIVER_CODE_MASK)
-		__vmx_vmread(VM_EXIT_INTR_ERROR_CODE, &ec);
-
 	size_t instr_len;
 	__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, &instr_len);
 
-	bool ret = false;
-	if (intr_type & INTR_TYPE_HARD_EXCEPTION) {
-		switch (vector) {
-		case X86_TRAP_PF:
-			__writecr2(vmcs_read(EXIT_QUALIFICATION));
-			__vmx_vmwrite(VM_ENTRY_EXCEPTION_ERROR_CODE, ec);
-			ret = vcpu_inject_irq(0, intr_type, vector, true);
-			break;
-		case X86_TRAP_GP:
-			__vmx_vmwrite(VM_ENTRY_EXCEPTION_ERROR_CODE, ec);
-			ret = vcpu_inject_irq(instr_len, intr_type, vector, true);
-			break;
-		default:
-			ret = vcpu_inject_irq(instr_len, intr_type, vector, false);
-			break;
-		}
-	} else if (intr_type & INTR_TYPE_SOFT_EXCEPTION) {
-		if (vector == X86_TRAP_BP)
-			ret = vcpu_inject_irq(1, intr_type, vector, false);
-		else
-			ret = vcpu_inject_irq(0, intr_type, vector, false);
-	} else
-		ret = vcpu_inject_irq(0, intr_type, vector, false);
+	if (intr_type & INTR_TYPE_HARD_EXCEPTION && vector == X86_TRAP_PF)
+		__writecr2(vmcs_read(EXIT_QUALIFICATION));
+	else if (intr_type & INTR_TYPE_SOFT_EXCEPTION && vector == X86_TRAP_BP)
+		instr_len = 1;
 
-	if (!ret)
-		VCPU_BUGCHECK(VCPU_IRQ_NOT_HANDLED, intr_type, vector, ec);
+	if (!vcpu_inject_irq(instr_len, intr_type, vector, intr_info & INTR_INFO_DELIVER_CODE_MASK))
+		VCPU_BUGCHECK(VCPU_IRQ_NOT_HANDLED, gc->ip, intr_type, vector);
 
 	VCPU_TRACER_END();
 	return true;
