@@ -62,7 +62,7 @@ ASM_DUMP_REGISTERS MACRO
 	popfq
 ENDM
 
-.CODE INIT
+.CODE
 
 __vmx_vminit PROC
 	pushfq
@@ -95,8 +95,6 @@ do_resume:
 	mov	rax, 1
 	ret
 __vmx_vminit ENDP
-
-.CODE
 
 __vmx_entrypoint PROC
 	PUSHAQ
