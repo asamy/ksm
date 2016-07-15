@@ -118,12 +118,12 @@
 #define EPT_VE_NMI_UNBLOCKING		0x2000			/* NMI unblocking due to IRET  */
 #define EPT_SUPPRESS_VE_BIT		0x8000000000000000	/* Suppress convertible EPT violations */
 
-#define EPT_MAX_EPTP_LIST		512				/* Processor defined size  */
-#define EPTP_EXHOOK			0				/* hook eptp index, executable hooks only  */
-#define EPTP_RWHOOK			1				/* hook eptp index, readwrite hooks, no exec  */
-#define EPTP_NORMAL			2				/* sane eptp index, no hooks  */
+#define EPT_MAX_EPTP_LIST		512			/* Processor defined size  */
+#define EPTP_EXHOOK			0			/* hook eptp index, executable hooks only  */
+#define EPTP_RWHOOK			1			/* hook eptp index, readwrite hooks, no exec  */
+#define EPTP_NORMAL			2			/* sane eptp index, no hooks  */
 #define EPTP_DEFAULT			EPTP_EXHOOK
-#define EPTP_USED			3				/* number of unique ptrs currently in use and should be freed  */
+#define EPTP_USED			3			/* number of unique ptrs currently in use and should be freed  */
 #define EPT_MAX_PREALLOC		64*EPTP_USED
 #define EPTP(e, i)			(e)->ptr_list[(i)]
 #define EPT4(e, i)			(e)->pml4_list[(i)]

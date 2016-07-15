@@ -68,9 +68,18 @@ static NTSTATUS __ksm_init_cpu(struct ksm *k)
 	return __vmx_vminit(vcpu_init, k) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
 }
 
+static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT change_ctx, PNTSTATUS op_status)
+{
+	if (change_ctx->State == KeProcessorAddCompleteNotify) {
+		/* virtualize it.   */
+		*op_status = __ksm_init_cpu(&ksm);
+	}
+}
+
 STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
 NTSTATUS ksm_init(void)
 {
+	NTSTATUS status;
 #ifndef DBG
 	/*  This prevents loading in a nested environment.  */
 	int info[4];
@@ -88,9 +97,13 @@ NTSTATUS ksm_init(void)
 	if (!(__readmsr(MSR_IA32_FEATURE_CONTROL) & FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
 		return STATUS_HV_FEATURE_UNAVAILABLE;
 
-	NTSTATUS status = init_msr_bitmap(&ksm);
+	ksm.hotplug_cpu = KeRegisterProcessorChangeCallback(ksm_hotplug_cpu, &status, 0);
+	if (!ksm.hotplug_cpu)
+		return status;
+
+	status = init_msr_bitmap(&ksm);
 	if (!NT_SUCCESS(status))
-		return STATUS_NO_MEMORY;
+		return status;
 
 	/* Caller cr3 (could be user)  */
 	ksm.origin_cr3 = __readcr3();
@@ -124,6 +137,8 @@ NTSTATUS ksm_exit(void)
 
 	NTSTATUS status = STATIC_DPC_RET();
 	if (NT_SUCCESS(status)) {
+		if (ksm.hotplug_cpu)
+			KeDeregisterProcessorChangeCallback(ksm.hotplug_cpu);
 		ksm_free_phi_list();
 		ExFreePool(ksm.msr_bitmap);
 	}

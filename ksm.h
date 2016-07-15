@@ -4,7 +4,7 @@
 #include "types.h"
 
 #include <intrin.h>
-#include <ntddk.h>
+#include <ntifs.h>
 
 #define KSM_MAX_PAGES	32
 #define KSM_FREE_PAGE	1ULL
@@ -22,6 +22,7 @@ struct page_hook_info {
 struct ksm {
 	int active_vcpus;
 	struct vcpu *vcpu_list[KSM_MAX_VCPUS];
+	void *hotplug_cpu;
 	void *msr_bitmap;
 	u64 kernel_cr3;
 	u64 origin_cr3;
