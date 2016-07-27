@@ -410,6 +410,7 @@ enum vmcs_field {
 
 #define VMX_EPT_IDENTITY_PAGETABLE_ADDR		0xfffbc000ul
 
+#ifdef MINGW
 #define ASM_VMX_VMCLEAR_RAX       ".byte 0x66, 0x0f, 0xc7, 0x30"
 #define ASM_VMX_VMLAUNCH          ".byte 0x0f, 0x01, 0xc2"
 #define ASM_VMX_VMRESUME          ".byte 0x0f, 0x01, 0xc3"
@@ -421,6 +422,60 @@ enum vmcs_field {
 #define ASM_VMX_VMXON_RAX         ".byte 0xf3, 0x0f, 0xc7, 0x30"
 #define ASM_VMX_INVEPT			 ".byte 0x66, 0x0f, 0x38, 0x80, 0x08"
 #define ASM_VMX_INVVPID			 ".byte 0x66, 0x0f, 0x38, 0x81, 0x08"
+
+static inline unsigned char __vmx_on(unsigned long long *pa)
+{
+	__asm __volatile(ASM_VMX_VMXON_RAX
+			 : : "a"(pa), "m"(*pa)
+			 : "memory", "cc");
+	return 0;
+}
+
+static inline void __vmx_off(void)
+{
+	__asm __volatile(ASM_VMX_VMXOFF ::: "cc");
+}
+
+static inline unsigned char __vmx_vmread(unsigned long long field, unsigned long long *value)
+{
+	unsigned long long tmp;
+	__asm __volatile(ASM_VMX_VMREAD_RDX_RAX
+			 : "=a"(tmp) : "d"(field) : "cc");
+	*value = tmp;
+	return 0;
+}
+
+static inline unsigned char __vmx_vmlaunch(void)
+{
+	__asm __volatile(ASM_VMX_VMLAUNCH);
+}
+
+static inline unsigned char __vmx_vmclear(unsigned long long *pa)
+{
+	unsigned char error;
+	__asm __volatile(ASM_VMX_VMCLEAR_RAX "; setna %0"
+			 : "=qm" (error) : "a" (pa), "m" (*pa)
+			 : "cc", "memory");
+	return error;
+}
+
+static inline unsigned char __vmx_vmptrld(unsigned long long *pa)
+{
+	unsigned char error;
+	__asm __volatile(ASM_VMX_VMPTRLD_RAX "; setna %0"
+			 : "=qm" (error) : "a" (pa), "m" (*pa)
+			 : "cc", "memory");
+	return error;
+}
+
+static inline unsigned char __vmx_vmwrite(unsigned long long field, unsigned long long value)
+{
+	unsigned char error;
+	__asm __volatile(ASM_VMX_VMWRITE_RAX_RDX "; setna %0"
+			 : "=q" (error) : "a" (value), "d" (field) : "cc");
+	return error;
+}
+#endif
 
 /*
  * Exit Qualifications for entry failure during or after loading guest state

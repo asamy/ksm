@@ -20,7 +20,7 @@
 #define __KSM_H
 
 #include <intrin.h>
-#include <ntifs.h>
+#include <ntddk.h>
 
 #include "types.h"
 #include "x86.h"
