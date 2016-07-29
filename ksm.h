@@ -6,18 +6,40 @@
 #include <intrin.h>
 #include <ntifs.h>
 
-#define KSM_MAX_PAGES	32
-#define KSM_FREE_PAGE	1ULL
+#include "htable.h"
+
 #define KSM_MAX_VCPUS	32
 
-/* Executable pages only...  */
+struct phi_ops {
+	void (*init_eptp) (struct page_hook_info *phi, struct ept *ept);
+	u16 (*select_eptp) (struct page_hook_info *phi, u16 cur, u8 ar, u8 ac);
+};
+
 struct page_hook_info {
-	uintptr_t d_pfn;
-	uintptr_t c_pfn;
+	u64 d_pfn;
+	u64 c_pfn;
+	u64 origin;
 	void *c_va;
+	struct phi_ops *ops;
 	u32 size;
 	u8 data[128];
 };
+
+static size_t page_hash(u64 h)
+{
+	h = ~h + (h << 15);
+	h = h ^ (h >> 12);
+	h = h + (h << 2);
+	h = h ^ (h >> 4);
+	h = h * 2057;
+	h = h ^ (h >> 16);
+	return h;
+}
+
+static inline size_t rehash(const void *e, void *unused)
+{
+	return page_hash(((struct page_hook_info *)e)->origin);
+}
 
 struct ksm {
 	int active_vcpus;
@@ -26,9 +48,7 @@ struct ksm {
 	void *msr_bitmap;
 	u64 kernel_cr3;
 	u64 origin_cr3;
-	unsigned int phi_count;
-	uintptr_t c_mask, c_bits;
-	uintptr_t phi_pages[KSM_MAX_PAGES];
+	struct htable ht;
 };
 extern struct ksm ksm;
 
@@ -40,12 +60,10 @@ extern NTSTATUS ksm_free_idt(unsigned n);
 extern struct vcpu *ksm_current_cpu(void);
 
 /* page.c  */
-extern int ksm_hook_page(void *original, void *redirect);
-extern NTSTATUS ksm_unhook_page(int);
-extern void ksm_init_phi_list(void);
-extern void ksm_free_phi(struct page_hook_info *phi);
-extern void ksm_free_phi_list(void);
-extern struct page_hook_info *ksm_find_hook(int i);
-extern struct page_hook_info *ksm_find_hook_pfn(uintptr_t pfn);
+extern NTSTATUS ksm_hook_epage(void *original, void *redirect);
+extern NTSTATUS ksm_unhook_page(void *original);
+extern NTSTATUS __ksm_unhook_page(struct page_hook_info *phi);
+extern struct page_hook_info *ksm_find_page(void *va);
+extern struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn);
 
 #endif

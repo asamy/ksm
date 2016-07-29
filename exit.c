@@ -125,7 +125,7 @@ static bool vcpu_handle_taskswitch(struct guest_context *gc)
 	__vmx_vmread(EXIT_QUALIFICATION, &exit);
 
 	u16 selector = (u16)exit;
-	u8 src = (exit >> 31) & 3;
+	u8 src = (exit >> 30) & 3;
 	const char *name;
 	switch (src) {
 	case 0:
@@ -157,14 +157,13 @@ static bool vcpu_handle_cpuid(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	struct gp_regs *gp = gc->regs;
 	int cpuid[4];
-	__cpuidex((int *)cpuid, gp->ax, gp->cx);
+	__cpuidex((int *)cpuid, gc->gp[REG_AX], gc->gp[REG_CX]);
 
-	gp->ax = cpuid[0];
-	gp->bx = cpuid[1];
-	gp->cx = cpuid[2];
-	gp->dx = cpuid[3];
+	gc->gp[REG_AX] = cpuid[0];
+	gc->gp[REG_BX] = cpuid[1];
+	gc->gp[REG_CX] = cpuid[2];
+	gc->gp[REG_DX] = cpuid[3];
 	vcpu_advance_rip(gc);
 
 	VCPU_TRACER_END();
@@ -212,10 +211,9 @@ static bool vcpu_handle_rdtsc(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	struct gp_regs *gp = gp_regs(gc);
 	u64 tsc = __rdtsc();
-	gp->ax = (u32)tsc;
-	gp->dx = tsc >> 32;
+	gc->gp[REG_AX] = (u32)tsc;
+	gc->gp[REG_DX] = (u32)(tsc >> 32);
 	vcpu_advance_rip(gc);
 
 	VCPU_TRACER_END();
@@ -231,6 +229,73 @@ static bool vcpu_handle_vmfunc(struct guest_context *gc)
 	return true;
 }
 
+static bool vcpu_dump_pml(struct guest_context *gc)
+{
+	u64 pml_index;
+	__vmx_vmread(GUEST_PML_INDEX, &pml_index);
+
+	/* CPU _decrements_ PML index (i.e. from 511 to 0 then overflows to FFFF),
+	 * make sure we don't have an empty table...  */
+	if (pml_index == PML_MAX_ENTRIES - 1)
+		return false;
+
+	/* PML index always points to next available PML entry.  */
+	if (pml_index >= PML_MAX_ENTRIES)
+		pml_index = 0;
+	else
+		pml_index++;
+
+	u64 curr;
+	__vmx_vmread(EPTP_INDEX, &curr);
+
+	/* Dump it...  */
+	struct vcpu *vcpu = to_vcpu(gc);
+	struct ept *ept = &vcpu->ept;
+
+	VCPU_DEBUG_RAW("PML dump start\n");
+	for (; pml_index < PML_MAX_ENTRIES; ++pml_index) {
+		/* CPU guarantees that the lower 12 bits (the offset) are always 0.  */
+		u64 gpa = vcpu->pml[pml_index];
+		u64 gva = (u64)__va(gpa);
+		VCPU_DEBUG("On PML %d: GPA %p GVA %p\n", pml_index, gpa, gva);
+
+		/* Reset AD bits now otherwise we probably won't get this page again  */
+		uintptr_t *epte = ept_pte(ept, EPT4(ept, curr), gpa);
+		*epte &= ~(EPT_ACCESSED | EPT_DIRTY);
+	}
+
+	/* Reset the PML index now...  */
+	__vmx_vmwrite(GUEST_PML_INDEX, pml_index);
+	/* We're done here  */
+	VCPU_DEBUG_RAW("PML dump done\n");
+	return true;
+}
+
+static bool vcpu_handle_pml_full(struct guest_context *gc)
+{
+	/* Page Modification Log is now full, dump it.  */
+	VCPU_DEBUG_RAW("PML full\n");
+	return vcpu_dump_pml(gc);
+}
+
+static inline void vcpu_do_succeed(struct guest_context *gc)
+{
+	gc->eflags &= ~(X86_EFLAGS_ZF | X86_EFLAGS_CF);
+}
+
+static inline void vcpu_do_fail(struct guest_context *gc)
+{
+	gc->eflags |= X86_EFLAGS_CF | X86_EFLAGS_ZF;
+}
+
+static inline void vcpu_adjust_rflags(struct guest_context *gc, bool success)
+{
+	if (success)
+		return vcpu_do_succeed(gc);
+
+	return vcpu_do_fail(gc);
+}
+
 static inline void vcpu_do_exit(struct guest_context *gc)
 {
 	VCPU_DEBUG_RAW("exiting\n");
@@ -240,12 +305,11 @@ static inline void vcpu_do_exit(struct guest_context *gc)
 	gdt.base = vmcs_read(GUEST_GDTR_BASE);
 	__lgdt(&gdt);
 
-	struct gp_regs *gp = gp_regs(gc);
 	struct vcpu *vcpu = to_vcpu(gc);
 	__lidt(&vcpu->g_idt);
 
 	// give them vcpu so they free it by themselves
-	*(struct vcpu **)gp->dx = vcpu;
+	*(struct vcpu **)gc->gp[REG_DX] = vcpu;
 
 	size_t instr_len;
 	__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, &instr_len);
@@ -257,33 +321,15 @@ static inline void vcpu_do_exit(struct guest_context *gc)
 	__vmx_vmread(GUEST_CR3, &cr3);
 	__writecr3(cr3);
 
-	gp->cx = ret;
-	gp->dx = gp->sp;
-	gp->ax = gc->eflags;
-}
-
-static inline void vcpu_adjust_rflags(struct guest_context *gc, bool success)
-{
-	if (success)
-		return vcpu_do_succeed(gc);
-
-	return vcpu_do_fail(gc);
+	gc->gp[REG_CX] = ret;
+	gc->gp[REG_DX] = gc->gp[REG_SP];
+	gc->gp[REG_AX] = gc->eflags;
 }
 
 static bool vcpu_handle_hook(struct vcpu *vcpu, struct page_hook_info *h)
 {
-	struct ept *ept = &vcpu->ept;
-	uintptr_t dpa = h->d_pfn << PAGE_SHIFT;
-	uintptr_t *epte = ept_pte(ept, EPT4(ept, EPTP_EXHOOK), dpa);
-	__set_epte_ar_pfn(epte, EPT_ACCESS_EXEC, h->c_pfn);
-
-	epte = ept_pte(ept, EPT4(ept, EPTP_RWHOOK), dpa);
-	__set_epte_ar_pfn(epte, EPT_ACCESS_RW, h->c_pfn);
-
-	epte = ept_pte(ept, EPT4(ept, EPTP_NORMAL), dpa);
-	__set_epte_ar(epte, EPT_ACCESS_RW);
-
-	__invept_all();
+	VCPU_DEBUG("page hook request for %p => %p (%p)\n", h->d_pfn, h->c_pfn, h->c_va);
+	h->ops->init_eptp(h, &vcpu->ept);
 	return true;
 }
 
@@ -293,7 +339,7 @@ static inline bool vcpu_handle_unhook(struct vcpu *vcpu, uintptr_t dpfn)
 	uintptr_t dpa = dpfn << PAGE_SHIFT;
 	for_each_eptp(i)
 		ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, dpa);
-	__invept_all();;
+	__invept_all();
 	return true;
 }
 
@@ -335,9 +381,8 @@ static bool vcpu_handle_vmcall(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	struct gp_regs *gp = gp_regs(gc);
-	uint8_t nr = gp->cx;
-	uintptr_t arg = gp->dx;
+	uint8_t nr = gc->gp[REG_CX];
+	uintptr_t arg = gc->gp[REG_DX];
 	struct vcpu *vcpu = to_vcpu(gc);
 	switch (nr) {
 	case HYPERCALL_STOP:
@@ -394,7 +439,7 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 	u64 *val;
 	switch ((exit >> 4) & 3) {
 	case 0:		/* mov to cr  */
-		val = gp_reg(gp_regs(gc), reg);
+		val = &gc->gp[reg];
 		switch (cr) {
 		case 0:
 			__vmx_vmwrite(GUEST_CR0, *val);
@@ -413,7 +458,7 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 		}
 		break;
 	case 1:		/* mov from cr  */
-		val = gp_reg(gp_regs(gc), reg);
+		val = &gc->gp[reg];
 		switch (cr) {
 		case 3:
 			__vmx_vmread(GUEST_CR3, val);
@@ -465,7 +510,7 @@ static bool vcpu_handle_dr_access(struct guest_context *gc)
 	__vmx_vmread(EXIT_QUALIFICATION, &exit);
 
 	int dr = exit & DEBUG_REG_ACCESS_NUM;
-	u64 *reg = gp_reg(gp_regs(gc), DEBUG_REG_ACCESS_REG(exit));
+	u64 *reg = &gc->gp[DEBUG_REG_ACCESS_REG(exit)];
 	if (exit & TYPE_MOV_FROM_DR) {
 		switch (dr) {
 		case 0:	*reg = __readdr(0); break;
@@ -519,8 +564,7 @@ static bool vcpu_handle_msr_read(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	struct gp_regs *gp = gp_regs(gc);
-	u32 msr = gp->cx;
+	u32 msr = (u32)gc->gp[REG_CX];
 	u64 val = 0;
 
 	switch (msr) {
@@ -559,8 +603,8 @@ static bool vcpu_handle_msr_read(struct guest_context *gc)
 		break;
 	}
 
-	gp->ax = (u32)val;
-	gp->dx = val >> 32;
+	gc->gp[REG_AX] = (u32)(val);
+	gc->gp[REG_CX] = (u32)(val >> 32);
 	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return true;
@@ -570,9 +614,8 @@ static bool vcpu_handle_msr_write(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	struct gp_regs *gp = gp_regs(gc);
-	u32 msr = gp->cx;
-	u64 val = gp->ax | gp->dx << 32;
+	u32 msr = gc->gp[REG_CX];
+	u64 val = gc->gp[REG_AX] | gc->gp[REG_DX] << 32;
 
 	switch (msr) {
 	case MSR_IA32_SYSENTER_CS:
@@ -693,14 +736,14 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 		   idt->limit, vcpu->idt.limit, entries);
 	for (unsigned n = 0; n < entries; ++n)
 		if (!idte_present(&vcpu->shadow_idt[n]))
-			memcpy(&shadow[n], &current[n], sizeof(struct kidt_entry64));
+			memcpy(&shadow[n], &current[n], sizeof(*shadow));
+		else
+			memcpy(&vcpu->shadow_idt[n], &current[n], sizeof(*shadow));
 	vcpu_flush_idt(vcpu);
 }
 
 static bool vcpu_handle_gdt_idt_access(struct guest_context *gc)
 {
-	struct gp_regs *gp = gp_regs(gc);
-
 	u64 exit;
 	__vmx_vmread(VMX_INSTRUCTION_INFO, &exit);
 
@@ -709,11 +752,11 @@ static bool vcpu_handle_gdt_idt_access(struct guest_context *gc)
 
 	uintptr_t base = 0;
 	if (!((exit >> 27) & 1))
-		base = *gp_reg(gp, (exit >> 23) & 15);
+		base = gc->gp[(exit >> 23) & 15];
 
 	uintptr_t index = 0;
 	if (!((exit >> 22) & 1))
-		index = *gp_reg(gp, (exit >> 18) & 15) << (exit & 3);
+		index = gc->gp[(exit >> 18) & 15] << (exit & 3);
 
 	uintptr_t addr = base + index + displacement;
 	if (((exit >> 7) & 7) == 1)
@@ -751,8 +794,6 @@ static bool vcpu_handle_gdt_idt_access(struct guest_context *gc)
 
 static bool vcpu_handle_ldt_tr_access(struct guest_context *gc)
 {
-	struct gp_regs *gp = gp_regs(gc);
-
 	u64 exit;
 	__vmx_vmread(VMX_INSTRUCTION_INFO, &exit);
 
@@ -762,17 +803,17 @@ static bool vcpu_handle_ldt_tr_access(struct guest_context *gc)
 	uintptr_t addr;
 	if ((exit >> 10) & 1) {
 		// register
-		addr = (uintptr_t)gp_reg(gp, (exit >> 3) & 15);
+		addr = (uintptr_t)gc->gp[(exit >> 3) & 15];
 		VCPU_DEBUG("LDT/TR access, addr %p\n", addr);
 	} else {
 		// base
 		uintptr_t base = 0;
 		if (!((exit >> 27) & 1))
-			base = *gp_reg(gp, (exit >> 23) & 15);
+			base = gc->gp[(exit >> 23) & 15];
 
 		uintptr_t index = 0;
 		if (!((exit >> 22) & 1))
-			index = *gp_reg(gp, (exit >> 18) & 15) << (exit & 3);
+			index = gc->gp[(exit >> 18) & 15] << (exit & 3);
 
 		addr = base + index + displacement;
 		if (((exit >> 7) & 7) == 1)
@@ -844,10 +885,9 @@ static bool vcpu_handle_rdtscp(struct guest_context *gc)
 	u32 tsc_aux;
 	u64 tsc = __rdtscp(&tsc_aux);
 
-	struct gp_regs *gp = gp_regs(gc);
-	gp->ax = (u32)tsc;
-	gp->dx = tsc >> 32;
-	gp->cx = tsc_aux;
+	gc->gp[REG_AX] = (u32)tsc;
+	gc->gp[REG_DX] = (u32)(tsc >> 32);
+	gc->gp[REG_CX] = tsc_aux;
 	vcpu_advance_rip(gc);
 
 	VCPU_TRACER_END();
@@ -867,8 +907,7 @@ static bool vcpu_handle_xsetbv(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	struct gp_regs *gp = gp_regs(gc);
-	_xsetbv(gp->cx, gp->ax | gp->dx << 32);
+	_xsetbv(gc->gp[REG_CX], gc->gp[REG_AX] | gc->gp[REG_DX] << 32);
 	vcpu_advance_rip(gc);
 
 	VCPU_TRACER_END();
@@ -962,13 +1001,13 @@ static bool(*g_handlers[]) (struct guest_context *) = {
 	[EXIT_REASON_VMFUNC] = vcpu_handle_vmfunc,
 	[EXIT_REASON_ENCLS] = vcpu_nop,
 	[EXIT_REASON_RDSEED] = vcpu_nop,
-	[EXIT_REASON_PML_FULL] = vcpu_nop,
+	[EXIT_REASON_PML_FULL] = vcpu_handle_pml_full,
 	[EXIT_REASON_XSAVES] = vcpu_handle_xsaves,
 	[EXIT_REASON_XRSTORS] = vcpu_handle_xrstors,
 	[EXIT_REASON_PCOMMIT] = vcpu_nop
 };
 
-bool vcpu_handle_exit(struct gp_regs *regs)
+bool vcpu_handle_exit(u64 *regs)
 {
 	KIRQL irql = KeGetCurrentIrql();
 	uintptr_t cr8 = __readcr8();
@@ -976,16 +1015,15 @@ bool vcpu_handle_exit(struct gp_regs *regs)
 		KfRaiseIrql(VCPU_EXIT_IRQL);
 
 	struct guest_context gc = {
-		.regs = regs,
 		.vcpu = ksm_current_cpu(),
+		.gp = regs,
 		.cr8 = cr8,
 		.irql = irql,
 	};
 	__vmx_vmread(GUEST_RFLAGS, &gc.eflags);
 	__vmx_vmread(GUEST_RIP, &gc.ip);
-	__vmx_vmread(GUEST_RSP, &gp_regs(&gc)->sp);
+	__vmx_vmread(GUEST_RSP, &gc.gp[REG_SP]);
 
-	u64 eflags = gc.eflags;
 	u64 exit_reason;
 	__vmx_vmread(VM_EXIT_REASON, &exit_reason);
 
@@ -993,11 +1031,6 @@ bool vcpu_handle_exit(struct gp_regs *regs)
 	curr_handler = (u16)exit_reason;
 
 	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY) {
-		vcpu_dump_regs(&(struct regs) {
-			.gp = *regs,
-			.eflags = eflags,
-		}, regs->sp);
-
 		u64 exit_qualification;
 		__vmx_vmread(EXIT_QUALIFICATION, &exit_qualification);
 		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, gc.ip, exit_qualification, curr_handler);
@@ -1006,9 +1039,6 @@ bool vcpu_handle_exit(struct gp_regs *regs)
 	bool ret = g_handlers[curr_handler](&gc);
 	if (gc.irql < VCPU_EXIT_IRQL)
 		KeLowerIrql(gc.irql);
-
-	if (ret && (gc.eflags ^ eflags) != 0)
-		__vmx_vmwrite(GUEST_RFLAGS, gc.eflags);
 
 	if ((cr8 ^ gc.cr8) != 0)
 		__writecr8(gc.cr8);
@@ -1030,7 +1060,6 @@ void vcpu_dump_regs(const struct regs *regs, uintptr_t sp)
 	if (irql < DISPATCH_LEVEL)
 		KeRaiseIrqlToDpcLevel();
 
-	const struct gp_regs *gp = &regs->gp;
 	VCPU_DEBUG("Context at %p: "
 		   "rax=%p rbx=%p rcx=%p "
 		   "rdx=%p rsi=%p rdi=%p "
@@ -1038,11 +1067,11 @@ void vcpu_dump_regs(const struct regs *regs, uintptr_t sp)
 		   " r8=%p  r9=%p r10=%p "
 		   "r11=%p r12=%p r13=%p "
 		   "r14=%p r15=%p efl=%08x",
-		   _ReturnAddress(), gp->ax, gp->bx, gp->cx,
-		   gp->dx, gp->si, gp->di, sp,
-		   gp->bp, gp->r8, gp->r9, gp->r10,
-		   gp->r11, gp->r12, gp->r13, gp->r14,
-		   gp->r15, regs->eflags);
+		   _ReturnAddress(), regs->gp[REG_AX], regs->gp[REG_BX], regs->gp[REG_CX],
+		   regs->gp[REG_DX], regs->gp[REG_SI], regs->gp[REG_DI], regs->gp[REG_SP],
+		   regs->gp[REG_BP], regs->gp[REG_R8], regs->gp[REG_R9], regs->gp[REG_R10],
+		   regs->gp[REG_R11], regs->gp[REG_R12], regs->gp[REG_R13], regs->gp[REG_R14],
+		   regs->gp[REG_R15], regs->eflags);
 	if (irql < DISPATCH_LEVEL)
 		KeLowerIrql(irql);
 }

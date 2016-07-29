@@ -3,88 +3,9 @@
 #ifndef __EPT_H
 #define __EPT_H
 
-#ifndef PXI_SHIFT
-#define PXI_SHIFT			39
-#endif
+#include "mm.h"
 
-#ifndef PPI_SHIFT
-#define PPI_SHIFT			30
-#endif
-
-#ifndef PDI_SHIFT
-#define PDI_SHIFT			21
-#endif
-
-#ifndef PTI_SHIFT
-#define PTI_SHIFT			12
-#endif
-
-#ifndef PTE_SHIFT
-#define PTE_SHIFT			3
-#endif
-
-#define VA_BITS				48
-#define VA_MASK				((1ULL << VA_BITS) - 1)
-#define VA_SHIFT			16
-
-#ifndef PTX_MASK
-#define PTX_MASK			0x1FF
-#endif
-
-#ifndef PPI_MASK
-#define PPI_MASK			0x3FFFF
-#endif
-
-#ifndef PDI_MASK
-#define PDI_MASK			0x7FFFFFF
-#endif
-
-#ifndef PTI_MASK
-#define PTI_MASK			0xFFFFFFFFF
-#endif
-
-#ifndef PXE_BASE
-#define PXE_BASE			0xfffff6fb7dbed000ull
-#endif
-
-#ifndef PPE_BASE
-#define PPE_BASE			0xfffff6fb7da00000ull
-#endif
-
-#ifndef PDE_BASE
-#define PDE_BASE			0xfffff6fb40000000ull
-#endif
-
-#ifndef PTE_BASE
-#define PTE_BASE			0xfffff68000000000ull
-#endif
-
-#define __pxe_idx(phys)			(((phys) >> PXI_SHIFT) & PTX_MASK)
-#define __ppe_idx(phys)			(((phys) >> PPI_SHIFT) & PTX_MASK)
-#define __pde_idx(phys)			(((phys) >> PDI_SHIFT) & PTX_MASK)
-#define __pte_idx(phys)			(((phys) >> PTI_SHIFT) & PTX_MASK)
-
- /* Regular IA32E page  */
-#define PAGE_PRESENT			(1 << 0)
-#define PAGE_WRITE			(1 << 1)
-#define PAGE_OWNER			(1 << 2)
-#define PAGE_WRITETHRU			(1 << 3)
-#define PAGE_CACHEDISABLE		(1 << 4)
-#define PAGE_ACCESSED			(1 << 5)
-#define PAGE_DIRTY			(1 << 6)
-#define PAGE_LARGE			(1 << 7)
-#define PAGE_GLOBAL			(1 << 8)
-#define PAGE_COPYONWRITE		(1 << 9)
-#define PAGE_PROTOTYPE			(1 << 10)
-#define PAGE_RESERVED0			(1 << 11)
-#define PAGE_MASK			0xFFFFFFFFFULL << 12
-#define PAGE_PA(page)			((page) & PAGE_MASK)
-#define PAGE_FN(page)			(((page) >> PTI_SHIFT) & PTI_MASK)
-#define PAGE_RESERVED1			(1 << 48)	// uses 4 bits
-#define PAGE_SOFT_WS_IDX		(1 << 52)	// uses 11 bits
-#define PAGE_NX				(1 << 63)
-
-/* EPT Memory type  */
+ /* EPT Memory type  */
 #define EPT_MT_UNCACHABLE		0
 #define EPT_MT_WRITECOMBINING		1
 #define EPT_MT_WRITETHROUGH		4
@@ -159,7 +80,7 @@ struct ept {
 
 static inline void __set_epte_pfn(uintptr_t *epte, uintptr_t pfn)
 {
-	*epte &= 0xFFFF000000000FFF;
+	*epte &= ~PAGE_MASK;
 	*epte |= (pfn & PTI_MASK) << PTI_SHIFT;
 }
 
@@ -183,8 +104,10 @@ static inline void __set_epte_ar_pfn(uintptr_t *epte, uintptr_t ar, uintptr_t pf
 extern bool ept_check_capabilitiy(void);
 extern bool ept_init(struct ept *ept);
 extern void ept_exit(struct ept *ept);
+extern bool ept_setup_p(struct ept *ept, uintptr_t **pml4, uintptr_t *ptr);
 extern uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uintptr_t phys);
 extern uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys);
+extern void ept_switch_root_p(struct ept *ept, u16 index);
 extern bool ept_handle_violation(struct vcpu *vcpu);
 extern void __ept_handle_violation(u64 cs, uintptr_t rip);
 

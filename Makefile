@@ -3,10 +3,10 @@ CROSS_INC = /usr/x86_64-w64-mingw32/include/ddk
 
 TARGET = ksm.sys
 CC = $(CROSS_BUILD)gcc
-CFLAGS = -I$(CROSS_INC) -DMINGW -D_WIN32_WINNT=0x0601 -std=c99
+CFLAGS = -I$(CROSS_INC) -DMINGW -DDBG -D_WIN32_WINNT=0x0601 -std=c99
 LDFLAGS = -m64 -shared -Wl,--subsystem,native -Wl,--image-base,0x10000 \
 	  -Wl,--file-alignment,0x1000 -Wl,--section-alignment,0x1000 \
-	  -Wl,--entry,DriverEntry@8 -Wl,--stack,0x40000 -Wl,--dynamicbase -Wl,--nxcompat \
+	  -Wl,--entry,DriverEntry@8 -Wl,--stack,0x60000 -Wl,--dynamicbase -Wl,--nxcompat \
 	  -nostartfiles -nostdlib
 LIBS = -lntoskrnl -lhal
 
@@ -17,7 +17,7 @@ all: $(TARGET)
 clean:
 	$(RM) $(TARGET) $(OBJ)
 
-$(TARGET): $(OBJ) $(OBA)
+$(TARGET): $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LIBS)
 
 %.o: %.c

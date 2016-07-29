@@ -17,6 +17,8 @@
 #pragma warning(disable:4152)
 #pragma warning(disable:4204)
 #pragma warning(disable:4189)
+#pragma warning(disable:4706)
+#pragma warning(disable:4221)
 
 /* Long names  */
 typedef unsigned char uint8_t;

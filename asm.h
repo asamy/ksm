@@ -7,6 +7,9 @@
 
 #include "types.h"
 
+#define __cli()		_disable()
+#define __sti()		_enable()
+
 typedef struct {
 	u64 vpid : 16;
 	u64 rsvd : 48;
@@ -24,23 +27,20 @@ extern void __ept_violation(void);
 
 static inline void __invept_all(void)
 {
-	invept_t i = { 0, 0 };
-	__invept(VMX_EPT_EXTENT_GLOBAL, &i);
+	__invept(VMX_EPT_EXTENT_GLOBAL, &(invept_t) { 0, 0 });
 }
 
 static inline void __invept_gpa(u64 ptr, u64 gpa)
 {
-	invept_t i;
-	i.ptr = ptr;
-	i.gpa = gpa;
-
-	__invept(VMX_EPT_EXTENT_CONTEXT, &i);
+	__invept(VMX_EPT_EXTENT_CONTEXT, &(invept_t) {
+		.ptr = ptr,
+		.gpa = gpa,
+	});
 }
 
 static inline void __invvpid_all(void)
 {
-	invvpid_t i = { 0, 0, 0 };
-	__invvpid(VMX_VPID_EXTENT_ALL_CONTEXT, &i);
+	__invvpid(VMX_VPID_EXTENT_ALL_CONTEXT, &(invvpid_t) { 0, 0, 0 });
 }
 
 static inline void __invvpid_vpid(u16 vpid, u64 gva)
@@ -50,7 +50,11 @@ static inline void __invvpid_vpid(u16 vpid, u64 gva)
 	i.rsvd = 0;
 	i.gva = gva;
 
-	__invvpid(VMX_VPID_EXTENT_SINGLE_CONTEXT, &i);
+	__invvpid(VMX_VPID_EXTENT_SINGLE_CONTEXT, &(invvpid_t) {
+		.vpid = vpid,
+		.rsvd = 0,
+		.gva = gva
+	});
 }
 
 static inline bool test_bit(u64 bits, u64 bs)
@@ -94,9 +98,5 @@ extern u16 __readgs(void);
 extern uintptr_t __lar(uintptr_t);
 extern void __writecr2(uintptr_t);
 extern void __invd(void);
-
-// Microsoft
-extern u64 RtlGetEnabledExtendedFeatures(u64 FeatureMask);
-extern void *RtlPcToFileHeader(void *pc, void **base);
 
 #endif

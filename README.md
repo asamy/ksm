@@ -59,4 +59,4 @@ If you think I hacked some of your code and I missed you, please send me an e-ma
 
 ## License
 
-MIT (The MIT License)
+GPL v2 (strictly)

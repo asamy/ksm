@@ -34,41 +34,6 @@ static inline uintptr_t __pfn(uintptr_t phys)
 	return phys >> PAGE_SHIFT;
 }
 
-static inline uintptr_t *va_to_pxe(uintptr_t va)
-{
-	uintptr_t off = (va >> PXI_SHIFT) & PTX_MASK;
-	return (uintptr_t *)(PXE_BASE + off * sizeof(uintptr_t));
-}
-
-static inline uintptr_t *va_to_ppe(uintptr_t va)
-{
-	uintptr_t off = (va >> PPI_SHIFT) & PPI_MASK;
-	return (uintptr_t *)(PPE_BASE + off * sizeof(uintptr_t));
-}
-
-static inline uintptr_t *va_to_pde(uintptr_t va)
-{
-	uintptr_t off = (va >> PDI_SHIFT) & PDI_MASK;
-	return (uintptr_t *)(PDE_BASE + off * sizeof(uintptr_t));
-}
-
-static inline uintptr_t *va_to_pte(uintptr_t va)
-{
-	uintptr_t off = (va >> PTI_SHIFT) & PTI_MASK;
-	return (uintptr_t *)(PTE_BASE + off * sizeof(uintptr_t));
-}
-
-static inline void *pte_to_va(uintptr_t *pte)
-{
-	return (void *)((((uintptr_t)pte - PTE_BASE) << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
-}
-
-static inline bool is_phys(uintptr_t va)
-{
-	return *va_to_pxe(va) & PAGE_PRESENT && *va_to_ppe(va) & PAGE_PRESENT &&
-		(((*va_to_pde(va) & 0x81) == 0x81) || *va_to_pte(va) & PAGE_PRESENT);
-}
-
 #define __CR0_GUEST_HOST_MASK	0
 #define __CR4_GUEST_HOST_MASK	0
 #define __EXCEPTION_BITMAP	0
@@ -79,33 +44,32 @@ static inline bool is_phys(uintptr_t va)
 #define HYPERCALL_HOOK		3	/* Hook page  */
 #define HYPERCALL_UNHOOK	4	/* Unhook page  */
 
-struct gp_regs {
-	u64 r15;
-	u64 r14;
-	u64 r13;
-	u64 r12;
-	u64 r11;
-	u64 r10;
-	u64 r9;
-	u64 r8;
-	u64 di;
-	u64 si;
-	u64 bp;
-	u64 sp;
-	u64 bx;
-	u64 dx;
-	u64 cx;
-	u64 ax;
-};
+#define REG_AX			0
+#define REG_CX			1
+#define REG_DX			2
+#define REG_BX			3
+#define REG_SP			4
+#define REG_BP			5
+#define REG_SI			6
+#define REG_DI			7
+#define REG_R8			8
+#define REG_R9			9
+#define REG_R10			10
+#define REG_R11			11
+#define REG_R12			12
+#define REG_R13			13
+#define REG_R14			14
+#define REG_R15			15
+#define REG_MAX			16
 
 struct regs {
-	struct gp_regs gp;
-	uintptr_t eflags;
+	u64 gp[REG_MAX * sizeof(u64)];
+	u64 eflags;
 };
 
 struct guest_context {
-	struct gp_regs *regs;
 	struct vcpu *vcpu;
+	u64 *gp;
 	u64 eflags;
 	u64 ip;
 	u64 cr8;
@@ -115,26 +79,6 @@ struct guest_context {
 static inline struct vcpu *to_vcpu(struct guest_context *gc)
 {
 	return gc->vcpu;
-}
-
-static inline struct gp_regs *gp_regs(struct guest_context *gc)
-{
-	return gc->regs;
-}
-
-static inline uintptr_t *gp_reg(struct gp_regs *regs, unsigned index)
-{
-	return &((uintptr_t *)regs)[15 - index];
-}
-
-static inline void vcpu_do_succeed(struct guest_context *gc)
-{
-	gc->eflags &= ~(X86_EFLAGS_ZF | X86_EFLAGS_CF);
-}
-
-static inline void vcpu_do_fail(struct guest_context *gc)
-{
-	gc->eflags |= X86_EFLAGS_CF | X86_EFLAGS_ZF;
 }
 
 struct shadow_idt_entry {
@@ -148,9 +92,12 @@ struct vmcs {
 	u32 data[1];
 };
 
+/* Page Modification Logging  */
+#define PML_MAX_ENTRIES		512
+
 struct vcpu {
-	int nr;
 	void *stack;
+	uintptr_t *pml;
 	struct vmcs *vmxon;
 	struct vmcs *vmcs;
 	struct ept ept;
@@ -221,7 +168,7 @@ static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)
 }
 
 /* exit.c  */
-extern bool vcpu_handle_exit(struct gp_regs *regs);
+extern bool vcpu_handle_exit(u64 *regs);
 extern void vcpu_handle_fail(struct regs *regs);
 extern void vcpu_dump_regs(const struct regs *regs, uintptr_t sp);
 extern void vcpu_set_mtf(bool enable);

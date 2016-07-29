@@ -7,6 +7,20 @@ struct gdtr {
 	uintptr_t base;
 };
 
+struct tss {
+	u32 reserved1;
+	u64 sp0;
+	u64 sp1;
+	u64 sp2;
+	u64 reserved2;
+	u64 ist[7];
+	u32 reserved3;
+	u32 reserved4;
+	u16 reserved5;
+	u16 io_bitmap_base;
+	u64 io_bitmap[PAGE_SIZE*2 + 1];
+};
+
 typedef union {
 	u64 i;
 	struct {
@@ -37,7 +51,7 @@ static inline bool idte_present(const struct kidt_entry64 *e)
 	return e->e32.p;
 }
 
-static inline u16 ide_sel(const struct kidt_entry64 *e)
+static inline u16 idte_sel(const struct kidt_entry64 *e)
 {
 	return e->e32.sel;
 }
@@ -115,7 +129,7 @@ typedef struct {
 
 static inline segmentdesc_t *segment_desc(uintptr_t gdt, u16 sel)
 {
-	return (segmentdesc_t *)(gdt + (sel >> 3) * sizeof(segmentdesc_t));
+	return (segmentdesc_t *)(gdt + (sel & ~3));
 }
 
 static uintptr_t segment_desc_base(segmentdesc_t *desc)
@@ -142,6 +156,19 @@ static uintptr_t __segmentbase(uintptr_t gdt, u16 sel)
 	}
 
 	return segment_desc_base(segment_desc(gdt, sel));
+}
+
+static inline struct tss *get_tss(u16 sel)
+{
+	struct gdtr gdt;
+	__sgdt(&gdt);
+
+	return (struct tss *)__segmentbase(gdt.base, sel);
+}
+
+static inline struct tss *current_tss(void)
+{
+	return get_tss(__str());
 }
 
 #endif

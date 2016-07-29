@@ -28,7 +28,7 @@ static inline bool enter_vmx(struct vmcs *vmxon)
 	return true;
 }
 
-static bool init_vmcs(struct vmcs *vmcs)
+static inline bool init_vmcs(struct vmcs *vmcs)
 {
 	u64 vmx = __readmsr(MSR_IA32_VMX_BASIC);
 	vmcs->revision_id = (u32)vmx;
@@ -40,7 +40,7 @@ static bool init_vmcs(struct vmcs *vmcs)
 	return __vmx_vmptrld(&pa) == 0;
 }
 
-static u32 __accessright(u16 selector)
+static inline u32 __accessright(u16 selector)
 {
 	if (selector)
 		return (__lar(selector) >> 8) & 0xF0FF;
@@ -51,7 +51,7 @@ static u32 __accessright(u16 selector)
 static inline void adjust_ctl_val(u32 msr, u64 *val)
 {
 	u64 v = __readmsr(msr);
-	*val &= v >> 32;			/* bit == 0 in high word ==> must be zero  */
+	*val &= (u32)(v >> 32);			/* bit == 0 in high word ==> must be zero  */
 	*val |= (u32)v;				/* bit == 1 in low word  ==> must be one  */
 }
 
@@ -93,10 +93,18 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	if (__readmsr(MSR_IA32_VMX_BASIC) & VMX_BASIC_TRUE_CTLS)
 		msr_off = 0xC;
 
-	u64 vm_entry = VM_ENTRY_IA32E_MODE;// | VM_ENTRY_LOAD_IA32_PAT;
+	u64 vm_entry = VM_ENTRY_IA32E_MODE
+#ifndef DBG
+		| VM_ENTRY_CONCEAL_IPT
+#endif
+		;
 	adjust_ctl_val(MSR_IA32_VMX_ENTRY_CTLS + msr_off, &vm_entry);
 
-	u64 vm_exit = VM_EXIT_ACK_INTR_ON_EXIT | VM_EXIT_HOST_ADDR_SPACE_SIZE;
+	u64 vm_exit = VM_EXIT_ACK_INTR_ON_EXIT | VM_EXIT_HOST_ADDR_SPACE_SIZE
+#ifndef DBG
+		| VM_EXIT_CONCEAL_IPT
+#endif
+		;
 	adjust_ctl_val(MSR_IA32_VMX_EXIT_CTLS + msr_off, &vm_exit);
 
 	u64 vm_pinctl = 0;
@@ -107,8 +115,13 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
 
 	u64 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_TSC_SCALING |
-		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES | SECONDARY_EXEC_RDTSCP |
-		SECONDARY_EXEC_ENABLE_VMFUNC | SECONDARY_EXEC_ENABLE_VE;
+		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES |
+		SECONDARY_EXEC_RDTSCP | SECONDARY_EXEC_ENABLE_PML |
+		SECONDARY_EXEC_ENABLE_VMFUNC | SECONDARY_EXEC_ENABLE_VE
+#ifndef DBG
+		| SECONDARY_EXEC_CONCEAL_VMX_IPT
+#endif
+		;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
 
 	/* Processor control fields  */
@@ -135,6 +148,10 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= __vmx_vmwrite(EPTP_INDEX, EPTP_DEFAULT);
 	err |= __vmx_vmwrite(EPTP_LIST_ADDRESS, __pa(ept->ptr_list));
 	err |= __vmx_vmwrite(VE_INFO_ADDRESS, __pa(vcpu->ve));
+#ifdef ENABLE_PML
+	err |= __vmx_vmwrite(PML_ADDRESS, __pa(vcpu->pml));
+	err |= __vmx_vmwrite(GUEST_PML_INDEX, PML_MAX_ENTRIES - 1);
+#endif
 	err |= __vmx_vmwrite(CR0_GUEST_HOST_MASK, __CR0_GUEST_HOST_MASK);
 	err |= __vmx_vmwrite(CR4_GUEST_HOST_MASK, __CR4_GUEST_HOST_MASK);
 	err |= __vmx_vmwrite(CR0_READ_SHADOW, cr0);
@@ -241,10 +258,7 @@ void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k)
 	if (!ept_init(&vcpu->ept))
 		return ExFreePool(vcpu);
 
-	PHYSICAL_ADDRESS highest;
-	highest.QuadPart = -1;
-
-	vcpu->stack = MmAllocateContiguousMemory(KERNEL_STACK_SIZE, highest);
+	vcpu->stack = MmAllocateContiguousMemory(KERNEL_STACK_SIZE, (PHYSICAL_ADDRESS) { .QuadPart = -1 });
 	if (!vcpu->stack)
 		goto out;
 	RtlZeroMemory(vcpu->stack, KERNEL_STACK_SIZE);
@@ -264,6 +278,13 @@ void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k)
 		goto out;
 	RtlZeroMemory(vcpu->ve, PAGE_SIZE);
 
+#ifdef ENABLE_PML
+	vcpu->pml = ExAllocatePool(NonPagedPoolNx, PML_MAX_ENTRIES * sizeof(uintptr_t));
+	if (!vcpu->pml)
+		goto out;
+	RtlZeroMemory(vcpu->pml, PML_MAX_ENTRIES * sizeof(uintptr_t));
+#endif
+
 	vcpu->idt.limit = PAGE_SIZE - 1;
 	vcpu->idt.base = (uintptr_t)ExAllocatePool(NonPagedPoolNx, PAGE_SIZE);
 	if (!vcpu->idt.base)
@@ -272,8 +293,8 @@ void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k)
 	for (int i = 0; i < 0x100; ++i)
 		vcpu->shadow_idt[i] = (struct kidt_entry64) { .e32 = (kidt_entry_t) { .p = 0 } };
 
-	vcpu->nr = cpu_nr();
 	k->vcpu_list[cpu_nr()] = vcpu;
+	k->active_vcpus++;
 
 	if (!enter_vmx(vcpu->vmxon))
 		goto out;
@@ -283,6 +304,11 @@ void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k)
 
 	if (setup_vmcs(vcpu, sp, ip, (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE))
 		vcpu_launch();
+
+	/* setup_vmcs() failed if we got here, we had already overwritten the
+	 * IDT entry for #VE (X86_TRAP_VE), restore it now otherwise PatchGuard is gonna
+	 * notice and BSOD us.  */
+	__lidt(&vcpu->g_idt);
 
 out_off:
 	__vmx_off();
@@ -294,6 +320,11 @@ void vcpu_free(struct vcpu *vcpu)
 {
 	if (vcpu->stack)
 		MmFreeContiguousMemory(vcpu->stack);
+
+#ifdef ENABLE_PML
+	if (vcpu->pml)
+		ExFreePool(vcpu->pml);
+#endif
 
 	if (vcpu->vmcs)
 		ExFreePool(vcpu->vmcs);

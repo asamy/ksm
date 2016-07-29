@@ -2,75 +2,44 @@
 #include "dpc.h"
 #include "ldasm.h"
 
-static inline int find_free_page(void)
+static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 {
-	for (unsigned int i = 0; i < ksm.phi_count; ++i)
-		if (ksm.phi_pages[i] == KSM_FREE_PAGE)
-			return i;
-	return -1;
+	uintptr_t dpa = phi->d_pfn << PAGE_SHIFT;
+	uintptr_t *epte = ept_pte(ept, EPT4(ept, EPTP_EXHOOK), dpa);
+	__set_epte_ar_pfn(epte, EPT_ACCESS_EXEC, phi->c_pfn);
+
+	epte = ept_pte(ept, EPT4(ept, EPTP_RWHOOK), dpa);
+	__set_epte_ar_pfn(epte, EPT_ACCESS_RW, phi->c_pfn);
+
+	epte = ept_pte(ept, EPT4(ept, EPTP_NORMAL), dpa);
+	__set_epte_ar(epte, EPT_ACCESS_RW);
+
+	/* FIXME:  Maybe should switch to EPTP_EXHOOK incase we are not already,
+	 * should probably save a few cycles i.e. a violation?
+	 * This is not the case right now...  May also help find several bugs?  */
+	__invept_all();
 }
 
-static inline uintptr_t va_to_index_bits(uintptr_t va)
+static inline u16 epage_select_eptp(struct page_hook_info *phi, u16 cur, u8 ar, u8 ac)
 {
-	return (va ^ (va >> ksm.phi_count)) & ksm.c_mask;
+	if (ac & EPT_ACCESS_READ)
+		return EPTP_NORMAL;
+
+	if (ac & EPT_ACCESS_WRITE)
+		return EPTP_RWHOOK;
+
+	return EPTP_EXHOOK;
 }
 
-static void update_commons(uintptr_t va)
+static struct phi_ops epage_ops = {
+	.init_eptp = epage_init_eptp,
+	.select_eptp = epage_select_eptp,
+};
+
+static inline bool ht_cmp(const void *candidate, const void *cmp)
 {
-	unsigned int i;
-
-	if (ksm.phi_count == 0) {
-		for (i = sizeof(uintptr_t) * CHAR_BIT - 1; i > 0; i--)
-			if (va & ((uintptr_t)1 << i))
-				break;
-
-		ksm.c_mask = ~((uintptr_t)1 << i);
-		ksm.c_bits = va & ksm.c_mask;
-		return;
-	}
-
-	uintptr_t m_diff = ksm.c_bits ^ (va & ksm.c_mask);
-	uintptr_t b_diff = ksm.c_bits & m_diff;
-	for (i = 0; i < ksm.phi_count; ++i) {
-		if (ksm.phi_pages[i] == KSM_FREE_PAGE)
-			continue;
-
-		ksm.phi_pages[i] &= ~m_diff;
-		ksm.phi_pages[i] |= b_diff;
-	}
-
-	ksm.c_mask &= ~m_diff;
-	ksm.c_bits &= ~m_diff;
-}
-
-static inline int __put_page(struct page_hook_info *phi)
-{
-	uintptr_t va = (uintptr_t)phi;
-	int place = ksm.phi_count;
-	if (place >= KSM_MAX_PAGES && (place = find_free_page()) < 0)
-		return place;
-
-	ksm.phi_pages[place] = (va & ~ksm.c_mask) | va_to_index_bits(va);
-	ksm.phi_count++;
-	return place;
-}
-
-static inline int put_page(struct page_hook_info *phi)
-{
-	uintptr_t va = (uintptr_t)phi;
-	if ((va & ksm.c_mask) != ksm.c_bits)
-		update_commons(va);
-
-	return __put_page(phi);
-}
-
-static inline struct page_hook_info *get_page(int i)
-{
-	uintptr_t va = ksm.phi_pages[i];
-	if (va == KSM_FREE_PAGE)
-		return NULL;
-
-	return (struct page_hook_info *)((va & ~ksm.c_mask) | ksm.c_bits);
+	const struct page_hook_info *phi = candidate;
+	return phi->origin == (uintptr_t)cmp;
 }
 
 #include <pshpack1.h>
@@ -144,21 +113,21 @@ static bool copy_code(void *func, u8 *out, u32 *outlen)
 STATIC_DEFINE_DPC(__do_hook_page, __vmx_vmcall, HYPERCALL_HOOK, ctx);
 STATIC_DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
 
-int ksm_hook_page(void *original, void *redirect)
+NTSTATUS ksm_hook_epage(void *original, void *redirect)
 {
 	struct page_hook_info *phi = ExAllocatePool(NonPagedPoolExecute, sizeof(*phi));
 	if (!phi)
-		return -STATUS_NO_MEMORY;
+		return STATUS_NO_MEMORY;
 
 	if (!copy_code(original, &phi->data[0], &phi->size)) {
 		ExFreePool(phi);
-		return -STATUS_BUFFER_TOO_SMALL;
+		return STATUS_BUFFER_TOO_SMALL;
 	}
 
 	u8 *code_page = MmAllocateContiguousMemory(PAGE_SIZE, (PHYSICAL_ADDRESS) { .QuadPart = -1 });
 	if (!code_page) {
 		ExFreePool(phi);
-		return -STATUS_INSUFFICIENT_RESOURCES;
+		return STATUS_INSUFFICIENT_RESOURCES;
 	}
 
 	void *aligned = PAGE_ALIGN(original);
@@ -172,65 +141,46 @@ int ksm_hook_page(void *original, void *redirect)
 	phi->c_va = code_page;
 	phi->c_pfn = __pfn(__pa(code_page));
 	phi->d_pfn = __pfn(__pa(original));
-	KeInvalidateAllCaches();
+	phi->origin = (u64)original;
+	phi->ops = &epage_ops;
 
 	STATIC_CALL_DPC(__do_hook_page, phi);
-	if (NT_SUCCESS(STATIC_DPC_RET()))
-		return put_page(phi);
+	if (NT_SUCCESS(STATIC_DPC_RET())) {
+		htable_add(&ksm.ht, page_hash(phi->origin), phi);
+		return STATUS_SUCCESS;
+	}
 
 	ExFreePool(phi);
 	MmFreeContiguousMemory(code_page);
-	return -STATUS_HV_ACCESS_DENIED;
+	return STATUS_HV_ACCESS_DENIED;
 }
 
-NTSTATUS ksm_unhook_page(int i)
+NTSTATUS ksm_unhook_page(void *va)
 {
-	struct page_hook_info *phi = get_page(i);
+	struct page_hook_info *phi = htable_get(&ksm.ht, page_hash((u64)va), ht_cmp, va);
 	if (!phi)
 		return STATUS_NOT_FOUND;
 
+	return __ksm_unhook_page(phi);
+}
+
+NTSTATUS __ksm_unhook_page(struct page_hook_info *phi)
+{
 	STATIC_CALL_DPC(__do_unhook_page, (void *)phi->d_pfn);
-	ksm_free_phi(phi);
-	ksm.phi_pages[i] = 0;
-	ksm.phi_count--;
+	htable_del(&ksm.ht, page_hash(phi->origin), phi);
 	return STATIC_DPC_RET();
 }
 
-void ksm_init_phi_list(void)
+struct page_hook_info *ksm_find_page(void *va)
 {
-	for (unsigned int i = 0; i < KSM_MAX_PAGES; ++i)
-		ksm.phi_pages[i] = KSM_FREE_PAGE;
-	ksm.phi_count = 0;
-	ksm.c_mask = 0;
-	ksm.c_bits = 0;
+	return htable_get(&ksm.ht, page_hash((u64)va), ht_cmp, va);
 }
 
-void ksm_free_phi(struct page_hook_info *phi)
+struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn)
 {
-	MmFreeContiguousMemory(phi->c_va);
-	ExFreePool(phi);
-}
-
-void ksm_free_phi_list(void)
-{
-	for (unsigned int i = 0; i < ksm.phi_count; ++i)
-		if (ksm.phi_pages[i] != KSM_FREE_PAGE)
-			ksm_free_phi(get_page(i));
-	ksm.phi_count = 0;
-}
-
-struct page_hook_info *ksm_find_hook(int i)
-{
-	return get_page(i);
-}
-
-struct page_hook_info *ksm_find_hook_pfn(uintptr_t pfn)
-{
-	for (unsigned int i = 0; i < ksm.phi_count; ++i) {
-		struct page_hook_info *phi = get_page(i);
+	struct htable_iter i;
+	for (struct page_hook_info *phi = htable_first(&ksm.ht, &i); phi; phi = htable_next(&ksm.ht, &i))
 		if (phi->d_pfn == pfn)
 			return phi;
-	}
-
 	return NULL;
 }
