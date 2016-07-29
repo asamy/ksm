@@ -235,7 +235,6 @@ void ept_switch_root_p(struct ept *ept, u16 index)
 {
 	__vmx_vmwrite(EPTP_INDEX, index);
 	__vmx_vmwrite(EPT_POINTER, EPTP(ept, index));
-	__invept_all();
 }
 
 bool ept_handle_violation(struct vcpu *vcpu)
