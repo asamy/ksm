@@ -737,8 +737,6 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 	for (unsigned n = 0; n < entries; ++n)
 		if (!idte_present(&vcpu->shadow_idt[n]))
 			memcpy(&shadow[n], &current[n], sizeof(*shadow));
-		else
-			memcpy(&vcpu->shadow_idt[n], &current[n], sizeof(*shadow));
 	vcpu_flush_idt(vcpu);
 }
 

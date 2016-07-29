@@ -1,9 +1,9 @@
 #include "vcpu.h"
 #include "dpc.h"
-#include "power.h"
+#include "acpi.h"
 #include "pe.h"
 
-static DEV_EXT g_dev_ext;
+static DEV_EXT g_dev_ext = { NULL, NULL };
 static HANDLE hThread;
 static CLIENT_ID cid;
 
@@ -90,8 +90,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (NT_SUCCESS(status))
 		status = register_power_callback(&g_dev_ext);
 
-	if (NT_SUCCESS(status))
-		status = PsCreateSystemThread(&hThread, STANDARD_RIGHTS_ALL, NULL, NULL, &cid, (PKSTART_ROUTINE)sys_thread, NULL);
+//	Uncomment to enable the small hooking example
+//	if (NT_SUCCESS(status))
+//		status = PsCreateSystemThread(&hThread, STANDARD_RIGHTS_ALL, NULL, NULL, &cid, (PKSTART_ROUTINE)sys_thread, NULL);
 
 	VCPU_DEBUG("ret: 0x%08X\n", status);
 	return status;

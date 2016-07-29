@@ -14,37 +14,14 @@ static NTSTATUS init_msr_bitmap(struct ksm *k)
 	k->msr_bitmap = msr_bitmap;
 	RtlZeroMemory(msr_bitmap, PAGE_SIZE);
 
-	/* For all MSRs...  */
 	u8 *bitmap_read_lo = (u8 *)msr_bitmap;
-	u8 *bitmap_read_hi = bitmap_read_lo + 1024;
-	memset(bitmap_read_lo, 0xff, 1024);		// 0 -> 1fff
-	memset(bitmap_read_hi, 0xff, 1024);		// c0000000 - c0001fff
-
-#if 0
-	u8 *bitmap_write_lo = bitmap_read_hi + 1024;
-	u8 *bitmap_write_hi = bitmap_write_lo + 1024;
-	memset(bitmap_write_lo, 0xff, 1024);
-	memset(bitmap_write_hi, 0xff, 1024);
-#endif
-
-	/* ... ignore MSR_IA32_MPERF and MSR_IA32_APERF  */
 	RTL_BITMAP bitmap_read_lo_hdr;
 	RtlInitializeBitMap(&bitmap_read_lo_hdr, (PULONG)bitmap_read_lo, 1024 * CHAR_BIT);
 	RtlClearBits(&bitmap_read_lo_hdr, MSR_IA32_MPERF, 2);
 
-	for (u32 msr = 0; msr < PAGE_SIZE; ++msr) {
-		__try {		/* XXX:  GCC does not support this retarded thing...  */
-			__readmsr(msr);
-		} __except (EXCEPTION_EXECUTE_HANDLER)
-		{
-			RtlClearBits(&bitmap_read_lo_hdr, msr, 1);
-		}
-	}
-
-	/* ... and ignore MSR_IA32_GS_BASE and MSR_IA32_KERNEL_GS_BASE  */
+	u8 *bitmap_read_hi = bitmap_read_lo + 1024;
 	RTL_BITMAP bitmap_read_hi_hdr;
 	RtlInitializeBitMap(&bitmap_read_hi_hdr, (PULONG)bitmap_read_hi, 1024 * CHAR_BIT);
-	RtlClearBits(&bitmap_read_hi_hdr, 0x101, 2);
 	return STATUS_SUCCESS;
 }
 

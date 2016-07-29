@@ -279,7 +279,6 @@ bool ept_handle_violation(struct vcpu *vcpu)
 		return true;
 	}
 
-
 	VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
 	ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, fault_pa);
 	__invept_all();

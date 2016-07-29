@@ -1,5 +1,5 @@
-#ifndef __POWER_H
-#define __POWER_H
+#ifndef __ACPI_H
+#define __ACPI_H
 
 typedef struct _DEV_EXT {
 	PVOID CbRegistration;

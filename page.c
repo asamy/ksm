@@ -141,7 +141,7 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 	phi->c_va = code_page;
 	phi->c_pfn = __pfn(__pa(code_page));
 	phi->d_pfn = __pfn(__pa(original));
-	phi->origin = (u64)original;
+	phi->origin = (u64)aligned;
 	phi->ops = &epage_ops;
 
 	STATIC_CALL_DPC(__do_hook_page, phi);
@@ -173,7 +173,8 @@ NTSTATUS __ksm_unhook_page(struct page_hook_info *phi)
 
 struct page_hook_info *ksm_find_page(void *va)
 {
-	return htable_get(&ksm.ht, page_hash((u64)va), ht_cmp, va);
+	void *align = PAGE_ALIGN(va);
+	return htable_get(&ksm.ht, page_hash((u64)align), ht_cmp, align);
 }
 
 struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn)

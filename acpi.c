@@ -1,5 +1,5 @@
 #include "vcpu.h"
-#include "power.h"
+#include "acpi.h"
 
 static void power_callback(void *ctx, void *arg0, void *arg1)
 {
