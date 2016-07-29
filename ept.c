@@ -267,8 +267,24 @@ bool ept_handle_violation(struct vcpu *vcpu)
 		return true;
 	}
 
-	/* ops...  */
-	return false;
+	struct page_hook_info *h = ksm_find_page_pfn(__pfn(fault_pa));
+	if (h) {
+		u16 eptp_switch = h->ops->select_eptp(h, eptp, ar, ac);
+		if (eptp_switch != eptp) {
+			VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
+			ept_switch_root_p(ept, eptp_switch);
+			__invept_all();		/* Do we need to invalidate here?  */
+		}
+
+		VCPU_DEBUG_RAW("Found hooked page but NO switching was required!\n");
+		return true;
+	}
+
+
+	VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
+	ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, fault_pa);
+	__invept_all();
+	return true;
 }
 
 void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
