@@ -1,7 +1,5 @@
 #include "vcpu.h"
 
-#include <ntstrsafe.h>
-
 #define __pxe_idx(phys)			(((phys) >> PXI_SHIFT) & PTX_MASK)
 #define __ppe_idx(phys)			(((phys) >> PPI_SHIFT) & PTX_MASK)
 #define __pde_idx(phys)			(((phys) >> PDI_SHIFT) & PTX_MASK)

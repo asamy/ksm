@@ -45,11 +45,6 @@ static inline void __invvpid_all(void)
 
 static inline void __invvpid_vpid(u16 vpid, u64 gva)
 {
-	invvpid_t i;
-	i.vpid = vpid;
-	i.rsvd = 0;
-	i.gva = gva;
-
 	__invvpid(VMX_VPID_EXTENT_SINGLE_CONTEXT, &(invvpid_t) {
 		.vpid = vpid,
 		.rsvd = 0,

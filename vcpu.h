@@ -63,7 +63,7 @@ static inline uintptr_t __pfn(uintptr_t phys)
 #define REG_MAX			16
 
 struct regs {
-	u64 gp[REG_MAX * sizeof(u64)];
+	u64 gp[REG_MAX];
 	u64 eflags;
 };
 

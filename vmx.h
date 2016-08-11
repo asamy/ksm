@@ -1,4 +1,4 @@
-/* VT-x based stuff here, only defines, etc... 
+/* VT-x based stuff here, only defines, etc...
  * Hacked from the Linux kernel.  */
 #ifndef __VMX_H
 #define __VMX_H
@@ -90,7 +90,7 @@
 
 #define VM_FUNCTION_CTL_EPTP_SWITCHING		0x00000001
 
-/* VMCS Encodings */
+ /* VMCS Encodings */
 enum vmcs_field {
 	VIRTUAL_PROCESSOR_ID = 0x00000000,
 	POSTED_INTR_NV = 0x00000002,
