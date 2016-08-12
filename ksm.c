@@ -1,4 +1,4 @@
-#include "vcpu.h"
+#include "ksm.h"
 #include "dpc.h"
 
 struct ksm ksm = {

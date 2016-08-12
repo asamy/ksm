@@ -1,4 +1,4 @@
-#include "vcpu.h"
+#include "ksm.h"
 
 /* For debugging...  */
 static u16 curr_handler = 0;
@@ -229,6 +229,7 @@ static bool vcpu_handle_vmfunc(struct guest_context *gc)
 	return true;
 }
 
+#ifdef ENABLE_PML
 static bool vcpu_dump_pml(struct guest_context *gc)
 {
 	u64 pml_index;
@@ -270,12 +271,18 @@ static bool vcpu_dump_pml(struct guest_context *gc)
 	VCPU_DEBUG_RAW("PML dump done\n");
 	return true;
 }
+#endif
 
 static bool vcpu_handle_pml_full(struct guest_context *gc)
 {
+#ifdef ENABLE_PML
 	/* Page Modification Log is now full, dump it.  */
 	VCPU_DEBUG_RAW("PML full\n");
 	return vcpu_dump_pml(gc);
+#else
+	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, VCPU_BUG_UNHANDLED, 0xDEAFDEAF, 0xBAADF00D);
+	return false;
+#endif
 }
 
 static inline void vcpu_do_succeed(struct guest_context *gc)

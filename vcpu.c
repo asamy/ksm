@@ -1,4 +1,4 @@
-#include "vcpu.h"
+#include "ksm.h"
 
 static inline bool enter_vmx(struct vmcs *vmxon)
 {

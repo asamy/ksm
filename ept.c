@@ -1,4 +1,4 @@
-#include "vcpu.h"
+#include "ksm.h"
 
 #define __pxe_idx(phys)			(((phys) >> PXI_SHIFT) & PTX_MASK)
 #define __ppe_idx(phys)			(((phys) >> PPI_SHIFT) & PTX_MASK)

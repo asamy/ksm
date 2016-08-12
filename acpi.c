@@ -1,4 +1,4 @@
-#include "vcpu.h"
+#include "ksm.h"
 #include "acpi.h"
 
 static void power_callback(void *ctx, void *arg0, void *arg1)
@@ -7,7 +7,7 @@ static void power_callback(void *ctx, void *arg0, void *arg1)
 		return;
 
 	VCPU_DEBUG("power: %d\n", arg1);
-	if (arg1 == (void *)0)
+	if (!arg1)
 		ksm_exit();
 	else
 		ksm_init();
