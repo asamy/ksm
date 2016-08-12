@@ -74,7 +74,7 @@ __vmx_vminit PROC
 	mov	rcx, rsp	; SP
 
 	sub	rsp, 20h
-	call	rax		; func(param, do_resume)
+	call	rax		; func(rsp, do_resume, param)
 	add	rsp, 20h
 
 	; if we get here, we failed
