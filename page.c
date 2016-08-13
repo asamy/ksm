@@ -119,18 +119,27 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 	if (!phi)
 		return STATUS_NO_MEMORY;
 
-	if (!copy_code(original, &phi->data[0], &phi->size)) {
-		ExFreePool(phi);
-		return STATUS_BUFFER_TOO_SMALL;
-	}
+	if (!copy_code(original, &phi->data[0], &phi->size))
+		goto out_phi;
 
 	u8 *code_page = MmAllocateContiguousMemory(PAGE_SIZE, (PHYSICAL_ADDRESS) { .QuadPart = -1 });
-	if (!code_page) {
-		ExFreePool(phi);
-		return STATUS_INSUFFICIENT_RESOURCES;
-	}
+	if (!code_page)
+		goto out_phi;
 
 	void *aligned = PAGE_ALIGN(original);
+	PMDL mdl = IoAllocateMdl(aligned, PAGE_SIZE, FALSE, FALSE, NULL);
+	if (!mdl)
+		goto out_code;
+
+	__try {
+		/* attempt to lock the page in memory  */
+		MmProbeAndLockPages(mdl, KernelMode, IoReadAccess);
+	} __except (EXCEPTION_EXECUTE_HANDLER) {
+		/* failed  */
+		goto out_mdl;
+	}
+
+	/* Offset where code starts in this page  */
 	uintptr_t offset = (uintptr_t)original - (uintptr_t)aligned;
 
 	struct trampoline trampo;
@@ -143,6 +152,7 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 	phi->d_pfn = __pfn(__pa(original));
 	phi->origin = (u64)aligned;
 	phi->ops = &epage_ops;
+	phi->mdl = mdl;
 
 	STATIC_CALL_DPC(__do_hook_page, phi);
 	if (NT_SUCCESS(STATIC_DPC_RET())) {
@@ -150,9 +160,13 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 		return STATUS_SUCCESS;
 	}
 
-	ExFreePool(phi);
+out_mdl:
+	IoFreeMdl(mdl);
+out_code:
 	MmFreeContiguousMemory(code_page);
-	return STATUS_HV_ACCESS_DENIED;
+out_phi:
+	ExFreePool(phi);
+	return STATUS_INSUFFICIENT_RESOURCES;
 }
 
 NTSTATUS ksm_unhook_page(void *va)
@@ -168,6 +182,8 @@ NTSTATUS __ksm_unhook_page(struct page_hook_info *phi)
 {
 	STATIC_CALL_DPC(__do_unhook_page, (void *)phi->d_pfn);
 	htable_del(&ksm.ht, page_hash(phi->origin), phi);
+	MmUnlockPages(phi->mdl);
+	IoFreeMdl(phi->mdl);
 	return STATIC_DPC_RET();
 }
 

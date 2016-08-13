@@ -204,7 +204,7 @@ struct vmcs {
 	u32 abort;
 	u32 data[1];
 };
-					 
+
 /* #VE (EPT Violation via IDT exception informaiton)  */
 struct ve_except_info {
 	u32 reason;		/* EXIT_REASON_EPT_VIOLATION  */
@@ -240,8 +240,8 @@ struct vcpu {
 };
 
 struct phi_ops {
-	void (*init_eptp) (struct page_hook_info *phi, struct ept *ept);
-	u16 (*select_eptp) (struct page_hook_info *phi, u16 cur, u8 ar, u8 ac);
+	void(*init_eptp) (struct page_hook_info *phi, struct ept *ept);
+	u16(*select_eptp) (struct page_hook_info *phi, u16 cur, u8 ar, u8 ac);
 };
 
 struct page_hook_info {
@@ -250,6 +250,7 @@ struct page_hook_info {
 	u64 origin;
 	void *c_va;
 	struct phi_ops *ops;
+	PMDL mdl;
 	u32 size;
 	u8 data[128];
 };

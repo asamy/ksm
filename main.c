@@ -91,8 +91,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		status = register_power_callback(&g_dev_ext);
 
 //	Uncomment to enable the small hooking example
-//	if (NT_SUCCESS(status))
-//		status = PsCreateSystemThread(&hThread, STANDARD_RIGHTS_ALL, NULL, NULL, &cid, (PKSTART_ROUTINE)sys_thread, NULL);
+	if (NT_SUCCESS(status))
+		status = PsCreateSystemThread(&hThread, STANDARD_RIGHTS_ALL, NULL, NULL, &cid, (PKSTART_ROUTINE)sys_thread, NULL);
 
 	VCPU_DEBUG("ret: 0x%08X\n", status);
 	return status;
