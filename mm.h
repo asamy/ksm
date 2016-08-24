@@ -1,5 +1,3 @@
-#ifndef __MM_H
-#define __MM_H
 /* Several helper memory management functions regarding
   * paging and page tarnsition state.  */
 #ifndef __MM_H
