@@ -256,6 +256,7 @@ static inline u32 spte_pg_lo(uintptr_t *spte)
 	return (*spte >> SPTE_PF_LO_SHIFT) & SPTE_PF_LO_MASK;
 }
 
+#if 0
 /* Subsection prototype PTE  */
 #define SSP_SUBST_ADDR_SHIFT	VA_SHIFT
 #define SSP_SUBST_ADDR_MASK	VA_MASK
@@ -276,5 +277,6 @@ static inline uintptr_t subst_addr(uintptr_t *pte)
 {
 	return (*pte >> SSP_SUBST_ADDR_SHIFT) & SSP_SUBST_ADDR_MASK;
 }
+#endif
 
 #endif
