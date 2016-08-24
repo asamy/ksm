@@ -1,5 +1,11 @@
 #ifndef __MM_H
 #define __MM_H
+/* Several helper memory management functions regarding
+  * paging and page tarnsition state.  */
+#ifndef __MM_H
+#define __MM_H
+
+#include "vad.h"
 
 #ifndef PXI_SHIFT
 #define PXI_SHIFT			39
@@ -41,39 +47,16 @@
 #define PTI_MASK			0xFFFFFFFFF
 #endif
 
-#ifndef PXE_BASE
-#define PXE_BASE			0xfffff6fb7dbed000ull
-#endif
+static uintptr_t pxe_base = 0xfffff6fb7dbed000ull;
+static uintptr_t ppe_base = 0xfffff6fb7da00000ull;
+static uintptr_t pde_base = 0xfffff6fb40000000ull;
+static uintptr_t pte_base = 0xfffff68000000000ull;
 
-#ifndef PPE_BASE
-#define PPE_BASE			0xfffff6fb7da00000ull
-#endif
+static uintptr_t pxe_top = 0xFFFFF6FB7DBEDFFFULL;
+static uintptr_t ppe_top = 0xFFFFF6FB7DBFFFFFULL;
+static uintptr_t pde_top = 0xFFFFF6FB7FFFFFFFULL;
+static uintptr_t pte_top = 0xFFFFF6FFFFFFFFFFULL;
 
-#ifndef PDE_BASE
-#define PDE_BASE			0xfffff6fb40000000ull
-#endif
-
-#ifndef PTE_BASE
-#define PTE_BASE			0xfffff68000000000ull
-#endif
-
-#ifndef PXE_TOP
-#define PXE_TOP				0xFFFFF6FB7DBEDFFFULL
-#endif
-
-#ifndef PPE_TOP
-#define PPE_TOP				0xFFFFF6FB7DBFFFFFULL
-#endif
-
-#ifndef PDE_TOP
-#define PDE_TOP				0xFFFFF6FB7FFFFFFFULL
-#endif
-
-#ifndef PTE_TOP
-#define PTE_TOP				0xFFFFF6FFFFFFFFFFULL
-#endif
-
- /* Regular IA32E page  */
 #define PAGE_PRESENT			0x1
 #define PAGE_WRITE			0x2
 #define PAGE_OWNER			0x4
@@ -90,7 +73,7 @@
 #define PAGE_PA(page)			((page) & PAGE_MASK)
 #define PAGE_FN(page)			(((page) >> PTI_SHIFT) & PTI_MASK)
 #define PAGE_SOFT_WS_IDX_SHIFT		52
-#define PAGE_SOFT_WS_IDX_MASK		0x7FF
+#define PAGE_SOFT_WS_IDX_MASK		0xFFF
 #define PAGE_NX				0x8000000000000000
 #define PAGE_LPRESENT			(PAGE_PRESENT | PAGE_LARGE)
 
@@ -135,30 +118,30 @@ static inline bool pte_swapper(uintptr_t *pte)
 static inline uintptr_t *va_to_pxe(uintptr_t va)
 {
 	uintptr_t off = (va >> PXI_SHIFT) & PTX_MASK;
-	return (uintptr_t *)(PXE_BASE + off * sizeof(uintptr_t));
+	return (uintptr_t *)pxe_base + off;
 }
 
 static inline uintptr_t *va_to_ppe(uintptr_t va)
 {
 	uintptr_t off = (va >> PPI_SHIFT) & PPI_MASK;
-	return (uintptr_t *)(PPE_BASE + off * sizeof(uintptr_t));
+	return (uintptr_t *)ppe_base + off;
 }
 
 static inline uintptr_t *va_to_pde(uintptr_t va)
 {
 	uintptr_t off = (va >> PDI_SHIFT) & PDI_MASK;
-	return (uintptr_t *)(PDE_BASE + off * sizeof(uintptr_t));
+	return (uintptr_t *)pde_base + off;
 }
 
 static inline uintptr_t *va_to_pte(uintptr_t va)
 {
 	uintptr_t off = (va >> PTI_SHIFT) & PTI_MASK;
-	return (uintptr_t *)(PTE_BASE + off * sizeof(uintptr_t));
+	return (uintptr_t *)pte_base + off;
 }
 
 static inline uintptr_t __pte_to_va(uintptr_t *pte)
 {
-	return ((((uintptr_t)pte - PTE_BASE) << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
+	return ((((uintptr_t)pte - pte_base) << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
 }
 
 static inline void *pte_to_va(uintptr_t *pte)
@@ -166,13 +149,22 @@ static inline void *pte_to_va(uintptr_t *pte)
 	return (void *)__pte_to_va(pte);
 }
 
+static inline u16 addr_offset(uintptr_t va)
+{
+	/* Get the lower 12 bits which represent the offset  */
+	return va & (PAGE_SIZE - 1);
+}
+
 static inline uintptr_t va_to_pa(uintptr_t va)
 {
-	uintptr_t *pte = va_to_pte(va);
+	uintptr_t *pte = va_to_pde(va);
+	if (!pte_large(pte))
+		pte = va_to_pte(va);
+
 	if (!pte_present(pte))
 		return 0;
 
-	return PAGE_PA(*pte) | (va & ((1ULL << PAGE_SHIFT) - 1));
+	return PAGE_PA(*pte) | addr_offset(va);
 }
 
 static inline bool consult_vad(uintptr_t va)
@@ -254,6 +246,37 @@ static inline bool spte_in_store(uintptr_t *spte)
 static inline bool spte_prot(uintptr_t *spte)
 {
 	return (*spte >> SPTE_PROTECTION_SHIFT) & SPTE_PROTECTION_MASK;
+}
+
+static inline u32 spte_pg_hi(uintptr_t *spte)
+{
+	return (*spte >> SPTE_PF_HI_SHIFT) & SPTE_PF_HI_MASK;
+}
+
+static inline u32 spte_pg_lo(uintptr_t *spte)
+{
+	return (*spte >> SPTE_PF_LO_SHIFT) & SPTE_PF_LO_MASK;
+}
+
+/* Subsection prototype PTE  */
+#define SSP_SUBST_ADDR_SHIFT	VA_SHIFT
+#define SSP_SUBST_ADDR_MASK	VA_MASK
+
+struct subsection {
+	void *ctl_area;
+	void *subst_base;
+	struct subsection *next;
+	u32 nr_ptes;
+	PMM_AVL_TABLE global_per_session_head;
+	u32 unused_ptes;
+	u64 pad_union_unnamed;
+	u32 starting_sector;
+	u32 nr_full_sectors;
+};
+
+static inline uintptr_t subst_addr(uintptr_t *pte)
+{
+	return (*pte >> SSP_SUBST_ADDR_SHIFT) & SSP_SUBST_ADDR_MASK;
 }
 
 #endif
