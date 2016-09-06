@@ -541,7 +541,7 @@ typedef struct _PEB {
 
 NTSYSAPI PIMAGE_NT_HEADERS NTAPI RtlImageNtHeader(IN PVOID ModuleAddress);
 NTKERNELAPI PPEB NTAPI PsGetProcessPeb(IN PEPROCESS Process);
-extern u64 RtlGetEnabledExtendedFeatures(u64 FeatureMask);
+//extern u64 RtlGetEnabledExtendedFeatures(u64 FeatureMask);
 extern void *RtlPcToFileHeader(void *pc, void **base);
 NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(_In_ PEPROCESS process);
 

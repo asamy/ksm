@@ -1,3 +1,6 @@
+#include <ntifs.h>
+#include <intrin.h>
+
 #include "ksm.h"
 
 /* For debugging...  */
@@ -5,29 +8,44 @@ static u16 curr_handler = 0;
 static u16 prev_handler = 0;
 
 /* For easier casting  */
-static inline uintptr_t vmcs_read(uintptr_t what)
+static inline u64 vmcs_read(u64 what)
 {
-	uintptr_t x;
+	u64 x;
 	__vmx_vmread(what, &x);
 
 	return x;
 }
 
-static inline bool vcpu_inject_irq(size_t instr_len, u16 intr_type, u8 vector, bool has_err)
+static inline u32 vmcs_read32(u64 what)
+{
+	return (u32)vmcs_read(what);
+}
+
+static inline u16 vmcs_read16(u64 what)
+{
+	return (u16)vmcs_read32(what);
+}
+
+static inline int vcpu_read_cpl(void)
+{
+	u32 ar = vmcs_read32(GUEST_SS_AR_BYTES);
+	return VMX_AR_DPL(ar);
+}
+
+static inline bool vcpu_check_cpl(int required)
+{
+	return vcpu_read_cpl() <= required;
+}
+
+static inline bool vcpu_inject_irq(size_t instr_len, u16 intr_type, u8 vector, bool has_err, u32 ec)
 {
 	u32 irq = vector | intr_type | INTR_INFO_VALID_MASK;
 	if (has_err) {
 		irq |= INTR_INFO_DELIVER_CODE_MASK;
-
-		u32 ec;
-		__vmx_vmread(IDT_VECTORING_ERROR_CODE, &ec);
 		__vmx_vmwrite(VM_ENTRY_EXCEPTION_ERROR_CODE, ec);
 	}
 
-	/* Remove reserved bits  */
-	irq &= ~INTR_INFO_RESVD_BITS_MASK;
-
-	bool ret = __vmx_vmwrite(VM_ENTRY_INTR_INFO_FIELD, irq) == 0;
+	bool ret = __vmx_vmwrite(VM_ENTRY_INTR_INFO_FIELD, irq & ~INTR_INFO_RESVD_BITS_MASK) == 0;
 	if (instr_len)
 		ret &= __vmx_vmwrite(VM_ENTRY_INSTRUCTION_LEN, instr_len) == 0;
 	return ret;
@@ -43,12 +61,27 @@ static inline void vcpu_inject_ve(struct vcpu *vcpu)
 	__vmx_vmread(GUEST_LINEAR_ADDRESS, &info->gla);
 	__vmx_vmread(EXIT_QUALIFICATION, &info->exit);
 
-	if (!vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_VE, false))
+	if (!vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_VE, false, 0))
 		VCPU_DEBUG_RAW("could not inject #VE into guest\n");
 }
 
 static inline void vcpu_advance_rip(struct guest_context *gc)
 {
+	if (gc->eflags & X86_EFLAGS_TF) {
+		vcpu_inject_irq(vmcs_read(VM_EXIT_INSTRUCTION_LEN), INTR_TYPE_HARD_EXCEPTION,
+				X86_TRAP_DB, false, 0);
+
+		if (vcpu_check_cpl(0)) {
+			__writedr(6, __readdr(6) | DR6_BS | DR6_RTM);
+			__writedr(7, __readdr(7) & ~DR7_GD);
+
+			u64 dbg;
+			__vmx_vmread(GUEST_IA32_DEBUGCTL, &dbg);
+			__vmx_vmwrite(GUEST_IA32_DEBUGCTL, dbg & ~DEBUGCTLMSR_LBR);
+		}
+	}
+
+
 	size_t instr_len;
 	__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, &instr_len);
 	__vmx_vmwrite(GUEST_RIP, gc->ip + instr_len);
@@ -66,9 +99,7 @@ static bool vcpu_handle_except_nmi(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	u64 intr_info;
-	__vmx_vmread(VM_EXIT_INTR_INFO, &intr_info);
-
+	u32 intr_info = vmcs_read32(VM_EXIT_INTR_INFO);
 	u32 intr_type = intr_info & INTR_INFO_INTR_TYPE_MASK;
 	u8 vector = intr_info & INTR_INFO_VECTOR_MASK;
 
@@ -80,7 +111,9 @@ static bool vcpu_handle_except_nmi(struct guest_context *gc)
 	else
 		__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, &instr_len);
 
-	if (!vcpu_inject_irq(instr_len, intr_type, vector, intr_info & INTR_INFO_DELIVER_CODE_MASK))
+	bool has_err = intr_info & INTR_INFO_DELIVER_CODE_MASK;
+	u32 err = vmcs_read32(IDT_VECTORING_ERROR_CODE);
+	if (!vcpu_inject_irq(instr_len, intr_type, vector, has_err, err))
 		VCPU_BUGCHECK(VCPU_IRQ_NOT_HANDLED, gc->ip, intr_type, vector);
 
 	VCPU_TRACER_END();
@@ -90,7 +123,6 @@ static bool vcpu_handle_except_nmi(struct guest_context *gc)
 static bool vcpu_handle_external_int(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
-	VCPU_DEBUG_RAW("External interrupt\n");
 	VCPU_TRACER_END();
 	return true;
 }
@@ -106,7 +138,6 @@ static bool vcpu_handle_triplefault(struct guest_context *gc)
 static bool vcpu_handle_pendingint(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
-	VCPU_DEBUG_RAW("Pending interrupt\n");
 	VCPU_TRACER_END();
 	return true;
 }
@@ -158,12 +189,14 @@ static bool vcpu_handle_cpuid(struct guest_context *gc)
 	VCPU_TRACER_START();
 
 	int cpuid[4];
-	__cpuidex((int *)cpuid, gc->gp[REG_AX], gc->gp[REG_CX]);
+	int func = ksm_read_regl(gc, REG_AX);
+	int subf = ksm_read_regl(gc, REG_CX);
+	__cpuidex(cpuid, func, subf);
 
-	gc->gp[REG_AX] = cpuid[0];
-	gc->gp[REG_BX] = cpuid[1];
-	gc->gp[REG_CX] = cpuid[2];
-	gc->gp[REG_DX] = cpuid[3];
+	ksm_write_regl(gc, REG_AX, cpuid[0]);
+	ksm_write_regl(gc, REG_BX, cpuid[1]);
+	ksm_write_regl(gc, REG_CX, cpuid[2]);
+	ksm_write_regl(gc, REG_DX, cpuid[3]);
 	vcpu_advance_rip(gc);
 
 	VCPU_TRACER_END();
@@ -174,6 +207,7 @@ static bool vcpu_handle_hlt(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 	__halt();
+	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return true;
 }
@@ -212,8 +246,8 @@ static bool vcpu_handle_rdtsc(struct guest_context *gc)
 	VCPU_TRACER_START();
 
 	u64 tsc = __rdtsc();
-	gc->gp[REG_AX] = (u32)tsc;
-	gc->gp[REG_DX] = (u32)(tsc >> 32);
+	ksm_write_regl(gc, REG_AX, tsc);
+	ksm_write_regl(gc, REG_DX, tsc >> 32);
 	vcpu_advance_rip(gc);
 
 	VCPU_TRACER_END();
@@ -223,7 +257,7 @@ static bool vcpu_handle_rdtsc(struct guest_context *gc)
 static bool vcpu_handle_vmfunc(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
-	vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_UD, false);
+	vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_UD, false, 0);
 	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return true;
@@ -305,8 +339,6 @@ static inline void vcpu_adjust_rflags(struct guest_context *gc, bool success)
 
 static inline void vcpu_do_exit(struct guest_context *gc)
 {
-	VCPU_DEBUG_RAW("exiting\n");
-
 	struct gdtr gdt;
 	gdt.limit = (u16)vmcs_read(GUEST_GDTR_LIMIT);
 	gdt.base = vmcs_read(GUEST_GDTR_BASE);
@@ -328,9 +360,9 @@ static inline void vcpu_do_exit(struct guest_context *gc)
 	__vmx_vmread(GUEST_CR3, &cr3);
 	__writecr3(cr3);
 
-	gc->gp[REG_CX] = ret;
-	gc->gp[REG_DX] = gc->gp[REG_SP];
-	gc->gp[REG_AX] = gc->eflags;
+	ksm_write_reg(gc, REG_CX, ret);
+	ksm_write_reg(gc, REG_DX, ksm_read_reg(gc, REG_SP));
+	ksm_write_reg(gc, REG_AX, gc->eflags);
 }
 
 static bool vcpu_handle_hook(struct vcpu *vcpu, struct page_hook_info *h)
@@ -364,10 +396,8 @@ static inline void vcpu_flush_idt(struct vcpu *vcpu)
 
 static inline bool vcpu_hook_idte(struct vcpu *vcpu, struct shadow_idt_entry *h)
 {
-	u64 cs;
-	__vmx_vmread(GUEST_CS_SELECTOR, &cs);
-
-	vcpu_put_idt(vcpu, (u16)cs, h->n, h->h);
+	u16 cs = vmcs_read16(GUEST_CS_SELECTOR);
+	vcpu_put_idt(vcpu, cs, h->n, h->h);
 	vcpu_flush_idt(vcpu);
 	return true;
 }
@@ -388,8 +418,13 @@ static bool vcpu_handle_vmcall(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	uint8_t nr = gc->gp[REG_CX];
-	uintptr_t arg = gc->gp[REG_DX];
+	if (!vcpu_check_cpl(0)) {
+		vcpu_inject_irq(3/*vmcall*/, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_UD, false, 0);
+		return true;
+	}
+
+	uint8_t nr = ksm_read_regl(gc, REG_CX);
+	uintptr_t arg = ksm_read_reg(gc, REG_DX);
 	struct vcpu *vcpu = to_vcpu(gc);
 	switch (nr) {
 	case HYPERCALL_STOP:
@@ -398,28 +433,24 @@ static bool vcpu_handle_vmcall(struct guest_context *gc)
 		return false;
 	case HYPERCALL_IDT:
 		vcpu_adjust_rflags(gc, vcpu_hook_idte(vcpu, (struct shadow_idt_entry *)arg));
-		vcpu_advance_rip(gc);
-		return true;
+		break;
 	case HYPERCALL_UIDT:
 		vcpu_adjust_rflags(gc, vcpu_unhook_idte(vcpu, (struct shadow_idt_entry *)arg));
-		vcpu_advance_rip(gc);
-		return true;
+		break;
 	case HYPERCALL_HOOK:
 		vcpu_adjust_rflags(gc, vcpu_handle_hook(vcpu, (struct page_hook_info *)arg));
-		vcpu_advance_rip(gc);
-		return true;
+		break;
 	case HYPERCALL_UNHOOK:
 		vcpu_adjust_rflags(gc, vcpu_handle_unhook(vcpu, arg));
-		vcpu_advance_rip(gc);
-		return true;
+		break;
 	default:
 		VCPU_DEBUG("unsupported hypercall: %d\n", nr);
-		vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_GP, false);
-		vcpu_fail_vmx(gc);
-		vcpu_advance_rip(gc);
-		break;
+		vcpu_inject_irq(3, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_UD, false, 0);
+		//vcpu_fail_vmx(gc);
+		return true;
 	}
 
+	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return true;
 }
@@ -428,7 +459,7 @@ static bool vcpu_handle_vmx(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 	vcpu_fail_vmx(gc);
-	vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_UD, false);
+	vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_UD, false, 0);
 	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return true;
@@ -446,7 +477,7 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 	u64 *val;
 	switch ((exit >> 4) & 3) {
 	case 0:		/* mov to cr  */
-		val = &gc->gp[reg];
+		val = ksm_reg(gc, reg);
 		switch (cr) {
 		case 0:
 			__vmx_vmwrite(GUEST_CR0, *val);
@@ -465,7 +496,7 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 		}
 		break;
 	case 1:		/* mov from cr  */
-		val = &gc->gp[reg];
+		val = ksm_reg(gc, reg);
 		switch (cr) {
 		case 3:
 			__vmx_vmread(GUEST_CR3, val);
@@ -513,11 +544,23 @@ static bool vcpu_handle_dr_access(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	u64 exit;
-	__vmx_vmread(EXIT_QUALIFICATION, &exit);
+	if (!vcpu_check_cpl(0)) {
+		vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_GP, false, 0);
+		return true;
+	}
 
+	u64 exit = vmcs_read(EXIT_QUALIFICATION);
 	int dr = exit & DEBUG_REG_ACCESS_NUM;
-	u64 *reg = &gc->gp[DEBUG_REG_ACCESS_REG(exit)];
+
+	/* See Intel Manual, when CR4.DE is enabled, dr4/5 cannot be used,
+	 * when clear, they are aliased to 6/7.  */
+	u64 cr4 = vmcs_read(GUEST_CR4);
+	if (cr4 & X86_CR4_DE && (dr == 4 || dr == 5)) {
+		vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_UD, false, 0);
+		return true;
+	}
+
+	u64 *reg = ksm_reg(gc, DEBUG_REG_ACCESS_REG(exit));
 	if (exit & TYPE_MOV_FROM_DR) {
 		switch (dr) {
 		case 0:	*reg = __readdr(0); break;
@@ -537,8 +580,18 @@ static bool vcpu_handle_dr_access(struct guest_context *gc)
 		case 3: __writedr(3, *reg); break;
 		case 4: __writedr(4, *reg); break;
 		case 5: __writedr(5, *reg); break;
-		case 6: __writedr(6, *reg); break;
-		case 7: __vmx_vmwrite(GUEST_DR7, *reg); break;
+		case 6:
+			if ((*reg >> 32) != 0)
+				vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_GP, false, 0);
+			else
+				__writedr(6, *reg);
+			break;
+		case 7:
+			if ((*reg >> 32) != 0)
+				vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_GP, false, 0);
+			else
+				__vmx_vmwrite(GUEST_DR7, *reg);
+			break;
 		}
 	}
 
@@ -571,9 +624,15 @@ static bool vcpu_handle_msr_read(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	u32 msr = (u32)gc->gp[REG_CX];
+	if (!vcpu_check_cpl(0)) {
+		vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_GP, false, 0);
+		return true;
+	}
+
+	u32 msr = ksm_read_regl(gc, REG_CX);
 	u64 val = 0;
 
+	struct vcpu *vcpu = to_vcpu(gc);
 	switch (msr) {
 	case MSR_IA32_SYSENTER_CS:
 		__vmx_vmread(GUEST_SYSENTER_CS, &val);
@@ -586,6 +645,11 @@ static bool vcpu_handle_msr_read(struct guest_context *gc)
 		break;
 	case MSR_IA32_GS_BASE:
 		__vmx_vmread(GUEST_GS_BASE, &val);
+		break;
+	case MSR_IA32_DEBUGCTLMSR:
+#ifdef DBG
+		__vmx_vmread(GUEST_IA32_DEBUGCTL, &val);
+#endif
 		break;
 	case MSR_IA32_FEATURE_CONTROL:
 		val = __readmsr(msr) & ~(FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX);
@@ -610,8 +674,8 @@ static bool vcpu_handle_msr_read(struct guest_context *gc)
 		break;
 	}
 
-	gc->gp[REG_AX] = (u32)(val);
-	gc->gp[REG_CX] = (u32)(val >> 32);
+	ksm_write_regl(gc, REG_AX, val);
+	ksm_write_regl(gc, REG_CX, val >> 32);
 	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return true;
@@ -621,9 +685,15 @@ static bool vcpu_handle_msr_write(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	u32 msr = gc->gp[REG_CX];
-	u64 val = gc->gp[REG_AX] | gc->gp[REG_DX] << 32;
+	if (!vcpu_check_cpl(0)) {
+		vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_GP, false, 0);
+		return true;
+	}
 
+	u32 msr = ksm_read_reg(gc, REG_CX);
+	u64 val = ksm_combine_regl(gc, REG_AX, REG_DX);
+
+	struct vcpu *vcpu = to_vcpu(gc);
 	switch (msr) {
 	case MSR_IA32_SYSENTER_CS:
 		__vmx_vmwrite(GUEST_SYSENTER_CS, val);
@@ -636,6 +706,11 @@ static bool vcpu_handle_msr_write(struct guest_context *gc)
 		break;
 	case MSR_IA32_GS_BASE:
 		__vmx_vmwrite(GUEST_GS_BASE, val);
+		break;
+	case MSR_IA32_DEBUGCTLMSR:
+#ifdef DBG
+		__vmx_vmwrite(GUEST_IA32_DEBUGCTL, val);
+#endif
 		break;
 	case MSR_IA32_FEATURE_CONTROL:
 		break;
@@ -652,7 +727,7 @@ static bool vcpu_handle_msr_write(struct guest_context *gc)
 static bool vcpu_handle_invalid_state(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
-	VCPU_DEBUG_RAW("Invalid guest state!!!\n");
+	VCPU_BUGCHECK(VCPU_BUGCHECK_GUEST_STATE, gc->ip, gc->eflags, prev_handler);
 	VCPU_TRACER_END();
 	return false;
 }
@@ -661,7 +736,7 @@ static bool vcpu_handle_msr_load_fail(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 	VCPU_TRACER_END();
-	return true;
+	return false;
 }
 
 static bool vcpu_handle_mwait_instr(struct guest_context *gc)
@@ -724,7 +799,6 @@ static bool vcpu_handle_apic_access(struct guest_context *gc)
 static bool vcpu_handle_eoi_induced(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
-	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return false;
 }
@@ -738,6 +812,9 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 
 	struct kidt_entry64 *current = (struct kidt_entry64 *)idt->base;
 	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
+
+	/* Limit it  */
+	vcpu->idt.limit = idt->limit;
 
 	VCPU_DEBUG("Loading new IDT (new size: %d old size: %d)  Copying %d entries\n",
 		   idt->limit, vcpu->idt.limit, entries);
@@ -757,11 +834,11 @@ static bool vcpu_handle_gdt_idt_access(struct guest_context *gc)
 
 	uintptr_t base = 0;
 	if (!((exit >> 27) & 1))
-		base = gc->gp[(exit >> 23) & 15];
+		base = ksm_read_reg(gc, (exit >> 23) & 15);
 
 	uintptr_t index = 0;
 	if (!((exit >> 22) & 1))
-		index = gc->gp[(exit >> 18) & 15] << (exit & 3);
+		index = ksm_read_reg(gc, (exit >> 18) & 15) << (exit & 3);
 
 	uintptr_t addr = base + index + displacement;
 	if (((exit >> 7) & 7) == 1)
@@ -814,11 +891,11 @@ static bool vcpu_handle_ldt_tr_access(struct guest_context *gc)
 		// base
 		uintptr_t base = 0;
 		if (!((exit >> 27) & 1))
-			base = gc->gp[(exit >> 23) & 15];
+			base = ksm_read_reg(gc, (exit >> 23) & 15);
 
 		uintptr_t index = 0;
 		if (!((exit >> 22) & 1))
-			index = gc->gp[(exit >> 18) & 15] << (exit & 3);
+			index = ksm_read_reg(gc, (exit >> 18) & 15) << (exit & 3);
 
 		addr = base + index + displacement;
 		if (((exit >> 7) & 7) == 1)
@@ -872,11 +949,8 @@ static bool vcpu_handle_ept_misconfig(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	u64 fault_pa;
-	__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &fault_pa);
-
-	u64 curr_eptp;
-	__vmx_vmread(EPTP_INDEX, &curr_eptp);
+	u64 fault_pa = vmcs_read(GUEST_PHYSICAL_ADDRESS);
+	u16 curr_eptp = vmcs_read(EPTP_INDEX);
 
 	struct ept *ept = &to_vcpu(gc)->ept;
 	uintptr_t *pte = ept_pte(ept, EPT4(ept, curr_eptp), fault_pa);
@@ -890,9 +964,9 @@ static bool vcpu_handle_rdtscp(struct guest_context *gc)
 	u32 tsc_aux;
 	u64 tsc = __rdtscp(&tsc_aux);
 
-	gc->gp[REG_AX] = (u32)tsc;
-	gc->gp[REG_DX] = (u32)(tsc >> 32);
-	gc->gp[REG_CX] = tsc_aux;
+	ksm_write_regl(gc, REG_AX, tsc);
+	ksm_write_regl(gc, REG_DX, tsc >> 32);
+	ksm_write_regl(gc, REG_CX, tsc_aux);
 	vcpu_advance_rip(gc);
 
 	VCPU_TRACER_END();
@@ -912,7 +986,14 @@ static bool vcpu_handle_xsetbv(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	_xsetbv(gc->gp[REG_CX], gc->gp[REG_AX] | gc->gp[REG_DX] << 32);
+	if (!vcpu_check_cpl(0)) {
+		vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_GP, false, 0);
+		return true;
+	}
+
+	u32 ext = ksm_read_regl(gc, REG_CX);
+	u64 val = ksm_combine_regl(gc, REG_AX, REG_DX);
+	_xsetbv(ext, val);
 	vcpu_advance_rip(gc);
 
 	VCPU_TRACER_END();
@@ -922,7 +1003,6 @@ static bool vcpu_handle_xsetbv(struct guest_context *gc)
 static bool vcpu_handle_apic_write(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
-	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return true;
 }
@@ -930,7 +1010,7 @@ static bool vcpu_handle_apic_write(struct guest_context *gc)
 static bool vcpu_handle_xsaves(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
-	vcpu_advance_rip(gc);
+	VCPU_BUGCHECK(VCPU_BUGCHECK_UNEXPECTED, gc->ip, gc->eflags, prev_handler);
 	VCPU_TRACER_END();
 	return true;
 }
@@ -938,7 +1018,7 @@ static bool vcpu_handle_xsaves(struct guest_context *gc)
 static bool vcpu_handle_xrstors(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
-	vcpu_advance_rip(gc);
+	VCPU_BUGCHECK(VCPU_BUGCHECK_UNEXPECTED, gc->ip, gc->eflags, prev_handler);
 	VCPU_TRACER_END();
 	return true;
 }
@@ -956,7 +1036,7 @@ static bool(*g_handlers[]) (struct guest_context *) = {
 	[EXIT_REASON_TASK_SWITCH] = vcpu_handle_taskswitch,
 	[EXIT_REASON_CPUID] = vcpu_handle_cpuid,
 	[EXIT_REASON_GETSEC] = vcpu_nop,
-	[EXIT_REASON_HLT] = vcpu_nop,
+	[EXIT_REASON_HLT] = vcpu_handle_hlt,
 	[EXIT_REASON_INVD] = vcpu_handle_invd,
 	[EXIT_REASON_INVLPG] = vcpu_handle_invlpg,
 	[EXIT_REASON_RDPMC] = vcpu_handle_rdpmc,
@@ -1029,9 +1109,7 @@ bool vcpu_handle_exit(u64 *regs)
 	__vmx_vmread(GUEST_RIP, &gc.ip);
 	__vmx_vmread(GUEST_RSP, &gc.gp[REG_SP]);
 
-	u64 exit_reason;
-	__vmx_vmread(VM_EXIT_REASON, &exit_reason);
-
+	u32 exit_reason = vmcs_read32(VM_EXIT_REASON);
 	prev_handler = curr_handler;
 	curr_handler = (u16)exit_reason;
 
@@ -1042,6 +1120,8 @@ bool vcpu_handle_exit(u64 *regs)
 	}
 
 	bool ret = g_handlers[curr_handler](&gc);
+	__vmx_vmwrite(GUEST_RFLAGS, gc.eflags);
+
 	if (gc.irql < VCPU_EXIT_IRQL)
 		KeLowerIrql(gc.irql);
 

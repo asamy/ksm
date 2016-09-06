@@ -13,6 +13,11 @@ DRIVER_INITIALIZE DriverEntry;
 PLIST_ENTRY PsLoadedModuleList;
 void *g_kernel_base = NULL;
 
+uintptr_t pxe_base = 0xfffff6fb7dbed000ull;
+uintptr_t ppe_base = 0xfffff6fb7da00000ull;
+uintptr_t pde_base = 0xfffff6fb40000000ull;
+uintptr_t pte_base = 0xfffff68000000000ull;
+
 static NTSTATUS sleep_ms(int ms)
 {
 	LARGE_INTEGER ival;

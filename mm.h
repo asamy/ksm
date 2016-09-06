@@ -3,8 +3,6 @@
 #ifndef __MM_H
 #define __MM_H
 
-#include "vad.h"
-
 #ifndef PXI_SHIFT
 #define PXI_SHIFT			39
 #endif
@@ -45,10 +43,10 @@
 #define PTI_MASK			0xFFFFFFFFF
 #endif
 
-static uintptr_t pxe_base = 0xfffff6fb7dbed000ull;
-static uintptr_t ppe_base = 0xfffff6fb7da00000ull;
-static uintptr_t pde_base = 0xfffff6fb40000000ull;
-static uintptr_t pte_base = 0xfffff68000000000ull;
+extern uintptr_t pxe_base;
+extern uintptr_t ppe_base;
+extern uintptr_t pde_base;
+extern uintptr_t pte_base;
 
 static uintptr_t pxe_top = 0xFFFFF6FB7DBEDFFFULL;
 static uintptr_t ppe_top = 0xFFFFF6FB7DBFFFFFULL;

@@ -72,6 +72,8 @@ static inline uintptr_t __pfn(uintptr_t phys)
 #define VCPU_BUG_UNHANDLED		0xBAADF00D
 #define VCPU_IRQ_NOT_HANDLED		0xCAFEBABE
 #define VCPU_BUGCHECK_FAILED_VMENTRY	0xBAADBABE
+#define VCPU_BUGCHECK_GUEST_STATE	0xBAAD7A1E
+#define VCPU_BUGCHECK_UNEXPECTED	0xEEEEEEE9
 #ifdef DBG
 #define VCPU_BUGCHECK(a, b, c, d)	KeBugCheckEx(MANUALLY_INITIATED_CRASH, a, b, c, d)
 #else
@@ -189,6 +191,39 @@ struct guest_context {
 	KIRQL irql;
 };
 
+
+static inline void ksm_write_regl(struct guest_context *gc, u8 reg, u32 val)
+{
+	u32 *r = (u32 *)&gc->gp[reg];
+	*r = val;
+}
+
+static inline void ksm_write_reg(struct guest_context *gc, u8 reg, u64 val)
+{
+	u64 *r = &gc->gp[reg];
+	*r = val;
+}
+
+static inline u32 ksm_read_regl(struct guest_context *gc, u8 reg)
+{
+	return (u32)gc->gp[reg];
+}
+
+static inline u64 ksm_read_reg(struct guest_context *gc, u8 reg)
+{
+	return gc->gp[reg];
+}
+
+static inline u64 ksm_combine_regl(struct guest_context *gc, u8 lo, u8 hi)
+{
+	return (u64)ksm_read_regl(gc, lo) | (u64)ksm_read_regl(gc, hi) << 32;
+}
+
+static inline u64 *ksm_reg(struct guest_context *gc, u8 reg)
+{
+	return &gc->gp[reg];
+}
+
 static inline struct vcpu *to_vcpu(struct guest_context *gc)
 {
 	return gc->vcpu;
@@ -257,13 +292,7 @@ struct page_hook_info {
 
 static size_t page_hash(u64 h)
 {
-	h = ~h + (h << 15);
-	h = h ^ (h >> 12);
-	h = h + (h << 2);
-	h = h ^ (h >> 4);
-	h = h * 2057;
-	h = h ^ (h >> 16);
-	return h;
+	return h >> PAGE_SHIFT;
 }
 
 static inline size_t rehash(const void *e, void *unused)
