@@ -51,20 +51,6 @@ static inline bool vcpu_inject_irq(size_t instr_len, u16 intr_type, u8 vector, b
 	return ret;
 }
 
-static inline void vcpu_inject_ve(struct vcpu *vcpu)
-{
-	struct ve_except_info *info = vcpu->ve;
-	info->eptp = (u16)vmcs_read(EPTP_INDEX);
-	info->except_mask = ~0UL;
-	info->reason = EXIT_REASON_EPT_VIOLATION;
-	__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &info->gpa);
-	__vmx_vmread(GUEST_LINEAR_ADDRESS, &info->gla);
-	__vmx_vmread(EXIT_QUALIFICATION, &info->exit);
-
-	if (!vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_VE, false, 0))
-		VCPU_DEBUG_RAW("could not inject #VE into guest\n");
-}
-
 static inline void vcpu_advance_rip(struct guest_context *gc)
 {
 	if (gc->eflags & X86_EFLAGS_TF) {
@@ -81,10 +67,34 @@ static inline void vcpu_advance_rip(struct guest_context *gc)
 		}
 	}
 
-
 	size_t instr_len;
 	__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, &instr_len);
 	__vmx_vmwrite(GUEST_RIP, gc->ip + instr_len);
+
+	size_t interruptibility;
+	__vmx_vmread(GUEST_INTERRUPTIBILITY_INFO, &interruptibility);
+	__vmx_vmwrite(GUEST_INTERRUPTIBILITY_INFO,
+		      interruptibility & ~(GUEST_INTR_STATE_MOV_SS | GUEST_INTR_STATE_STI));
+}
+
+static inline bool vcpu_inject_hardirq_noerr(u8 vector)
+{
+	return vcpu_inject_irq(vmcs_read(VM_EXIT_INSTRUCTION_LEN), INTR_TYPE_HARD_EXCEPTION,
+			       vector, false, 0);
+}
+
+static inline void vcpu_inject_ve(struct vcpu *vcpu)
+{
+	struct ve_except_info *info = vcpu->ve;
+	info->eptp = (u16)vmcs_read(EPTP_INDEX);
+	info->except_mask = ~0UL;
+	info->reason = EXIT_REASON_EPT_VIOLATION;
+	__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &info->gpa);
+	__vmx_vmread(GUEST_LINEAR_ADDRESS, &info->gla);
+	__vmx_vmread(EXIT_QUALIFICATION, &info->exit);
+
+	if (!vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_VE, false, 0))
+		VCPU_DEBUG_RAW("could not inject #VE into guest\n");
 }
 
 static bool vcpu_nop(struct guest_context *gc)
@@ -419,8 +429,8 @@ static bool vcpu_handle_vmcall(struct guest_context *gc)
 	VCPU_TRACER_START();
 
 	if (!vcpu_check_cpl(0)) {
-		vcpu_inject_irq(3/*vmcall*/, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_UD, false, 0);
-		return true;
+		vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+		goto out;
 	}
 
 	uint8_t nr = ksm_read_regl(gc, REG_CX);
@@ -445,11 +455,11 @@ static bool vcpu_handle_vmcall(struct guest_context *gc)
 		break;
 	default:
 		VCPU_DEBUG("unsupported hypercall: %d\n", nr);
-		vcpu_inject_irq(3, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_UD, false, 0);
-		//vcpu_fail_vmx(gc);
-		return true;
+		vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+		break;
 	}
 
+out:
 	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return true;
@@ -458,8 +468,7 @@ static bool vcpu_handle_vmcall(struct guest_context *gc)
 static bool vcpu_handle_vmx(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
-	vcpu_fail_vmx(gc);
-	vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_UD, false, 0);
+	vcpu_inject_hardirq_noerr(X86_TRAP_UD);
 	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return true;
@@ -545,8 +554,8 @@ static bool vcpu_handle_dr_access(struct guest_context *gc)
 	VCPU_TRACER_START();
 
 	if (!vcpu_check_cpl(0)) {
-		vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_GP, false, 0);
-		return true;
+		vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+		goto out;
 	}
 
 	u64 exit = vmcs_read(EXIT_QUALIFICATION);
@@ -556,8 +565,8 @@ static bool vcpu_handle_dr_access(struct guest_context *gc)
 	 * when clear, they are aliased to 6/7.  */
 	u64 cr4 = vmcs_read(GUEST_CR4);
 	if (cr4 & X86_CR4_DE && (dr == 4 || dr == 5)) {
-		vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_UD, false, 0);
-		return true;
+		vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+		goto out;
 	}
 
 	u64 *reg = ksm_reg(gc, DEBUG_REG_ACCESS_REG(exit));
@@ -595,6 +604,7 @@ static bool vcpu_handle_dr_access(struct guest_context *gc)
 		}
 	}
 
+out:
 	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return true;
@@ -623,11 +633,6 @@ static inline u64 read_tsc_msr(void)
 static bool vcpu_handle_msr_read(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
-
-	if (!vcpu_check_cpl(0)) {
-		vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_GP, false, 0);
-		return true;
-	}
 
 	u32 msr = ksm_read_regl(gc, REG_CX);
 	u64 val = 0;
@@ -684,11 +689,6 @@ static bool vcpu_handle_msr_read(struct guest_context *gc)
 static bool vcpu_handle_msr_write(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
-
-	if (!vcpu_check_cpl(0)) {
-		vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_GP, false, 0);
-		return true;
-	}
 
 	u32 msr = ksm_read_reg(gc, REG_CX);
 	u64 val = ksm_combine_regl(gc, REG_AX, REG_DX);
@@ -985,11 +985,6 @@ static bool vcpu_handle_wbinvd(struct guest_context *gc)
 static bool vcpu_handle_xsetbv(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
-
-	if (!vcpu_check_cpl(0)) {
-		vcpu_inject_irq(0, INTR_TYPE_HARD_EXCEPTION, X86_TRAP_GP, false, 0);
-		return true;
-	}
 
 	u32 ext = ksm_read_regl(gc, REG_CX);
 	u64 val = ksm_combine_regl(gc, REG_AX, REG_DX);
