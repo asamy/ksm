@@ -27,13 +27,18 @@ static NTSTATUS init_msr_bitmap(struct ksm *k)
 
 static NTSTATUS set_lock_bit(void)
 {
+	/* Required MSR_IA32_FEATURE_CONTROL bits:  */
+	const u64 required_bits = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
+
 	uintptr_t feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
-	if (feat_ctl & FEATURE_CONTROL_LOCKED)
+	if ((feat_ctl & required_bits) == required_bits)
 		return STATUS_SUCCESS;
 
-	__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl | FEATURE_CONTROL_LOCKED);
+	/* Attempt to set bits in place  */
+	__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl | required_bits);
+
 	feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
-	if (feat_ctl & FEATURE_CONTROL_LOCKED)
+	if ((feat_ctl & required_bits) == required_bits)
 		return STATUS_SUCCESS;
 
 	return STATUS_HV_ACCESS_DENIED;
@@ -73,9 +78,6 @@ NTSTATUS ksm_init(void)
 #endif
 
 	if (!ept_check_capabilitiy())
-		return STATUS_HV_FEATURE_UNAVAILABLE;
-
-	if (!(__readmsr(MSR_IA32_FEATURE_CONTROL) & FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
 		return STATUS_HV_FEATURE_UNAVAILABLE;
 
 	ksm.hotplug_cpu = KeRegisterProcessorChangeCallback(ksm_hotplug_cpu, &status, 0);
