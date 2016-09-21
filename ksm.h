@@ -191,19 +191,27 @@ struct guest_context {
 	KIRQL irql;
 };
 
-static inline void ksm_write_regl(struct guest_context *gc, int reg, u32 val)
+static inline void ksm_write_reg16(struct guest_context *gc, int reg, u16 val)
 {
-	u32 *r = (u32 *)&gc->gp[reg];
-	*r = val;
+	*(u16 *)&gc->gp[reg] = val;
+}
+
+static inline void ksm_write_reg32(struct guest_context *gc, int reg, u32 val)
+{
+	*(u32 *)&gc->gp[reg] = val;
 }
 
 static inline void ksm_write_reg(struct guest_context *gc, int reg, u64 val)
 {
-	u64 *r = &gc->gp[reg];
-	*r = val;
+	*(u64 *)&gc->gp[reg] = val;
 }
 
-static inline u32 ksm_read_regl(struct guest_context *gc, int reg)
+static inline u16 ksm_read_reg16(struct guest_context *gc, int reg)
+{
+	return (u16)gc->gp[reg];
+}
+
+static inline u32 ksm_read_reg32(struct guest_context *gc, int reg)
 {
 	return (u32)gc->gp[reg];
 }
@@ -213,9 +221,14 @@ static inline u64 ksm_read_reg(struct guest_context *gc, int reg)
 	return gc->gp[reg];
 }
 
-static inline u64 ksm_combine_regl(struct guest_context *gc, int lo, int hi)
+static inline u32 ksm_combine_reg32(struct guest_context *gc, int lo, int hi)
 {
-	return (u64)ksm_read_regl(gc, lo) | (u64)ksm_read_regl(gc, hi) << 32;
+	return (u32)ksm_read_reg32(gc, lo) | (u32)ksm_read_reg32(gc, hi) << 16;
+}
+
+static inline u64 ksm_combine_reg64(struct guest_context *gc, int lo, int hi)
+{
+	return (u64)ksm_read_reg32(gc, lo) | (u64)ksm_read_reg32(gc, hi) << 32;
 }
 
 static inline u64 *ksm_reg(struct guest_context *gc, int reg)

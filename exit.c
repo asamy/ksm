@@ -128,33 +128,12 @@ static bool vcpu_handle_except_nmi(struct guest_context *gc)
 	return true;
 }
 
-static bool vcpu_handle_external_int(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	VCPU_TRACER_END();
-	return true;
-}
-
 static bool vcpu_handle_triplefault(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, VCPU_TRIPLEFAULT, curr_handler, prev_handler);
 	VCPU_TRACER_END();
 	return false;
-}
-
-static bool vcpu_handle_pendingint(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	VCPU_TRACER_END();
-	return true;
-}
-
-static bool vcpu_handle_nmi_window(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	VCPU_TRACER_END();
-	return true;
 }
 
 static bool vcpu_handle_taskswitch(struct guest_context *gc)
@@ -197,14 +176,14 @@ static bool vcpu_handle_cpuid(struct guest_context *gc)
 	VCPU_TRACER_START();
 
 	int cpuid[4];
-	int func = ksm_read_regl(gc, REG_AX);
-	int subf = ksm_read_regl(gc, REG_CX);
+	int func = ksm_read_reg32(gc, REG_AX);
+	int subf = ksm_read_reg32(gc, REG_CX);
 	__cpuidex(cpuid, func, subf);
 
-	ksm_write_regl(gc, REG_AX, cpuid[0]);
-	ksm_write_regl(gc, REG_BX, cpuid[1]);
-	ksm_write_regl(gc, REG_CX, cpuid[2]);
-	ksm_write_regl(gc, REG_DX, cpuid[3]);
+	ksm_write_reg32(gc, REG_AX, cpuid[0]);
+	ksm_write_reg32(gc, REG_BX, cpuid[1]);
+	ksm_write_reg32(gc, REG_CX, cpuid[2]);
+	ksm_write_reg32(gc, REG_DX, cpuid[3]);
 	vcpu_advance_rip(gc);
 
 	VCPU_TRACER_END();
@@ -242,20 +221,13 @@ static bool vcpu_handle_invlpg(struct guest_context *gc)
 	return true;
 }
 
-static bool vcpu_handle_rdpmc(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	VCPU_TRACER_END();
-	return true;
-}
-
 static bool vcpu_handle_rdtsc(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
 	u64 tsc = __rdtsc();
-	ksm_write_regl(gc, REG_AX, tsc);
-	ksm_write_regl(gc, REG_DX, tsc >> 32);
+	ksm_write_reg32(gc, REG_AX, tsc);
+	ksm_write_reg32(gc, REG_DX, tsc >> 32);
 	vcpu_advance_rip(gc);
 
 	VCPU_TRACER_END();
@@ -329,22 +301,31 @@ static bool vcpu_handle_pml_full(struct guest_context *gc)
 #endif
 }
 
-static inline void vcpu_do_succeed(struct guest_context *gc)
+static inline void vcpu_vm_succeed(struct guest_context *gc)
 {
-	gc->eflags &= ~(X86_EFLAGS_ZF | X86_EFLAGS_CF);
+	gc->eflags &= ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF |
+			X86_EFLAGS_ZF | X86_EFLAGS_SF | X86_EFLAGS_OF);
 }
 
-static inline void vcpu_do_fail(struct guest_context *gc)
+static inline void vcpu_vm_fail_invalid(struct guest_context *gc)
 {
-	gc->eflags |= X86_EFLAGS_CF | X86_EFLAGS_ZF;
+	gc->eflags |= X86_EFLAGS_CF;
+	gc->eflags &= ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF | X86_EFLAGS_SF | X86_EFLAGS_OF);
+}
+
+static inline void vcpu_vm_fail_valid(struct guest_context *gc, size_t err)
+{
+	gc->eflags |= X86_EFLAGS_ZF;
+	gc->eflags &= ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_SF | X86_EFLAGS_OF);
+	__vmx_vmwrite(VM_INSTRUCTION_ERROR, err);
 }
 
 static inline void vcpu_adjust_rflags(struct guest_context *gc, bool success)
 {
 	if (success)
-		return vcpu_do_succeed(gc);
+		return vcpu_vm_succeed(gc);
 
-	return vcpu_do_fail(gc);
+	return vcpu_vm_fail_invalid(gc);
 }
 
 static inline void vcpu_do_exit(struct guest_context *gc, uintptr_t arg)
@@ -360,11 +341,8 @@ static inline void vcpu_do_exit(struct guest_context *gc, uintptr_t arg)
 	// give them vcpu so they free it by themselves
 	*(struct vcpu **)arg = vcpu;
 
-	size_t instr_len;
-	__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, &instr_len);
-
-	size_t ret = gc->ip + instr_len;
-	vcpu_do_succeed(gc);
+	size_t ret = gc->ip + vmcs_read(VM_EXIT_INSTRUCTION_LEN);
+	vcpu_vm_succeed(gc);
 
 	u64 cr3;
 	__vmx_vmread(GUEST_CR3, &cr3);
@@ -433,7 +411,7 @@ static bool vcpu_handle_vmcall(struct guest_context *gc)
 		goto out;
 	}
 
-	uint8_t nr = ksm_read_regl(gc, REG_CX);
+	uint8_t nr = ksm_read_reg32(gc, REG_CX);
 	uintptr_t arg = ksm_read_reg(gc, REG_DX);
 	struct vcpu *vcpu = to_vcpu(gc);
 	switch (nr) {
@@ -517,24 +495,18 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 		break;
 	case 2:		/* clts  */
 	{
-		u64 cr0;
-		__vmx_vmread(GUEST_CR0, &cr0);
-
-		/* Clear task switched flag  */
-		cr0 &= ~X86_CR0_TS;
-
+		u64 cr0 = vmcs_read(GUEST_CR0) & ~X86_CR0_TS;
 		__vmx_vmwrite(GUEST_CR0, cr0);
 		__vmx_vmwrite(CR0_READ_SHADOW, cr0);
 		break;
 	}
 	case 3:		/* lmsw  */
 	{
-		u64 msw = (exit >> LMSW_SOURCE_DATA_SHIFT) & 0x0f;
-		u64 cr0;
-		__vmx_vmread(GUEST_CR0, &cr0);
+		u64 msw = exit >> LMSW_SOURCE_DATA_SHIFT;
+		u64 cr0 = vmcs_read(GUEST_CR0);
 
-		cr0 &= ~0x0eul;
-		cr0 |= msw & 0x0f;
+		cr0 = (cr0 & ~(X86_CR0_MP | X86_CR0_EM | X86_CR0_TS)) |
+			(msw & (X86_CR0_PE | X86_CR0_MP | X86_CR0_EM | X86_CR0_TS));
 
 		__vmx_vmwrite(GUEST_CR0, cr0);
 		__vmx_vmwrite(CR0_READ_SHADOW, cr0);
@@ -610,14 +582,6 @@ out:
 	return true;
 }
 
-static bool vcpu_handle_io_instr(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	vcpu_advance_rip(gc);
-	VCPU_TRACER_END();
-	return false;
-}
-
 static inline u64 read_tsc_msr(void)
 {
 	u64 host_tsc = __rdtsc();
@@ -634,7 +598,7 @@ static bool vcpu_handle_msr_read(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	u32 msr = ksm_read_regl(gc, REG_CX);
+	u32 msr = ksm_read_reg32(gc, REG_CX);
 	u64 val = 0;
 
 	struct vcpu *vcpu = to_vcpu(gc);
@@ -679,8 +643,8 @@ static bool vcpu_handle_msr_read(struct guest_context *gc)
 		break;
 	}
 
-	ksm_write_regl(gc, REG_AX, val);
-	ksm_write_regl(gc, REG_CX, val >> 32);
+	ksm_write_reg32(gc, REG_AX, val);
+	ksm_write_reg32(gc, REG_CX, val >> 32);
 	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return true;
@@ -691,7 +655,7 @@ static bool vcpu_handle_msr_write(struct guest_context *gc)
 	VCPU_TRACER_START();
 
 	u32 msr = ksm_read_reg(gc, REG_CX);
-	u64 val = ksm_combine_regl(gc, REG_AX, REG_DX);
+	u64 val = ksm_combine_reg64(gc, REG_AX, REG_DX);
 
 	struct vcpu *vcpu = to_vcpu(gc);
 	switch (msr) {
@@ -732,21 +696,6 @@ static bool vcpu_handle_invalid_state(struct guest_context *gc)
 	return false;
 }
 
-static bool vcpu_handle_msr_load_fail(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	VCPU_TRACER_END();
-	return false;
-}
-
-static bool vcpu_handle_mwait_instr(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	vcpu_advance_rip(gc);
-	VCPU_TRACER_END();
-	return false;
-}
-
 static bool vcpu_handle_mtf(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
@@ -754,53 +703,6 @@ static bool vcpu_handle_mtf(struct guest_context *gc)
 	vcpu_advance_rip(gc);
 	VCPU_TRACER_END();
 	return true;
-}
-
-static bool vcpu_handle_monitor(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	vcpu_advance_rip(gc);
-	VCPU_TRACER_END();
-	return false;
-}
-
-static bool vcpu_handle_pause(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	vcpu_advance_rip(gc);
-	VCPU_TRACER_END();
-	return true;
-}
-
-static bool vcpu_handle_mce_during_vmentry(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	vcpu_advance_rip(gc);
-	VCPU_TRACER_END();
-	return false;
-}
-
-static bool vcpu_handle_tpr_below_threshold(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	vcpu_advance_rip(gc);
-	VCPU_TRACER_END();
-	return false;
-}
-
-static bool vcpu_handle_apic_access(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	vcpu_advance_rip(gc);
-	VCPU_TRACER_END();
-	return false;
-}
-
-static bool vcpu_handle_eoi_induced(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	VCPU_TRACER_END();
-	return false;
 }
 
 static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
@@ -964,9 +866,9 @@ static bool vcpu_handle_rdtscp(struct guest_context *gc)
 	u32 tsc_aux;
 	u64 tsc = __rdtscp(&tsc_aux);
 
-	ksm_write_regl(gc, REG_AX, tsc);
-	ksm_write_regl(gc, REG_DX, tsc >> 32);
-	ksm_write_regl(gc, REG_CX, tsc_aux);
+	ksm_write_reg32(gc, REG_AX, tsc);
+	ksm_write_reg32(gc, REG_DX, tsc >> 32);
+	ksm_write_reg32(gc, REG_CX, tsc_aux);
 	vcpu_advance_rip(gc);
 
 	VCPU_TRACER_END();
@@ -986,8 +888,8 @@ static bool vcpu_handle_xsetbv(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	u32 ext = ksm_read_regl(gc, REG_CX);
-	u64 val = ksm_combine_regl(gc, REG_AX, REG_DX);
+	u32 ext = ksm_read_reg32(gc, REG_CX);
+	u64 val = ksm_combine_reg64(gc, REG_AX, REG_DX);
 	_xsetbv(ext, val);
 	vcpu_advance_rip(gc);
 
@@ -995,46 +897,23 @@ static bool vcpu_handle_xsetbv(struct guest_context *gc)
 	return true;
 }
 
-static bool vcpu_handle_apic_write(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	VCPU_TRACER_END();
-	return true;
-}
-
-static bool vcpu_handle_xsaves(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	VCPU_BUGCHECK(VCPU_BUGCHECK_UNEXPECTED, gc->ip, gc->eflags, prev_handler);
-	VCPU_TRACER_END();
-	return true;
-}
-
-static bool vcpu_handle_xrstors(struct guest_context *gc)
-{
-	VCPU_TRACER_START();
-	VCPU_BUGCHECK(VCPU_BUGCHECK_UNEXPECTED, gc->ip, gc->eflags, prev_handler);
-	VCPU_TRACER_END();
-	return true;
-}
-
 static bool(*g_handlers[]) (struct guest_context *) = {
 	[EXIT_REASON_EXCEPTION_NMI] = vcpu_handle_except_nmi,
-	[EXIT_REASON_EXTERNAL_INTERRUPT] = vcpu_handle_external_int,
+	[EXIT_REASON_EXTERNAL_INTERRUPT] = vcpu_nop,
 	[EXIT_REASON_TRIPLE_FAULT] = vcpu_handle_triplefault,
 	[EXIT_REASON_INIT_SIGNAL] = vcpu_nop,
 	[EXIT_REASON_STARTUP_IPI] = vcpu_nop,
 	[EXIT_REASON_SMI_INTERRUPT] = vcpu_nop,
 	[EXIT_REASON_OTHER_SMI] = vcpu_nop,
-	[EXIT_REASON_PENDING_INTERRUPT] = vcpu_handle_pendingint,
-	[EXIT_REASON_NMI_WINDOW] = vcpu_handle_nmi_window,
+	[EXIT_REASON_PENDING_INTERRUPT] = vcpu_nop,
+	[EXIT_REASON_NMI_WINDOW] = vcpu_nop,
 	[EXIT_REASON_TASK_SWITCH] = vcpu_handle_taskswitch,
 	[EXIT_REASON_CPUID] = vcpu_handle_cpuid,
 	[EXIT_REASON_GETSEC] = vcpu_nop,
 	[EXIT_REASON_HLT] = vcpu_handle_hlt,
 	[EXIT_REASON_INVD] = vcpu_handle_invd,
 	[EXIT_REASON_INVLPG] = vcpu_handle_invlpg,
-	[EXIT_REASON_RDPMC] = vcpu_handle_rdpmc,
+	[EXIT_REASON_RDPMC] = vcpu_nop,
 	[EXIT_REASON_RDTSC] = vcpu_handle_rdtsc,
 	[EXIT_REASON_RSM] = vcpu_nop,
 	[EXIT_REASON_VMCALL] = vcpu_handle_vmcall,
@@ -1049,22 +928,22 @@ static bool(*g_handlers[]) (struct guest_context *) = {
 	[EXIT_REASON_VMON] = vcpu_handle_vmx,
 	[EXIT_REASON_CR_ACCESS] = vcpu_handle_cr_access,
 	[EXIT_REASON_DR_ACCESS] = vcpu_handle_dr_access,
-	[EXIT_REASON_IO_INSTRUCTION] = vcpu_handle_io_instr,
+	[EXIT_REASON_IO_INSTRUCTION] = vcpu_nop,
 	[EXIT_REASON_MSR_READ] = vcpu_handle_msr_read,
 	[EXIT_REASON_MSR_WRITE] = vcpu_handle_msr_write,
 	[EXIT_REASON_INVALID_STATE] = vcpu_handle_invalid_state,
-	[EXIT_REASON_MSR_LOAD_FAIL] = vcpu_handle_msr_load_fail,
+	[EXIT_REASON_MSR_LOAD_FAIL] = vcpu_nop,
 	[EXIT_REASON_UNKNOWN35] = vcpu_nop,
-	[EXIT_REASON_MWAIT_INSTRUCTION] = vcpu_handle_mwait_instr,
+	[EXIT_REASON_MWAIT_INSTRUCTION] = vcpu_nop,
 	[EXIT_REASON_MONITOR_TRAP_FLAG] = vcpu_handle_mtf,
 	[EXIT_REASON_UNKNOWN38] = vcpu_nop,
-	[EXIT_REASON_MONITOR_INSTRUCTION] = vcpu_handle_monitor,
-	[EXIT_REASON_PAUSE_INSTRUCTION] = vcpu_handle_pause,
-	[EXIT_REASON_MCE_DURING_VMENTRY] = vcpu_handle_mce_during_vmentry,
+	[EXIT_REASON_MONITOR_INSTRUCTION] = vcpu_nop,
+	[EXIT_REASON_PAUSE_INSTRUCTION] = vcpu_nop,
+	[EXIT_REASON_MCE_DURING_VMENTRY] = vcpu_nop,
 	[EXIT_REASON_UNKNOWN42] = vcpu_nop,
-	[EXIT_REASON_TPR_BELOW_THRESHOLD] = vcpu_handle_tpr_below_threshold,
-	[EXIT_REASON_APIC_ACCESS] = vcpu_handle_apic_access,
-	[EXIT_REASON_EOI_INDUCED] = vcpu_handle_eoi_induced,
+	[EXIT_REASON_TPR_BELOW_THRESHOLD] = vcpu_nop,
+	[EXIT_REASON_APIC_ACCESS] = vcpu_nop,
+	[EXIT_REASON_EOI_INDUCED] = vcpu_nop,
 	[EXIT_REASON_GDT_IDT_ACCESS] = vcpu_handle_gdt_idt_access,
 	[EXIT_REASON_LDT_TR_ACCESS] = vcpu_handle_ldt_tr_access,
 	[EXIT_REASON_EPT_VIOLATION] = vcpu_handle_ept_violation,
@@ -1075,22 +954,22 @@ static bool(*g_handlers[]) (struct guest_context *) = {
 	[EXIT_REASON_INVVPID] = vcpu_handle_vmx,
 	[EXIT_REASON_WBINVD] = vcpu_handle_wbinvd,
 	[EXIT_REASON_XSETBV] = vcpu_handle_xsetbv,
-	[EXIT_REASON_APIC_WRITE] = vcpu_handle_apic_write,
+	[EXIT_REASON_APIC_WRITE] = vcpu_nop,
 	[EXIT_REASON_RDRAND] = vcpu_nop,
 	[EXIT_REASON_INVPCID] = vcpu_nop,
 	[EXIT_REASON_VMFUNC] = vcpu_handle_vmfunc,
 	[EXIT_REASON_ENCLS] = vcpu_nop,
 	[EXIT_REASON_RDSEED] = vcpu_nop,
 	[EXIT_REASON_PML_FULL] = vcpu_handle_pml_full,
-	[EXIT_REASON_XSAVES] = vcpu_handle_xsaves,
-	[EXIT_REASON_XRSTORS] = vcpu_handle_xrstors,
+	[EXIT_REASON_XSAVES] = vcpu_nop,
+	[EXIT_REASON_XRSTORS] = vcpu_nop,
 	[EXIT_REASON_PCOMMIT] = vcpu_nop
 };
 
 bool vcpu_handle_exit(u64 *regs)
 {
 	KIRQL irql = KeGetCurrentIrql();
-	uintptr_t cr8 = __readcr8();
+	u64 cr8 = __readcr8();
 	if (irql < VCPU_EXIT_IRQL)
 		KfRaiseIrql(VCPU_EXIT_IRQL);
 
@@ -1114,8 +993,10 @@ bool vcpu_handle_exit(u64 *regs)
 		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, gc.ip, exit_qualification, curr_handler);
 	}
 
-	bool ret = g_handlers[curr_handler](&gc);
-	__vmx_vmwrite(GUEST_RFLAGS, gc.eflags);
+	bool ret = false;
+	if (curr_handler < sizeof(g_handlers) / sizeof(g_handlers[0]) &&
+		(ret = g_handlers[curr_handler](&gc)))
+		__vmx_vmwrite(GUEST_RFLAGS, gc.eflags);
 
 	if (gc.irql < VCPU_EXIT_IRQL)
 		KeLowerIrql(gc.irql);
