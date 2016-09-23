@@ -707,19 +707,14 @@ static bool vcpu_handle_mtf(struct guest_context *gc)
 
 static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 {
-	unsigned entries = idt->limit;
-	if (entries > vcpu->idt.limit)
-		entries = vcpu->idt.limit;
-	entries /= sizeof(struct kidt_entry64);
-
+	unsigned entries = min(idt->limit, PAGE_SIZE - 1) / sizeof(struct kidt_entry64);
 	struct kidt_entry64 *current = (struct kidt_entry64 *)idt->base;
 	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
 
-	/* Limit it  */
-	vcpu->idt.limit = idt->limit;
-
 	VCPU_DEBUG("Loading new IDT (new size: %d old size: %d)  Copying %d entries\n",
 		   idt->limit, vcpu->idt.limit, entries);
+
+	vcpu->idt.limit = idt->limit;
 	for (unsigned n = 0; n < entries; ++n)
 		if (!idte_present(&vcpu->shadow_idt[n]))
 			memcpy(&shadow[n], &current[n], sizeof(*shadow));
