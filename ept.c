@@ -264,7 +264,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 		return true;
 	}
 
-	struct page_hook_info *h = ksm_find_page_pfn(__pfn(fault_pa));
+	struct page_hook_info *h = ksm_find_page((void *)fault_va);
 	if (h) {
 		u16 eptp_switch = h->ops->select_eptp(h, eptp, ar, ac);
 		if (eptp_switch != eptp) {
@@ -307,7 +307,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 		return;
 	}
 
-	struct page_hook_info *h = ksm_find_page_pfn(__pfn(fault_pa));
+	struct page_hook_info *h = ksm_find_page((void *)fault_va);
 	if (h) {
 		u16 eptp_switch = h->ops->select_eptp(h, eptp, ar, ac);
 		if (eptp_switch != eptp) {
