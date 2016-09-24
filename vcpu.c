@@ -55,6 +55,23 @@ static inline void adjust_ctl_val(u32 msr, u64 *val)
 	*val |= (u32)v;				/* bit == 1 in low word  ==> must be one  */
 }
 
+#ifdef DBG
+static inline unsigned char debug_vmx_vmwrite(const char *name, size_t field, size_t value)
+{
+	unsigned char ret = __vmx_vmwrite(field, value);
+	if (ret != 0)
+		VCPU_DEBUG("failed on %s (%lld => 0x%016X): %d\n", name, field, value, ret);
+
+	return ret;
+}
+
+#define DEBUG_VMX_VMWRITE(field, value)		\
+	debug_vmx_vmwrite(#field, field, value)
+#else
+#define DEBUG_VMX_VMWRITE(field, value)		\
+	__vmx_vmwrite(field, value)
+#endif
+
 static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t stack_base)
 {
 	struct gdtr gdtr;
@@ -128,111 +145,111 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
 
 	/* Processor control fields  */
-	err |= __vmx_vmwrite(PIN_BASED_VM_EXEC_CONTROL, vm_pinctl);
-	err |= __vmx_vmwrite(CPU_BASED_VM_EXEC_CONTROL, vm_cpuctl);
-	err |= __vmx_vmwrite(EXCEPTION_BITMAP, __EXCEPTION_BITMAP);
-	err |= __vmx_vmwrite(PAGE_FAULT_ERROR_CODE_MASK, 0);
-	err |= __vmx_vmwrite(PAGE_FAULT_ERROR_CODE_MATCH, 0);
-	err |= __vmx_vmwrite(CR3_TARGET_COUNT, 0);
-	err |= __vmx_vmwrite(VM_EXIT_CONTROLS, vm_exit);
-	err |= __vmx_vmwrite(VM_EXIT_MSR_STORE_COUNT, 0);
-	err |= __vmx_vmwrite(VM_EXIT_MSR_LOAD_COUNT, 0);
-	err |= __vmx_vmwrite(VM_ENTRY_CONTROLS, vm_entry);
-	err |= __vmx_vmwrite(VM_ENTRY_MSR_LOAD_COUNT, 0);
-	err |= __vmx_vmwrite(VM_ENTRY_INTR_INFO_FIELD, 0);
-	err |= __vmx_vmwrite(SECONDARY_VM_EXEC_CONTROL, vm_2ndctl);
+	err |= DEBUG_VMX_VMWRITE(PIN_BASED_VM_EXEC_CONTROL, vm_pinctl);
+	err |= DEBUG_VMX_VMWRITE(CPU_BASED_VM_EXEC_CONTROL, vm_cpuctl);
+	err |= DEBUG_VMX_VMWRITE(EXCEPTION_BITMAP, __EXCEPTION_BITMAP);
+	err |= DEBUG_VMX_VMWRITE(PAGE_FAULT_ERROR_CODE_MASK, 0);
+	err |= DEBUG_VMX_VMWRITE(PAGE_FAULT_ERROR_CODE_MATCH, 0);
+	err |= DEBUG_VMX_VMWRITE(CR3_TARGET_COUNT, 0);
+	err |= DEBUG_VMX_VMWRITE(VM_EXIT_CONTROLS, vm_exit);
+	err |= DEBUG_VMX_VMWRITE(VM_EXIT_MSR_STORE_COUNT, 0);
+	err |= DEBUG_VMX_VMWRITE(VM_EXIT_MSR_LOAD_COUNT, 0);
+	err |= DEBUG_VMX_VMWRITE(VM_ENTRY_CONTROLS, vm_entry);
+	err |= DEBUG_VMX_VMWRITE(VM_ENTRY_MSR_LOAD_COUNT, 0);
+	err |= DEBUG_VMX_VMWRITE(VM_ENTRY_INTR_INFO_FIELD, 0);
+	err |= DEBUG_VMX_VMWRITE(SECONDARY_VM_EXEC_CONTROL, vm_2ndctl);
 
 	/* Control Fields */
-	err |= __vmx_vmwrite(IO_BITMAP_A, 0);
-	err |= __vmx_vmwrite(IO_BITMAP_B, 0);
-	err |= __vmx_vmwrite(MSR_BITMAP, __pa(ksm.msr_bitmap));
-	err |= __vmx_vmwrite(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
-	err |= __vmx_vmwrite(VM_FUNCTION_CTRL, VM_FUNCTION_CTL_EPTP_SWITCHING);
-	err |= __vmx_vmwrite(EPTP_INDEX, EPTP_DEFAULT);
-	err |= __vmx_vmwrite(EPTP_LIST_ADDRESS, __pa(&ept->ptr_list));
-	err |= __vmx_vmwrite(VE_INFO_ADDRESS, __pa(&vcpu->ve));
+	err |= DEBUG_VMX_VMWRITE(IO_BITMAP_A, 0);
+	err |= DEBUG_VMX_VMWRITE(IO_BITMAP_B, 0);
+	err |= DEBUG_VMX_VMWRITE(MSR_BITMAP, __pa(ksm.msr_bitmap));
+	err |= DEBUG_VMX_VMWRITE(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
+	err |= DEBUG_VMX_VMWRITE(VM_FUNCTION_CTRL, VM_FUNCTION_CTL_EPTP_SWITCHING);
+	err |= DEBUG_VMX_VMWRITE(EPTP_INDEX, EPTP_DEFAULT);
+	err |= DEBUG_VMX_VMWRITE(EPTP_LIST_ADDRESS, __pa(&ept->ptr_list));
+	err |= DEBUG_VMX_VMWRITE(VE_INFO_ADDRESS, __pa(&vcpu->ve));
 #ifdef ENABLE_PML
-	err |= __vmx_vmwrite(PML_ADDRESS, __pa(&vcpu->pml));
-	err |= __vmx_vmwrite(GUEST_PML_INDEX, PML_MAX_ENTRIES - 1);
+	err |= DEBUG_VMX_VMWRITE(PML_ADDRESS, __pa(&vcpu->pml));
+	err |= DEBUG_VMX_VMWRITE(GUEST_PML_INDEX, PML_MAX_ENTRIES - 1);
 #endif
-	err |= __vmx_vmwrite(CR0_GUEST_HOST_MASK, __CR0_GUEST_HOST_MASK);
-	err |= __vmx_vmwrite(CR4_GUEST_HOST_MASK, __CR4_GUEST_HOST_MASK);
-	err |= __vmx_vmwrite(CR0_READ_SHADOW, cr0);
-	err |= __vmx_vmwrite(CR4_READ_SHADOW, cr4);
-	err |= __vmx_vmwrite(VMCS_LINK_POINTER, -1ULL);
+	err |= DEBUG_VMX_VMWRITE(CR0_GUEST_HOST_MASK, __CR0_GUEST_HOST_MASK);
+	err |= DEBUG_VMX_VMWRITE(CR4_GUEST_HOST_MASK, __CR4_GUEST_HOST_MASK);
+	err |= DEBUG_VMX_VMWRITE(CR0_READ_SHADOW, cr0);
+	err |= DEBUG_VMX_VMWRITE(CR4_READ_SHADOW, cr4);
+	err |= DEBUG_VMX_VMWRITE(VMCS_LINK_POINTER, -1ULL);
 
 	/* Guest  */
-	err |= __vmx_vmwrite(GUEST_ES_SELECTOR, es);
-	err |= __vmx_vmwrite(GUEST_CS_SELECTOR, cs);
-	err |= __vmx_vmwrite(GUEST_SS_SELECTOR, ss);
-	err |= __vmx_vmwrite(GUEST_DS_SELECTOR, ds);
-	err |= __vmx_vmwrite(GUEST_FS_SELECTOR, fs);
-	err |= __vmx_vmwrite(GUEST_GS_SELECTOR, gs);
-	err |= __vmx_vmwrite(GUEST_LDTR_SELECTOR, ldt);
-	err |= __vmx_vmwrite(GUEST_TR_SELECTOR, tr);
-	err |= __vmx_vmwrite(GUEST_ES_LIMIT, __segmentlimit(es));
-	err |= __vmx_vmwrite(GUEST_CS_LIMIT, __segmentlimit(cs));
-	err |= __vmx_vmwrite(GUEST_SS_LIMIT, __segmentlimit(ss));
-	err |= __vmx_vmwrite(GUEST_DS_LIMIT, __segmentlimit(ds));
-	err |= __vmx_vmwrite(GUEST_FS_LIMIT, __segmentlimit(fs));
-	err |= __vmx_vmwrite(GUEST_GS_LIMIT, __segmentlimit(gs));
-	err |= __vmx_vmwrite(GUEST_LDTR_LIMIT, __segmentlimit(ldt));
-	err |= __vmx_vmwrite(GUEST_TR_LIMIT, __segmentlimit(tr));
-	err |= __vmx_vmwrite(GUEST_GDTR_LIMIT, gdtr.limit);
-	err |= __vmx_vmwrite(GUEST_IDTR_LIMIT, idtr.limit);
-	err |= __vmx_vmwrite(GUEST_ES_AR_BYTES, __accessright(es));
-	err |= __vmx_vmwrite(GUEST_CS_AR_BYTES, __accessright(cs));
-	err |= __vmx_vmwrite(GUEST_SS_AR_BYTES, __accessright(ss));
-	err |= __vmx_vmwrite(GUEST_DS_AR_BYTES, __accessright(ds));
-	err |= __vmx_vmwrite(GUEST_FS_AR_BYTES, __accessright(fs));
-	err |= __vmx_vmwrite(GUEST_GS_AR_BYTES, __accessright(gs));
-	err |= __vmx_vmwrite(GUEST_LDTR_AR_BYTES, __accessright(ldt));
-	err |= __vmx_vmwrite(GUEST_TR_AR_BYTES, __accessright(tr));
-	err |= __vmx_vmwrite(GUEST_INTERRUPTIBILITY_INFO, 0);
-	err |= __vmx_vmwrite(GUEST_ACTIVITY_STATE, 0);
-	err |= __vmx_vmwrite(GUEST_IA32_DEBUGCTL, __readmsr(MSR_IA32_DEBUGCTLMSR));
-	err |= __vmx_vmwrite(GUEST_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
-	err |= __vmx_vmwrite(GUEST_CR0, cr0);
-	err |= __vmx_vmwrite(GUEST_CR3, ksm.origin_cr3);
-	err |= __vmx_vmwrite(GUEST_CR4, cr4);
-	err |= __vmx_vmwrite(GUEST_ES_BASE, 0);
-	err |= __vmx_vmwrite(GUEST_CS_BASE, 0);
-	err |= __vmx_vmwrite(GUEST_SS_BASE, 0);
-	err |= __vmx_vmwrite(GUEST_DS_BASE, 0);
-	err |= __vmx_vmwrite(GUEST_FS_BASE, __readmsr(MSR_IA32_FS_BASE));
-	err |= __vmx_vmwrite(GUEST_GS_BASE, __readmsr(MSR_IA32_GS_BASE));
-	err |= __vmx_vmwrite(GUEST_LDTR_BASE, __segmentbase(gdtr.base, ldt));
-	err |= __vmx_vmwrite(GUEST_TR_BASE, __segmentbase(gdtr.base, tr));
-	err |= __vmx_vmwrite(GUEST_GDTR_BASE, gdtr.base);
-	err |= __vmx_vmwrite(GUEST_IDTR_BASE, vcpu->idt.base);
-	err |= __vmx_vmwrite(GUEST_DR7, __readdr(7));
-	err |= __vmx_vmwrite(GUEST_RSP, sp);
-	err |= __vmx_vmwrite(GUEST_RIP, ip);
-	err |= __vmx_vmwrite(GUEST_RFLAGS, __readeflags());
-	err |= __vmx_vmwrite(GUEST_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
-	err |= __vmx_vmwrite(GUEST_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
+	err |= DEBUG_VMX_VMWRITE(GUEST_ES_SELECTOR, es);
+	err |= DEBUG_VMX_VMWRITE(GUEST_CS_SELECTOR, cs);
+	err |= DEBUG_VMX_VMWRITE(GUEST_SS_SELECTOR, ss);
+	err |= DEBUG_VMX_VMWRITE(GUEST_DS_SELECTOR, ds);
+	err |= DEBUG_VMX_VMWRITE(GUEST_FS_SELECTOR, fs);
+	err |= DEBUG_VMX_VMWRITE(GUEST_GS_SELECTOR, gs);
+	err |= DEBUG_VMX_VMWRITE(GUEST_LDTR_SELECTOR, ldt);
+	err |= DEBUG_VMX_VMWRITE(GUEST_TR_SELECTOR, tr);
+	err |= DEBUG_VMX_VMWRITE(GUEST_ES_LIMIT, __segmentlimit(es));
+	err |= DEBUG_VMX_VMWRITE(GUEST_CS_LIMIT, __segmentlimit(cs));
+	err |= DEBUG_VMX_VMWRITE(GUEST_SS_LIMIT, __segmentlimit(ss));
+	err |= DEBUG_VMX_VMWRITE(GUEST_DS_LIMIT, __segmentlimit(ds));
+	err |= DEBUG_VMX_VMWRITE(GUEST_FS_LIMIT, __segmentlimit(fs));
+	err |= DEBUG_VMX_VMWRITE(GUEST_GS_LIMIT, __segmentlimit(gs));
+	err |= DEBUG_VMX_VMWRITE(GUEST_LDTR_LIMIT, __segmentlimit(ldt));
+	err |= DEBUG_VMX_VMWRITE(GUEST_TR_LIMIT, __segmentlimit(tr));
+	err |= DEBUG_VMX_VMWRITE(GUEST_GDTR_LIMIT, gdtr.limit);
+	err |= DEBUG_VMX_VMWRITE(GUEST_IDTR_LIMIT, idtr.limit);
+	err |= DEBUG_VMX_VMWRITE(GUEST_ES_AR_BYTES, __accessright(es));
+	err |= DEBUG_VMX_VMWRITE(GUEST_CS_AR_BYTES, __accessright(cs));
+	err |= DEBUG_VMX_VMWRITE(GUEST_SS_AR_BYTES, __accessright(ss));
+	err |= DEBUG_VMX_VMWRITE(GUEST_DS_AR_BYTES, __accessright(ds));
+	err |= DEBUG_VMX_VMWRITE(GUEST_FS_AR_BYTES, __accessright(fs));
+	err |= DEBUG_VMX_VMWRITE(GUEST_GS_AR_BYTES, __accessright(gs));
+	err |= DEBUG_VMX_VMWRITE(GUEST_LDTR_AR_BYTES, __accessright(ldt));
+	err |= DEBUG_VMX_VMWRITE(GUEST_TR_AR_BYTES, __accessright(tr));
+	err |= DEBUG_VMX_VMWRITE(GUEST_INTERRUPTIBILITY_INFO, 0);
+	err |= DEBUG_VMX_VMWRITE(GUEST_ACTIVITY_STATE, 0);
+	err |= DEBUG_VMX_VMWRITE(GUEST_IA32_DEBUGCTL, __readmsr(MSR_IA32_DEBUGCTLMSR));
+	err |= DEBUG_VMX_VMWRITE(GUEST_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
+	err |= DEBUG_VMX_VMWRITE(GUEST_CR0, cr0);
+	err |= DEBUG_VMX_VMWRITE(GUEST_CR3, ksm.origin_cr3);
+	err |= DEBUG_VMX_VMWRITE(GUEST_CR4, cr4);
+	err |= DEBUG_VMX_VMWRITE(GUEST_ES_BASE, 0);
+	err |= DEBUG_VMX_VMWRITE(GUEST_CS_BASE, 0);
+	err |= DEBUG_VMX_VMWRITE(GUEST_SS_BASE, 0);
+	err |= DEBUG_VMX_VMWRITE(GUEST_DS_BASE, 0);
+	err |= DEBUG_VMX_VMWRITE(GUEST_FS_BASE, __readmsr(MSR_IA32_FS_BASE));
+	err |= DEBUG_VMX_VMWRITE(GUEST_GS_BASE, __readmsr(MSR_IA32_GS_BASE));
+	err |= DEBUG_VMX_VMWRITE(GUEST_LDTR_BASE, __segmentbase(gdtr.base, ldt));
+	err |= DEBUG_VMX_VMWRITE(GUEST_TR_BASE, __segmentbase(gdtr.base, tr));
+	err |= DEBUG_VMX_VMWRITE(GUEST_GDTR_BASE, gdtr.base);
+	err |= DEBUG_VMX_VMWRITE(GUEST_IDTR_BASE, vcpu->idt.base);
+	err |= DEBUG_VMX_VMWRITE(GUEST_DR7, __readdr(7));
+	err |= DEBUG_VMX_VMWRITE(GUEST_RSP, sp);
+	err |= DEBUG_VMX_VMWRITE(GUEST_RIP, ip);
+	err |= DEBUG_VMX_VMWRITE(GUEST_RFLAGS, __readeflags());
+	err |= DEBUG_VMX_VMWRITE(GUEST_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
+	err |= DEBUG_VMX_VMWRITE(GUEST_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
 
 	/* Host  */
-	err |= __vmx_vmwrite(HOST_ES_SELECTOR, es & 0xf8);
-	err |= __vmx_vmwrite(HOST_CS_SELECTOR, cs & 0xf8);
-	err |= __vmx_vmwrite(HOST_SS_SELECTOR, ss & 0xf8);
-	err |= __vmx_vmwrite(HOST_DS_SELECTOR, ds & 0xf8);
-	err |= __vmx_vmwrite(HOST_FS_SELECTOR, fs & 0xf8);
-	err |= __vmx_vmwrite(HOST_GS_SELECTOR, gs & 0xf8);
-	err |= __vmx_vmwrite(HOST_TR_SELECTOR, tr & 0xf8);
-	err |= __vmx_vmwrite(HOST_CR0, cr0);
-	err |= __vmx_vmwrite(HOST_CR3, ksm.kernel_cr3);
-	err |= __vmx_vmwrite(HOST_CR4, cr4);
-	err |= __vmx_vmwrite(HOST_FS_BASE, __readmsr(MSR_IA32_FS_BASE));
-	err |= __vmx_vmwrite(HOST_GS_BASE, __readmsr(MSR_IA32_GS_BASE));
-	err |= __vmx_vmwrite(HOST_TR_BASE, __segmentbase(gdtr.base, tr));
-	err |= __vmx_vmwrite(HOST_GDTR_BASE, gdtr.base);
-	err |= __vmx_vmwrite(HOST_IDTR_BASE, idtr.base);
-	err |= __vmx_vmwrite(HOST_IA32_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
-	err |= __vmx_vmwrite(HOST_IA32_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
-	err |= __vmx_vmwrite(HOST_IA32_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
-	err |= __vmx_vmwrite(HOST_RSP, stack_base);
-	err |= __vmx_vmwrite(HOST_RIP, (uintptr_t)__vmx_entrypoint);
+	err |= DEBUG_VMX_VMWRITE(HOST_ES_SELECTOR, es & 0xf8);
+	err |= DEBUG_VMX_VMWRITE(HOST_CS_SELECTOR, cs & 0xf8);
+	err |= DEBUG_VMX_VMWRITE(HOST_SS_SELECTOR, ss & 0xf8);
+	err |= DEBUG_VMX_VMWRITE(HOST_DS_SELECTOR, ds & 0xf8);
+	err |= DEBUG_VMX_VMWRITE(HOST_FS_SELECTOR, fs & 0xf8);
+	err |= DEBUG_VMX_VMWRITE(HOST_GS_SELECTOR, gs & 0xf8);
+	err |= DEBUG_VMX_VMWRITE(HOST_TR_SELECTOR, tr & 0xf8);
+	err |= DEBUG_VMX_VMWRITE(HOST_CR0, cr0);
+	err |= DEBUG_VMX_VMWRITE(HOST_CR3, ksm.kernel_cr3);
+	err |= DEBUG_VMX_VMWRITE(HOST_CR4, cr4);
+	err |= DEBUG_VMX_VMWRITE(HOST_FS_BASE, __readmsr(MSR_IA32_FS_BASE));
+	err |= DEBUG_VMX_VMWRITE(HOST_GS_BASE, __readmsr(MSR_IA32_GS_BASE));
+	err |= DEBUG_VMX_VMWRITE(HOST_TR_BASE, __segmentbase(gdtr.base, tr));
+	err |= DEBUG_VMX_VMWRITE(HOST_GDTR_BASE, gdtr.base);
+	err |= DEBUG_VMX_VMWRITE(HOST_IDTR_BASE, idtr.base);
+	err |= DEBUG_VMX_VMWRITE(HOST_IA32_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
+	err |= DEBUG_VMX_VMWRITE(HOST_IA32_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
+	err |= DEBUG_VMX_VMWRITE(HOST_IA32_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
+	err |= DEBUG_VMX_VMWRITE(HOST_RSP, stack_base);
+	err |= DEBUG_VMX_VMWRITE(HOST_RIP, (uintptr_t)__vmx_entrypoint);
 
 	return err == 0;
 }

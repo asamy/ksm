@@ -251,13 +251,14 @@ struct ept {
 	int pre_alloc_used;
 };
 
-/* Page Modification Logging  */
+#ifdef ENABLE_PML
 #define PML_MAX_ENTRIES		512
+#endif
 
 struct vcpu {
 	__declspec(align(PAGE_SIZE)) u8 stack[PAGE_SIZE];
 #ifdef ENABLE_PML
-	uintptr_t pml[512];
+	__declspec(align(PAGE_SIZE)) uintptr_t pml[PML_MAX_ENTRIES];
 #endif
 	__declspec(align(PAGE_SIZE)) struct vmcs vmxon;
 	__declspec(align(PAGE_SIZE)) struct vmcs vmcs;
