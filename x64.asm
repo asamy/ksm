@@ -3,7 +3,6 @@
 EXTERN vcpu_handle_exit : PROC
 EXTERN vcpu_handle_fail : PROC
 EXTERN vcpu_dump_regs : PROC
-EXTERN vcpu_subverted : PROC
 EXTERN __ept_handle_violation : PROC
 
 .CONST
@@ -67,15 +66,15 @@ ENDM
 __vmx_vminit PROC
 	pushfq
 	PUSHAQ			; -8 * 16
-
-	mov	rax, rcx	; func pointer
-	mov	r8, rdx		; func param
-	mov	rdx, do_resume	; IP after success
-	mov	rcx, rsp	; SP
+	
+	mov	rax, rcx	; vcpu_init pointer
+	mov	rcx, rdx	; vcpu
+	mov	rdx, rsp	; SP
+	mov	r8, do_resume	; IP after success
 
 	sub	rsp, 20h
 	call	rax		; func(rsp, do_resume, param)
-	add	rsp, 20h
+	add	rsp, 20
 
 	; if we get here, we failed
 	POPAQ
@@ -91,7 +90,6 @@ do_resume:
 	ASM_DUMP_REGISTERS
 	add	rsp, 8
 
-	call	vcpu_subverted
 	mov	rax, 1
 	ret
 __vmx_vminit ENDP

@@ -12,10 +12,6 @@
 #include "mm.h"
 #include "htable.h"
 
-#ifndef NonPagedPoolNx
-#define NonPagedPoolNx	512
-#endif
-
 /* Avoid NT retardism  */
 #define container_of(address, type, field)	CONTAINING_RECORD(address, type, field)
 
@@ -301,7 +297,7 @@ struct ksm {
 	u64 kernel_cr3;
 	u64 origin_cr3;
 	struct htable ht;
-	struct vcpu *vcpu_list[KSM_MAX_VCPUS];
+	struct vcpu vcpu_list[KSM_MAX_VCPUS];
 	__declspec(align(PAGE_SIZE)) u8 msr_bitmap[PAGE_SIZE];
 };
 extern struct ksm ksm;
@@ -338,7 +334,7 @@ extern void vcpu_dump_regs(const struct regs *regs, uintptr_t sp);
 extern void vcpu_set_mtf(bool enable);
 
 /* vcpu.c  */
-extern void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k);
+extern void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip);
 extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_subverted(void);
 

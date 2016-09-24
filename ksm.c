@@ -43,7 +43,12 @@ static NTSTATUS __ksm_init_cpu(struct ksm *k)
 		return status;
 
 	k->kernel_cr3 = __readcr3();
-	return __vmx_vminit(vcpu_init, k) ? STATUS_SUCCESS : STATUS_UNSUCCESSFUL;
+	if (__vmx_vminit(vcpu_init, &k->vcpu_list[cpu_nr()])) {
+		k->active_vcpus++;
+		return STATUS_SUCCESS;
+	}
+
+	return STATUS_UNSUCCESSFUL;
 }
 
 static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT change_ctx, PNTSTATUS op_status)
@@ -90,16 +95,18 @@ NTSTATUS ksm_init(void)
 
 static NTSTATUS __ksm_exit_cpu(struct ksm *k)
 {
-	struct vcpu *vcpu = NULL;
-	size_t err = __vmx_vmcall(HYPERCALL_STOP, &vcpu);
-	if (err)
-		VCPU_DEBUG("%d\n", err);
-	else
-		VCPU_DEBUG("stopped\n");
+	size_t err;
+	__try {
+		err = __vmx_vmcall(HYPERCALL_STOP, NULL);
+		VCPU_DEBUG("Stopped: %d\n", err);
+	} __except (EXCEPTION_EXECUTE_HANDLER)
+	{
+		VCPU_DEBUG("this processor is not virtualized: 0x%08X\n", GetExceptionCode());
+		return STATUS_HV_NOT_PRESENT;
+	}
 
-	k->vcpu_list[cpu_nr()] = NULL;
 	k->active_vcpus--;
-	vcpu_free(vcpu);
+	vcpu_free(ksm_current_cpu());
 	return err ? STATUS_UNSUCCESSFUL : STATUS_SUCCESS;
 }
 
@@ -137,5 +144,5 @@ NTSTATUS ksm_free_idt(unsigned n)
 
 struct vcpu *ksm_current_cpu(void)
 {
-	return ksm.vcpu_list[cpu_nr()];
+	return &ksm.vcpu_list[cpu_nr()];
 }

@@ -328,7 +328,7 @@ static inline void vcpu_adjust_rflags(struct guest_context *gc, bool success)
 	return vcpu_vm_fail_invalid(gc);
 }
 
-static inline void vcpu_do_exit(struct guest_context *gc, uintptr_t arg)
+static inline void vcpu_do_exit(struct guest_context *gc)
 {
 	struct gdtr gdt;
 	gdt.limit = (u16)vmcs_read(GUEST_GDTR_LIMIT);
@@ -337,9 +337,6 @@ static inline void vcpu_do_exit(struct guest_context *gc, uintptr_t arg)
 
 	struct vcpu *vcpu = to_vcpu(gc);
 	__lidt(&vcpu->g_idt);
-
-	// give them vcpu so they free it by themselves
-	*(struct vcpu **)arg = vcpu;
 
 	size_t ret = gc->ip + vmcs_read(VM_EXIT_INSTRUCTION_LEN);
 	vcpu_vm_succeed(gc);
@@ -416,7 +413,7 @@ static bool vcpu_handle_vmcall(struct guest_context *gc)
 	struct vcpu *vcpu = to_vcpu(gc);
 	switch (nr) {
 	case HYPERCALL_STOP:
-		vcpu_do_exit(gc, arg);
+		vcpu_do_exit(gc);
 		VCPU_TRACER_END();
 		return false;
 	case HYPERCALL_IDT:

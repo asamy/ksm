@@ -2,7 +2,7 @@
 
 static uintptr_t *__ept_alloc_entry(void)
 {
-	uintptr_t *entry = ExAllocatePool(NonPagedPoolNx, PAGE_SIZE);
+	uintptr_t *entry = ExAllocatePool(NonPagedPool, PAGE_SIZE);
 	if (!entry)
 		return NULL;
 
@@ -153,7 +153,7 @@ static inline void setup_eptp(uintptr_t *ptr, uintptr_t pml4_pfn)
 
 bool ept_setup_p(struct ept *ept, uintptr_t **pml4, uintptr_t *ptr)
 {
-	uintptr_t *pt_pml = ExAllocatePool(NonPagedPoolNx, PAGE_SIZE);
+	uintptr_t *pt_pml = ExAllocatePool(NonPagedPool, PAGE_SIZE);
 	if (!pt_pml)
 		return false;
 

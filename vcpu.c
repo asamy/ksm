@@ -268,26 +268,16 @@ static inline void vcpu_launch(void)
 	}
 }
 
-void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k)
+void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 {
-	struct vcpu *vcpu = ExAllocatePool(NonPagedPoolNx, sizeof(*vcpu));
-	if (!vcpu)
-		return;
-
 	RtlZeroMemory(vcpu, sizeof(*vcpu));
 	if (!ept_init(&vcpu->ept))
 		return ExFreePool(vcpu);
 
 	vcpu->idt.limit = PAGE_SIZE - 1;
-	vcpu->idt.base = (uintptr_t)ExAllocatePool(NonPagedPoolNx, PAGE_SIZE);
+	vcpu->idt.base = (uintptr_t)ExAllocatePool(NonPagedPool, PAGE_SIZE);
 	if (!vcpu->idt.base)
 		goto out;
-
-	for (int i = 0; i < 0x100; ++i)
-		vcpu->shadow_idt[i] = (struct kidt_entry64) { .e32 = (kidt_entry_t) { .p = 0 } };
-
-	k->vcpu_list[cpu_nr()] = vcpu;
-	k->active_vcpus++;
 
 	if (!enter_vmx(&vcpu->vmxon))
 		goto out;
@@ -315,13 +305,4 @@ void vcpu_free(struct vcpu *vcpu)
 		ExFreePool((void *)vcpu->idt.base);
 
 	ept_exit(&vcpu->ept);
-	ExFreePool(vcpu);
-}
-
-void vcpu_subverted(void)
-{
-	/* Post-virtualization  */
-	struct gdtr idt;
-	__sidt(&idt);
-	VCPU_DEBUG("Subverted, IDT: %p 0x%X\n", idt.base, idt.limit);
 }
