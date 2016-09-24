@@ -74,7 +74,7 @@ __vmx_vminit PROC
 
 	sub	rsp, 20h
 	call	rax		; func(rsp, do_resume, param)
-	add	rsp, 20
+	add	rsp, 20h
 
 	; if we get here, we failed
 	POPAQ
