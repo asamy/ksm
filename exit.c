@@ -83,7 +83,7 @@ static inline void vcpu_advance_rip(struct guest_context *gc)
 
 static inline void vcpu_inject_ve(struct vcpu *vcpu)
 {
-	struct ve_except_info *info = vcpu->ve;
+	struct ve_except_info *info = &vcpu->ve;
 	info->eptp = (u16)vmcs_read(EPTP_INDEX);
 	info->except_mask = ~0UL;
 	info->reason = EXIT_REASON_EPT_VIOLATION;

@@ -273,14 +273,14 @@ struct ept {
 #define PML_MAX_ENTRIES		512
 
 struct vcpu {
-	void *stack;
+	__declspec(align(PAGE_SIZE)) u8 stack[PAGE_SIZE];
 #ifdef ENABLE_PML
-	uintptr_t *pml;
+	uintptr_t pml[512];
 #endif
-	struct vmcs *vmxon;
-	struct vmcs *vmcs;
+	__declspec(align(PAGE_SIZE)) struct vmcs vmxon;
+	__declspec(align(PAGE_SIZE)) struct vmcs vmcs;
+	__declspec(align(PAGE_SIZE)) struct ve_except_info ve;
 	struct ept ept;
-	struct ve_except_info *ve;
 	struct gdtr g_idt;			/* Guest IDT (emulated)  */
 	struct gdtr idt;			/* Shadow IDT (working)  */
 	struct kidt_entry64 shadow_idt[0x100];	/* Shadow IDT entries  */
@@ -314,12 +314,12 @@ static inline size_t rehash(const void *e, void *unused)
 
 struct ksm {
 	int active_vcpus;
-	struct vcpu *vcpu_list[KSM_MAX_VCPUS];
 	void *hotplug_cpu;
-	void *msr_bitmap;
 	u64 kernel_cr3;
 	u64 origin_cr3;
 	struct htable ht;
+	struct vcpu *vcpu_list[KSM_MAX_VCPUS];
+	__declspec(align(PAGE_SIZE)) u8 msr_bitmap[PAGE_SIZE];
 };
 extern struct ksm ksm;
 

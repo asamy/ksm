@@ -5,16 +5,9 @@ struct ksm ksm = {
 	.active_vcpus = 0,
 };
 
-static NTSTATUS init_msr_bitmap(struct ksm *k)
+static void init_msr_bitmap(struct ksm *k)
 {
-	void *msr_bitmap = ExAllocatePool(NonPagedPoolNx, PAGE_SIZE);
-	if (!msr_bitmap)
-		return STATUS_NO_MEMORY;
-
-	k->msr_bitmap = msr_bitmap;
-	RtlZeroMemory(msr_bitmap, PAGE_SIZE);
-
-	u8 *bitmap_read_lo = (u8 *)msr_bitmap;
+	u8 *bitmap_read_lo = (u8 *)k->msr_bitmap;
 	RTL_BITMAP bitmap_read_lo_hdr;
 	RtlInitializeBitMap(&bitmap_read_lo_hdr, (PULONG)bitmap_read_lo, 1024 * CHAR_BIT);
 	RtlClearBits(&bitmap_read_lo_hdr, MSR_IA32_MPERF, 2);
@@ -22,7 +15,6 @@ static NTSTATUS init_msr_bitmap(struct ksm *k)
 	u8 *bitmap_read_hi = bitmap_read_lo + 1024;
 	RTL_BITMAP bitmap_read_hi_hdr;
 	RtlInitializeBitMap(&bitmap_read_hi_hdr, (PULONG)bitmap_read_hi, 1024 * CHAR_BIT);
-	return STATUS_SUCCESS;
 }
 
 static NTSTATUS set_lock_bit(void)
@@ -84,26 +76,20 @@ NTSTATUS ksm_init(void)
 	if (!ksm.hotplug_cpu)
 		return status;
 
-	status = init_msr_bitmap(&ksm);
-	if (!NT_SUCCESS(status))
-		goto err_hotplug;
-
 	/* Caller cr3 (could be user)  */
 	ksm.origin_cr3 = __readcr3();
 	htable_init(&ksm.ht, rehash, NULL);
+	init_msr_bitmap(&ksm);
 
 	STATIC_CALL_DPC(__call_init, &ksm);
-	return STATIC_DPC_RET();
-
-err_hotplug:
-	KeDeregisterProcessorChangeCallback(ksm.hotplug_cpu);
+	if (!NT_SUCCESS(STATIC_DPC_RET()))
+		KeDeregisterProcessorChangeCallback(ksm.hotplug_cpu);
+	
 	return status;
 }
 
 static NTSTATUS __ksm_exit_cpu(struct ksm *k)
 {
-	VCPU_DEBUG_RAW("going down\n");
-
 	struct vcpu *vcpu = NULL;
 	size_t err = __vmx_vmcall(HYPERCALL_STOP, &vcpu);
 	if (err)
@@ -123,11 +109,8 @@ NTSTATUS ksm_exit(void)
 	STATIC_CALL_DPC(__call_exit, &ksm);
 
 	NTSTATUS status = STATIC_DPC_RET();
-	if (NT_SUCCESS(status)) {
-		if (ksm.hotplug_cpu)
-			KeDeregisterProcessorChangeCallback(ksm.hotplug_cpu);
-		ExFreePool(ksm.msr_bitmap);
-	}
+	if (NT_SUCCESS(status) && ksm.hotplug_cpu)
+		KeDeregisterProcessorChangeCallback(ksm.hotplug_cpu);
 
 	return status;
 }

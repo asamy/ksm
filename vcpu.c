@@ -150,9 +150,9 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= __vmx_vmwrite(VM_FUNCTION_CTRL, VM_FUNCTION_CTL_EPTP_SWITCHING);
 	err |= __vmx_vmwrite(EPTP_INDEX, EPTP_DEFAULT);
 	err |= __vmx_vmwrite(EPTP_LIST_ADDRESS, __pa(ept->ptr_list));
-	err |= __vmx_vmwrite(VE_INFO_ADDRESS, __pa(vcpu->ve));
+	err |= __vmx_vmwrite(VE_INFO_ADDRESS, __pa(&vcpu->ve));
 #ifdef ENABLE_PML
-	err |= __vmx_vmwrite(PML_ADDRESS, __pa(vcpu->pml));
+	err |= __vmx_vmwrite(PML_ADDRESS, __pa(&vcpu->pml));
 	err |= __vmx_vmwrite(GUEST_PML_INDEX, PML_MAX_ENTRIES - 1);
 #endif
 	err |= __vmx_vmwrite(CR0_GUEST_HOST_MASK, __CR0_GUEST_HOST_MASK);
@@ -261,33 +261,6 @@ void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k)
 	if (!ept_init(&vcpu->ept))
 		return ExFreePool(vcpu);
 
-	vcpu->stack = MmAllocateContiguousMemory(KERNEL_STACK_SIZE, (PHYSICAL_ADDRESS) { .QuadPart = -1 });
-	if (!vcpu->stack)
-		goto out;
-	RtlZeroMemory(vcpu->stack, KERNEL_STACK_SIZE);
-
-	vcpu->vmcs = ExAllocatePool(NonPagedPoolNx, PAGE_SIZE);
-	if (!vcpu->vmcs)
-		goto out;
-	RtlZeroMemory(vcpu->vmcs, PAGE_SIZE);
-
-	vcpu->vmxon = ExAllocatePool(NonPagedPoolNx, PAGE_SIZE);
-	if (!vcpu->vmxon)
-		goto out;
-	RtlZeroMemory(vcpu->vmxon, PAGE_SIZE);
-
-	vcpu->ve = ExAllocatePool(NonPagedPoolNx, PAGE_SIZE);
-	if (!vcpu->ve)
-		goto out;
-	RtlZeroMemory(vcpu->ve, PAGE_SIZE);
-
-#ifdef ENABLE_PML
-	vcpu->pml = ExAllocatePool(NonPagedPoolNx, PML_MAX_ENTRIES * sizeof(uintptr_t));
-	if (!vcpu->pml)
-		goto out;
-	RtlZeroMemory(vcpu->pml, PML_MAX_ENTRIES * sizeof(uintptr_t));
-#endif
-
 	vcpu->idt.limit = PAGE_SIZE - 1;
 	vcpu->idt.base = (uintptr_t)ExAllocatePool(NonPagedPoolNx, PAGE_SIZE);
 	if (!vcpu->idt.base)
@@ -299,10 +272,10 @@ void vcpu_init(uintptr_t sp, uintptr_t ip, struct ksm *k)
 	k->vcpu_list[cpu_nr()] = vcpu;
 	k->active_vcpus++;
 
-	if (!enter_vmx(vcpu->vmxon))
+	if (!enter_vmx(&vcpu->vmxon))
 		goto out;
 
-	if (!init_vmcs(vcpu->vmcs))
+	if (!init_vmcs(&vcpu->vmcs))
 		goto out_off;
 
 	if (setup_vmcs(vcpu, sp, ip, (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE))
@@ -321,23 +294,6 @@ out:
 
 void vcpu_free(struct vcpu *vcpu)
 {
-	if (vcpu->stack)
-		MmFreeContiguousMemory(vcpu->stack);
-
-#ifdef ENABLE_PML
-	if (vcpu->pml)
-		ExFreePool(vcpu->pml);
-#endif
-
-	if (vcpu->vmcs)
-		ExFreePool(vcpu->vmcs);
-
-	if (vcpu->vmxon)
-		ExFreePool(vcpu->vmxon);
-
-	if (vcpu->ve)
-		ExFreePool(vcpu->ve);
-
 	if (vcpu->idt.base)
 		ExFreePool((void *)vcpu->idt.base);
 

@@ -286,7 +286,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 {
 	struct vcpu *vcpu = ksm_current_cpu();
-	struct ve_except_info *info = vcpu->ve;
+	struct ve_except_info *info = &vcpu->ve;
 	struct ept *ept = &vcpu->ept;
 
 	u16 eptp = info->eptp;
