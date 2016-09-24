@@ -367,12 +367,6 @@ static inline bool vcpu_handle_unhook(struct vcpu *vcpu, uintptr_t dpfn)
 	return true;
 }
 
-static inline void vcpu_fail_vmx(struct guest_context *gc)
-{
-	gc->eflags |= X86_EFLAGS_CF;
-	gc->eflags &= ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF | X86_EFLAGS_SF | X86_EFLAGS_OF);
-}
-
 static inline void vcpu_flush_idt(struct vcpu *vcpu)
 {
 	__vmx_vmwrite(GUEST_IDTR_LIMIT, vcpu->idt.limit);

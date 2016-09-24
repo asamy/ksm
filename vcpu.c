@@ -272,12 +272,12 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 {
 	RtlZeroMemory(vcpu, sizeof(*vcpu));
 	if (!ept_init(&vcpu->ept))
-		return ExFreePool(vcpu);
+		return;
 
 	vcpu->idt.limit = PAGE_SIZE - 1;
 	vcpu->idt.base = (uintptr_t)ExAllocatePool(NonPagedPool, PAGE_SIZE);
 	if (!vcpu->idt.base)
-		goto out;
+		return ept_exit(&vcpu->ept);
 
 	if (!enter_vmx(&vcpu->vmxon))
 		goto out;

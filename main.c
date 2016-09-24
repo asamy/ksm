@@ -70,7 +70,7 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 {
 	UNREFERENCED_PARAMETER(driverObject);
 	deregister_power_callback(&g_dev_ext);
-	ksm_unhook_page(MmMapLockedPagesSpecifyCache);
+	//	ksm_unhook_page(MmMapLockedPagesSpecifyCache);
 	VCPU_DEBUG("ret: 0x%08X\n", ksm_exit());
 }
 
@@ -132,9 +132,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (NT_SUCCESS(status))
 		status = register_power_callback(&g_dev_ext);
 
-//	Uncomment to enable the small hooking example
-//	if (NT_SUCCESS(status))
-//		status = PsCreateSystemThread(&hThread, STANDARD_RIGHTS_ALL, NULL, NULL, &cid, (PKSTART_ROUTINE)sys_thread, NULL);
+	//	Uncomment to enable the small hooking example
+	//	if (NT_SUCCESS(status))
+	//		status = PsCreateSystemThread(&hThread, STANDARD_RIGHTS_ALL, NULL, NULL, &cid, (PKSTART_ROUTINE)sys_thread, NULL);
 
 	VCPU_DEBUG("ret: 0x%08X\n", status);
 	return status;

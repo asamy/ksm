@@ -8,7 +8,7 @@
 #include "x86.h"
 #include "vmx.h"
 #include "asm.h"
-#include "idt.h"
+#include "segment.h"
 #include "mm.h"
 #include "htable.h"
 
@@ -44,7 +44,7 @@
 #define REG_R15			15
 #define REG_MAX			16
 
-#define VCPU_EXIT_IRQL			DISPATCH_LEVEL
+#define VCPU_EXIT_IRQL			HIGH_LEVEL
 #define VCPU_BUGCHECK_CODE		0xCCDDFF11
 #define VCPU_TRIPLEFAULT		0x33DDE83A
 #define VCPU_BUG_UNHANDLED		0xBAADF00D
@@ -291,6 +291,14 @@ static inline size_t rehash(const void *e, void *unused)
 	return page_hash(((struct page_hook_info *)e)->origin);
 }
 
+typedef struct _DEV_EXT {
+	PVOID CbRegistration;
+	PCALLBACK_OBJECT CbObject;
+} DEV_EXT, *PDEV_EXT;
+
+extern NTSTATUS register_power_callback(PDEV_EXT ext);
+extern void deregister_power_callback(PDEV_EXT ext);
+
 struct ksm {
 	int active_vcpus;
 	void *hotplug_cpu;
@@ -336,7 +344,6 @@ extern void vcpu_set_mtf(bool enable);
 /* vcpu.c  */
 extern void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip);
 extern void vcpu_free(struct vcpu *vcpu);
-extern void vcpu_subverted(void);
 
 static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)
 {

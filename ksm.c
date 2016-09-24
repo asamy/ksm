@@ -87,7 +87,7 @@ NTSTATUS ksm_init(void)
 	init_msr_bitmap(&ksm);
 
 	STATIC_CALL_DPC(__call_init, &ksm);
-	if (!NT_SUCCESS(STATIC_DPC_RET()))
+	if (!NT_SUCCESS(status = STATIC_DPC_RET()))
 		KeDeregisterProcessorChangeCallback(ksm.hotplug_cpu);
 	
 	return status;
