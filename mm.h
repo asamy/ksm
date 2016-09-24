@@ -73,6 +73,22 @@ static uintptr_t pte_top = 0xFFFFF6FFFFFFFFFFULL;
 #define PAGE_NX				0x8000000000000000
 #define PAGE_LPRESENT			(PAGE_PRESENT | PAGE_LARGE)
 
+#define __pxe_idx(phys)			(((phys) >> PXI_SHIFT) & PTX_MASK)
+#define __ppe_idx(phys)			(((phys) >> PPI_SHIFT) & PTX_MASK)
+#define __pde_idx(phys)			(((phys) >> PDI_SHIFT) & PTX_MASK)
+#define __pte_idx(phys)			(((phys) >> PTI_SHIFT) & PTX_MASK)
+
+#define __pa(va)			(uintptr_t)MmGetPhysicalAddress((void *)(va)).QuadPart
+#define __va(pa)			(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (pa) })
+
+static inline uintptr_t *page_addr(uintptr_t *page)
+{
+	if (!*page)
+		return 0;
+
+	return __va(PAGE_PA(*page));
+}
+
 static inline int pte_soft_ws_idx(uintptr_t *pte)
 {
 	return (*pte >> PAGE_SOFT_WS_IDX_SHIFT) & PAGE_SOFT_WS_IDX_MASK;

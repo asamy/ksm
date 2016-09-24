@@ -1,10 +1,5 @@
 #include "ksm.h"
 
-#define __pxe_idx(phys)			(((phys) >> PXI_SHIFT) & PTX_MASK)
-#define __ppe_idx(phys)			(((phys) >> PPI_SHIFT) & PTX_MASK)
-#define __pde_idx(phys)			(((phys) >> PDI_SHIFT) & PTX_MASK)
-#define __pte_idx(phys)			(((phys) >> PTI_SHIFT) & PTX_MASK)
-
 static uintptr_t *__ept_alloc_entry(void)
 {
 	uintptr_t *entry = ExAllocatePool(NonPagedPoolNx, PAGE_SIZE);
@@ -27,19 +22,11 @@ static uintptr_t *ept_alloc_entry(struct ept *ept)
 	return __ept_alloc_entry();
 }
 
-static inline uintptr_t *page_addr(uintptr_t *page)
-{
-	if (!*page)
-		return 0;
-
-	return __va(PAGE_PA(*page));
-}
-
 static inline void ept_init_entry(uintptr_t *entry, uint8_t access, uintptr_t phys)
 {
 	*entry ^= *entry;
 	*entry |= access & EPT_ACCESS_MAX_BITS;
-	*entry |= __pfn(phys) << PAGE_SHIFT;
+	*entry |= (phys >> PAGE_SHIFT) << PAGE_SHIFT;
 #ifdef EPT_SUPPRESS_VE
 	*entry |= EPT_SUPPRESS_VE_BIT;
 #endif
@@ -177,17 +164,12 @@ bool ept_setup_p(struct ept *ept, uintptr_t **pml4, uintptr_t *ptr)
 	}
 
 	*pml4 = pt_pml;
-	setup_eptp(ptr, __pfn(__pa(pt_pml)));
+	setup_eptp(ptr, __pa(pt_pml) >> PAGE_SHIFT);
 	return true;
 }
 
 bool ept_init(struct ept *ept)
 {
-	ept->ptr_list = ExAllocatePool(NonPagedPoolNx, EPT_MAX_EPTP_LIST * sizeof(uintptr_t));
-	if (!ept->ptr_list)
-		return false;
-	RtlZeroMemory(ept->ptr_list, EPT_MAX_EPTP_LIST * sizeof(uintptr_t));
-
 	/* This can take some time (~5s) and is not very nice...
 	 * FIXME: implement some caching.  */
 	for (int i = 0; i < EPTP_USED; ++i)
@@ -209,7 +191,6 @@ err_pre:
 	ept_free_prealloc(ept);
 err_pml4_list:
 	ept_free_pml4_list(ept);
-	ExFreePool(ept->ptr_list);
 	return false;
 }
 
@@ -217,8 +198,6 @@ void ept_exit(struct ept *ept)
 {
 	ept_free_prealloc(ept);
 	ept_free_pml4_list(ept);
-	if (ept->ptr_list)
-		ExFreePool(ept->ptr_list);
 }
 
 uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys)

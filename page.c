@@ -148,8 +148,8 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 	memcpy(code_page + offset, &trampo, sizeof(trampo));
 
 	phi->c_va = code_page;
-	phi->c_pfn = __pfn(__pa(code_page));
-	phi->d_pfn = __pfn(__pa(original));
+	phi->c_pfn = __pa(code_page) >> PAGE_SHIFT;
+	phi->d_pfn = __pa(original) >> PAGE_SHIFT;
 	phi->origin = (u64)aligned;
 	phi->ops = &epage_ops;
 	phi->mdl = mdl;

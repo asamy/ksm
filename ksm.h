@@ -19,24 +19,6 @@
 /* Avoid NT retardism  */
 #define container_of(address, type, field)	CONTAINING_RECORD(address, type, field)
 
-static inline uintptr_t __pa(uintptr_t *va)
-{
-	return (uintptr_t)MmGetPhysicalAddress((void *)va).QuadPart;
-}
-
-static inline uintptr_t *__va(uintptr_t phys)
-{
-	PHYSICAL_ADDRESS p;
-	p.QuadPart = phys;
-
-	return (uintptr_t *)MmGetVirtualForPhysical(p);
-}
-
-static inline uintptr_t __pfn(uintptr_t phys)
-{
-	return phys >> PAGE_SHIFT;
-}
-
 #define KSM_MAX_VCPUS		32
 #define __CR0_GUEST_HOST_MASK	0
 #define __CR4_GUEST_HOST_MASK	0
@@ -263,7 +245,7 @@ struct ve_except_info {
 };
 
 struct ept {
-	uintptr_t *ptr_list;
+	__declspec(align(PAGE_SIZE)) uintptr_t ptr_list[EPT_MAX_EPTP_LIST];
 	uintptr_t *pml4_list[EPTP_USED];
 	uintptr_t *pre_alloc[EPT_MAX_PREALLOC];
 	int pre_alloc_used;

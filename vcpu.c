@@ -149,7 +149,7 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= __vmx_vmwrite(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
 	err |= __vmx_vmwrite(VM_FUNCTION_CTRL, VM_FUNCTION_CTL_EPTP_SWITCHING);
 	err |= __vmx_vmwrite(EPTP_INDEX, EPTP_DEFAULT);
-	err |= __vmx_vmwrite(EPTP_LIST_ADDRESS, __pa(ept->ptr_list));
+	err |= __vmx_vmwrite(EPTP_LIST_ADDRESS, __pa(&ept->ptr_list));
 	err |= __vmx_vmwrite(VE_INFO_ADDRESS, __pa(&vcpu->ve));
 #ifdef ENABLE_PML
 	err |= __vmx_vmwrite(PML_ADDRESS, __pa(&vcpu->pml));
