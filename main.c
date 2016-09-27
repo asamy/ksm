@@ -1,6 +1,5 @@
 #include "ksm.h"
 #include "dpc.h"
-#include "acpi.h"
 #include "pe.h"
 
 static DEV_EXT g_dev_ext = { NULL, NULL };

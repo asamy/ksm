@@ -5,6 +5,23 @@ EXTERN vcpu_handle_fail : PROC
 EXTERN vcpu_dump_regs : PROC
 EXTERN __ept_handle_violation : PROC
 
+KFRAME_RET  = -64h
+KFRAME_RPL  = -60h
+KFRAME_CSR  = -58h
+KFRAME_RAX  = -50h
+KFRAME_RCX  = -48h
+KFRAME_RDX  = -40h
+KFRAME_R8   = -38h
+KFRAME_R9   = -30h
+KFRAME_R10  = -28h
+KFRAME_R11  = -20h
+KFRAME_XMM0 = -10h
+KFRAME_XMM1 = +0h
+KFRAME_XMM2 = +10h
+KFRAME_XMM3 = +20h
+KFRAME_XMM4 = +30h
+KFRAME_XMM5 = +40h
+
 .CONST
 
 ; Saves all general purpose registers to the stack
@@ -59,6 +76,78 @@ ASM_DUMP_REGISTERS MACRO
     
 	POPAQ
 	popfq
+ENDM
+
+TRAP_ENTER MACRO
+	; stack:
+	;		ss (+40)
+	;		rsp (+32)
+	;		rflags (+24)
+	;		cs (+16)
+	;		ip (+8)	
+	;		ec (+0)			<-- rsp
+
+	push	rbp			; save rbp
+	sub	rsp, 158h		; squeeze it to make shit fit
+	lea	rbp, [rsp + 80h]
+
+	; stack:
+	;		ss	(+188h)
+	;		rsp	(+180h)
+	;		rflags  (+178h)
+	;		cs	(+170h)
+	;		ip	(+168h)
+	;		ec	(+160h)
+	;		rbp	(+158h)			<- original rbp saved
+	;		frame	(+080h)			<- actual rbp pointing here
+	;		data	(+000h)			<- rsp
+	mov	[rbp + KFRAME_RAX], rax
+	mov	[rbp + KFRAME_RCX], rcx 
+	mov	[rbp + KFRAME_RDX], rdx
+	mov	[rbp + KFRAME_R8], r8
+	mov	[rbp + KFRAME_R9], r9
+	mov	[rbp + KFRAME_R10], r10
+	mov	[rbp + KFRAME_R11], r11
+
+	; save RPL
+	mov	ax, word ptr[rbp + 0F0h]
+	and	al, 1
+	mov	[rbp + KFRAME_RPL], al
+ENDM
+
+TRAP_EXIT MACRO
+	mov	r11, [rbp + KFRAME_R11]
+	mov	r10, [rbp + KFRAME_R10]
+	mov	r9,  [rbp + KFRAME_R9]
+	mov	r8,  [rbp + KFRAME_R8]
+	mov	rdx, [rbp + KFRAME_RDX]
+	mov	rcx, [rbp + KFRAME_RCX] 
+	mov	rax, [rbp + KFRAME_RAX]
+
+	mov	rsp, rbp
+	mov	rbp, [rbp + 0D8h]
+	add	rsp, 0E8h
+ENDM
+
+TRAP_REST_XMM MACRO
+	ldmxcsr	dword ptr[rbp + KFRAME_CSR]
+	movaps	xmm0, xmmword ptr[rbp + KFRAME_XMM0]
+	movaps	xmm1, xmmword ptr[rbp + KFRAME_XMM1]
+	movaps	xmm2, xmmword ptr[rbp + KFRAME_XMM2]
+	movaps	xmm3, xmmword ptr[rbp + KFRAME_XMM3]
+	movaps	xmm4, xmmword ptr[rbp + KFRAME_XMM4]
+	movaps	xmm5, xmmword ptr[rbp + KFRAME_XMM5]
+ENDM
+
+TRAP_SAVE_XMM MACRO
+	stmxcsr	dword ptr [rbp + KFRAME_CSR]
+	ldmxcsr	dword ptr gs:[180h]
+	movaps	[rbp + KFRAME_XMM0], xmm0
+	movaps	[rbp + KFRAME_XMM1], xmm1
+	movaps	[rbp + KFRAME_XMM2], xmm2
+	movaps	[rbp + KFRAME_XMM3], xmm3
+	movaps	[rbp + KFRAME_XMM4], xmm4
+	movaps	[rbp + KFRAME_XMM5], xmm5
 ENDM
 
 .CODE
@@ -267,114 +356,31 @@ __invvpid PROC
 __invvpid ENDP
 
 __ept_violation PROC
-	; stack:
-	;		ss (+40)
-	;		rsp (+32)
-	;		rflags (+16)
-	;		cs (+8)	
-	;		ip (+0)			<-- rsp
-
-	sub	rsp, 8			; dummy error code (See struct ve_except_info of vcpu)
-	push	rbp			; save rbp
-	sub	rsp, 158h		; squeeze it to make shit fit
-	lea	rbp, [rsp + 80h]
-
-	; stack:
-	;		cs	(+170h)
-	;		ip	(+168h)
-	;		ec	(+160h)
-	;		rbp	(+158h)			<- original rbp saved
-	;		frame	(+080h)			<- actual rbp pointing here
-	;		data	(+000h)			<- rsp
-
-	; rbp frame:
-	;		-58h = RPL
-	;		-54h = mxcsr
-	;		-50h = rax
-	;		-48h = rcx
-	;		-40h = rdx
-	;		-38h = r8
-	;		-30h = r9
-	;		-28h = r10
-	;		-20h = r11
-	;		-10h = xmm0
-	;		+ 0 = xmm1
-	;		+10h = xmm2
-	;		+20h = xmm3
-	;		+30h = xmm4
-	;		+40h = xmm5
-
-	mov	[rbp - 50h], rax
-	mov	[rbp - 48h], rcx 
-	mov	[rbp - 40h], rdx
-	mov	[rbp - 38h], r8
-	mov	[rbp - 30h], r9
-	mov	[rbp - 28h], r10
-	mov	[rbp - 20h], r11
-
-	; save RPL and check if it's coming from user mode...
-	mov	ax, word ptr[rbp + 0F0h]
-	and	al, 1
-	mov	[rbp - 58h], al
-	jz	no_swap
+	sub	rsp, 8
+	TRAP_ENTER
+	jz	ept_no_swap
 	swapgs
 
-no_swap:
+ept_no_swap:
 	cld
-	stmxcsr	dword ptr [rbp - 54h]
-	ldmxcsr	dword ptr gs:[180h]
-	movaps	[rbp - 10h], xmm0
-	movaps	[rbp + 0h], xmm1
-	movaps	[rbp + 10h], xmm2
-	movaps	[rbp + 20h], xmm3
-	movaps	[rbp + 30h], xmm4
-	movaps	[rbp + 40h], xmm5
+	TRAP_SAVE_XMM
 
-	mov	rcx, [rbp + 0F0h]			; cs
-	mov	rdx, [rbp + 0E8h]			; rip
+	mov	rcx, [rbp + 0F0h]		; cs
+	mov	rdx, [rbp + 0E8h]		; rip
+	mov	r8,  [rbp + 0E0h]		; ec	
 	call	__ept_handle_violation
 
-	test	byte ptr [rbp - 58h], 1
-	jz	intr_ret_noswap
+	test	byte ptr [rbp + KFRAME_RPL], 1
+	jz	ept_ret_noswap
 
-	ldmxcsr	dword ptr[rbp - 54h]
-	movaps	xmm0, xmmword ptr[rbp - 10h]
-	movaps	xmm1, xmmword ptr[rbp + 0h]
-	movaps	xmm2, xmmword ptr[rbp + 10h]
-	movaps	xmm3, xmmword ptr[rbp + 20h]
-	movaps	xmm4, xmmword ptr[rbp + 30h]
-	movaps	xmm5, xmmword ptr[rbp + 40h]
-	mov	r11, [rbp - 20h]
-	mov	r10, [rbp - 28h]
-	mov	r9,  [rbp - 30h]
-	mov	r8,  [rbp - 38h]
-	mov	rdx, [rbp - 40h]
-	mov	rcx, [rbp - 48h] 
-	mov	rax, [rbp - 50h]
-	mov	rsp, rbp
-	mov	rbp, [rbp + 0D8h]
-	add	rsp, 0E8h
+	TRAP_REST_XMM
+	TRAP_EXIT
 	swapgs
 	iretq
 
-intr_ret_noswap:
-	ldmxcsr	dword ptr[rbp - 54h]
-	movaps	xmm0, xmmword ptr[rbp - 10h]
-	movaps	xmm1, xmmword ptr[rbp + 0h]
-	movaps	xmm2, xmmword ptr[rbp + 10h]
-	movaps	xmm3, xmmword ptr[rbp + 20h]
-	movaps	xmm4, xmmword ptr[rbp + 30h]
-	movaps	xmm5, xmmword ptr[rbp + 40h]
-	mov	r11, [rbp - 20h]
-	mov	r10, [rbp - 28h]
-	mov	r9,  [rbp - 30h]
-	mov	r8,  [rbp - 38h]
-	mov	rdx, [rbp - 40h]
-	mov	rcx, [rbp - 48h] 
-	mov	rax, [rbp - 50h]
-	mov	rsp, rbp
-	mov	rbp, [rbp + 0D8h]
-	add	rsp, 0E8h
+ept_ret_noswap:
+	TRAP_REST_XMM
+	TRAP_EXIT
 	iretq
 __ept_violation ENDP
 
