@@ -5,9 +5,8 @@ EXTERN vcpu_handle_fail : PROC
 EXTERN vcpu_dump_regs : PROC
 EXTERN __ept_handle_violation : PROC
 
-KFRAME_RET  = -64h
-KFRAME_RPL  = -60h
-KFRAME_CSR  = -58h
+KFRAME_RPL  = -56h
+KFRAME_CSR  = -54h
 KFRAME_RAX  = -50h
 KFRAME_RCX  = -48h
 KFRAME_RDX  = -40h
@@ -21,6 +20,12 @@ KFRAME_XMM2 = +10h
 KFRAME_XMM3 = +20h
 KFRAME_XMM4 = +30h
 KFRAME_XMM5 = +40h
+KFRAME_SS   = +108h
+KFRAME_RSP  = +100h
+KFRAME_FLGS = +0F8h
+KFRAME_CS   = +0F0h
+KFRAME_EC   = +0E0h
+KFRAME_IP   = +0E8h
 
 .CONST
 
@@ -78,7 +83,7 @@ ASM_DUMP_REGISTERS MACRO
 	popfq
 ENDM
 
-TRAP_ENTER MACRO
+TRAP_ENTER MACRO	NO_SWAP_LABEL
 	; stack:
 	;		ss (+40)
 	;		rsp (+32)
@@ -109,10 +114,11 @@ TRAP_ENTER MACRO
 	mov	[rbp + KFRAME_R10], r10
 	mov	[rbp + KFRAME_R11], r11
 
-	; save RPL
-	mov	ax, word ptr[rbp + 0F0h]
+	mov	ax, word ptr [rbp + 0F0h]
 	and	al, 1
 	mov	[rbp + KFRAME_RPL], al
+	jz	NO_SWAP_LABEL
+	swapgs
 ENDM
 
 TRAP_EXIT MACRO
@@ -125,7 +131,7 @@ TRAP_EXIT MACRO
 	mov	rax, [rbp + KFRAME_RAX]
 
 	mov	rsp, rbp
-	mov	rbp, [rbp + 0D8h]
+	mov	rbp, qword ptr [rbp + 0D8h]
 	add	rsp, 0E8h
 ENDM
 
@@ -357,17 +363,14 @@ __invvpid ENDP
 
 __ept_violation PROC
 	sub	rsp, 8
-	TRAP_ENTER
-	jz	ept_no_swap
-	swapgs
+	TRAP_ENTER(ept_no_swap)
 
 ept_no_swap:
 	cld
 	TRAP_SAVE_XMM
 
-	mov	rcx, [rbp + 0F0h]		; cs
-	mov	rdx, [rbp + 0E8h]		; rip
-	mov	r8,  [rbp + 0E0h]		; ec	
+	mov	rcx, [rbp + KFRAME_CS]
+	mov	rdx, [rbp + KFRAME_IP]
 	call	__ept_handle_violation
 
 	test	byte ptr [rbp + KFRAME_RPL], 1
