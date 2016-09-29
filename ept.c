@@ -291,7 +291,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 		u16 eptp_switch = h->ops->select_eptp(h, eptp, ar, ac);
 		if (eptp_switch != eptp) {
 			VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
-			__vmx_vmfunc(0, eptp_switch);
+			__vmx_vmfunc(eptp_switch, 0);
 			return;
 		}
 

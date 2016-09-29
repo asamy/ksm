@@ -114,7 +114,7 @@ TRAP_ENTER MACRO	NO_SWAP_LABEL
 	mov	[rbp + KFRAME_R10], r10
 	mov	[rbp + KFRAME_R11], r11
 
-	mov	ax, word ptr [rbp + 0F0h]
+	mov	ax, word ptr [rbp + KFRAME_CS]
 	and	al, 1
 	mov	[rbp + KFRAME_RPL], al
 	jz	NO_SWAP_LABEL
@@ -234,9 +234,8 @@ __vmx_vmcall PROC
 __vmx_vmcall ENDP
 
 __vmx_vmfunc PROC
-	mov	eax, ecx
-	mov	ecx, edx
-	dd	90d4010fh	; vmfunc nop
+	mov	eax, edx
+	db	0fh, 01h, 0d4h
 	setz	al
 	setc	al
 	ret
