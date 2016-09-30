@@ -260,9 +260,12 @@ struct vcpu {
 	__declspec(align(PAGE_SIZE)) struct vmcs vmcs;
 	__declspec(align(PAGE_SIZE)) struct ve_except_info ve;
 	struct ept ept;
-	struct gdtr g_idt;			/* Guest IDT (emulated)  */
-	struct gdtr idt;			/* Shadow IDT (working)  */
-	struct kidt_entry64 shadow_idt[0x100];	/* Shadow IDT entries  */
+	/* Guest IDT (emulated)  */
+	struct gdtr g_idt;
+	/* Shadow IDT (working)  */
+	struct gdtr idt;
+	/* Shadow entires we know about so we can restore them appropriately.  */
+	struct kidt_entry64 shadow_idt[X86_TRAP_VE + 1];
 };
 
 struct phi_ops {
