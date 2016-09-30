@@ -1,5 +1,6 @@
 ; Copyright (c) 2015-2016, tandasat. All rights reserved .  Original initialization code
 ; Copyright (C) 2015-2016, asamy, improvements and added support for IDT #VE handling, and optimized some operations
+EXTERN vcpu_init : PROC
 EXTERN vcpu_handle_exit : PROC
 EXTERN vcpu_handle_fail : PROC
 EXTERN vcpu_dump_regs : PROC
@@ -161,20 +162,19 @@ ENDM
 __vmx_vminit PROC
 	pushfq
 	PUSHAQ			; -8 * 16
-	
-	mov	rax, rcx	; vcpu_init pointer
-	mov	rcx, rdx	; vcpu
+
+	; rcx contains vcpu
 	mov	rdx, rsp	; SP
 	mov	r8, do_resume	; IP after success
 
 	sub	rsp, 20h
-	call	rax		; func(rsp, do_resume, param)
+	call	vcpu_init
 	add	rsp, 20h
 
 	; if we get here, we failed
 	POPAQ
 	popfq
-	xor	rax, rax
+	xor	al, al
 	ret
 
 do_resume:
@@ -185,7 +185,7 @@ do_resume:
 	ASM_DUMP_REGISTERS
 	add	rsp, 8
 
-	mov	rax, 1
+	mov	al, 1
 	ret
 __vmx_vminit ENDP
 

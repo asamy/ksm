@@ -57,7 +57,7 @@ static inline bool test_bit(u64 bits, u64 bs)
 	return (bits & bs) == bs;
 }
 
-extern bool __vmx_vminit(void *, void *);
+extern bool __vmx_vminit(struct vcpu *);
 extern void __vmx_entrypoint(void);
 
 extern u8 __vmx_vmcall(uintptr_t, void *);

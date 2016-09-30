@@ -43,7 +43,7 @@ static NTSTATUS __ksm_init_cpu(struct ksm *k)
 		return status;
 
 	k->kernel_cr3 = __readcr3();
-	if (__vmx_vminit(vcpu_init, &k->vcpu_list[cpu_nr()])) {
+	if (__vmx_vminit(&k->vcpu_list[cpu_nr()])) {
 		k->active_vcpus++;
 		return STATUS_SUCCESS;
 	}
