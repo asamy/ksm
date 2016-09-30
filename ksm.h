@@ -331,7 +331,6 @@ extern struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn);
 extern bool ept_check_capabilitiy(void);
 extern bool ept_init(struct ept *ept);
 extern void ept_exit(struct ept *ept);
-extern bool ept_setup_p(struct ept *ept, uintptr_t **pml4, uintptr_t *ptr);
 extern uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uintptr_t phys);
 extern uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys);
 extern void ept_switch_root_p(struct ept *ept, u16 index);

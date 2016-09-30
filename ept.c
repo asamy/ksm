@@ -112,7 +112,7 @@ static void ept_free_pml4_list(struct ept *ept)
 			ept_free_entries(ept->pml4_list[i], 4);
 }
 
-static bool setup_pml4(uintptr_t *pml4)
+static bool setup_pml4(struct ept *ept)
 {
 	PPHYSICAL_MEMORY_RANGE pm_ranges = MmGetPhysicalMemoryRanges();
 	bool ret = false;
@@ -126,14 +126,16 @@ static bool setup_pml4(uintptr_t *pml4)
 		uintptr_t nr_pages = BYTES_TO_PAGES(bytes);
 		for (uintptr_t page = 0; page < nr_pages; ++page) {
 			uintptr_t page_addr = base_addr + page * PAGE_SIZE;
-			uintptr_t *entry = ept_alloc_page(NULL, pml4, EPT_ACCESS_ALL, page_addr);
-			if (!entry)
-				goto out;
+			for_each_eptp(i)
+				if (!ept_alloc_page(NULL, EPT4(ept, i), EPT_ACCESS_ALL, page_addr))
+					goto out;
 		}
 	}
 
 	/* Allocate APIC page  */
-	ret = !!ept_alloc_page(NULL, pml4, EPT_ACCESS_ALL, __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE);
+	for_each_eptp(i)
+		if (!(ret = ept_alloc_page(NULL, EPT4(ept, i), EPT_ACCESS_ALL, __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE)))
+			break;
 
 out:
 	ExFreePool(pm_ranges);
@@ -151,30 +153,19 @@ static inline void setup_eptp(uintptr_t *ptr, uintptr_t pml4_pfn)
 	*ptr |= pml4_pfn << PAGE_SHIFT;
 }
 
-bool ept_setup_p(struct ept *ept, uintptr_t **pml4, uintptr_t *ptr)
-{
-	uintptr_t *pt_pml = ExAllocatePool(NonPagedPool, PAGE_SIZE);
-	if (!pt_pml)
-		return false;
-
-	RtlZeroMemory(pt_pml, PAGE_SIZE);
-	if (!setup_pml4(pt_pml)) {
-		ExFreePool(pt_pml);
-		return false;
-	}
-
-	*pml4 = pt_pml;
-	setup_eptp(ptr, __pa(pt_pml) >> PAGE_SHIFT);
-	return true;
-}
-
 bool ept_init(struct ept *ept)
 {
-	/* This can take some time (~5s) and is not very nice...
-	 * FIXME: implement some caching.  */
-	for (int i = 0; i < EPTP_USED; ++i)
-		if (!ept_setup_p(ept, &ept->pml4_list[i], &ept->ptr_list[i]))
+	for_each_eptp(i) {
+		uintptr_t **pml4 = &ept->pml4_list[i];
+		if (!(*pml4 = ExAllocatePool(NonPagedPool, PAGE_SIZE)))
 			goto err_pml4_list;
+
+		memset(*pml4, 0x00, PAGE_SIZE);
+		setup_eptp(&ept->ptr_list[i], __pa(*pml4) >> PAGE_SHIFT);
+	}
+
+	if (!setup_pml4(ept))
+		goto err_pml4_list;
 
 	for (int i = 0; i < EPT_MAX_PREALLOC; ++i) {
 		uintptr_t *entry = __ept_alloc_entry();
