@@ -980,8 +980,10 @@ bool vcpu_handle_exit(u64 *regs)
 	}
 
 	bool ret = false;
+	u64 eflags = gc.eflags;
 	if (curr_handler < sizeof(g_handlers) / sizeof(g_handlers[0]) &&
-		(ret = g_handlers[curr_handler](&gc)))
+	    (ret = g_handlers[curr_handler](&gc)) &&
+	    (gc.eflags ^ eflags) != 0)
 		__vmx_vmwrite(GUEST_RFLAGS, gc.eflags);
 
 	if (gc.irql < VCPU_EXIT_IRQL)
