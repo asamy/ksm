@@ -228,16 +228,14 @@ __vmx_entrypoint ENDP
 
 __vmx_vmcall PROC
 	vmcall
-	setz	al
-	setc	al
+	setnbe 	al
 	ret
 __vmx_vmcall ENDP
 
 __vmx_vmfunc PROC
 	mov	eax, edx
 	db	0fh, 01h, 0d4h
-	setz	al
-	setc	al
+	setnbe 	al
 	ret
 __vmx_vmfunc ENDP
 
@@ -348,15 +346,13 @@ __invd ENDP
 
 __invept PROC
 	invept	ecx, oword ptr [rdx]
-	setz	al
-	setc	al
+	setnbe 	al
 	ret
 __invept ENDP
 
 __invvpid PROC
 	invvpid	ecx, oword ptr [rdx]
-	setz	al
-	setc	al
+	setnbe 	al
 	ret
 __invvpid ENDP
 
