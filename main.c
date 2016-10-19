@@ -3,8 +3,6 @@
 #include "pe.h"
 
 static DEV_EXT g_dev_ext = { NULL, NULL };
-static HANDLE hThread;
-static CLIENT_ID cid;
 
 DRIVER_INITIALIZE DriverEntry;
 #pragma alloc_text(INIT, DriverEntry)
@@ -66,6 +64,9 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 {
+	HANDLE hThread;
+	CLIENT_ID cid;
+
 	/* On Windows build 14000+ Page table addresses are not static.  */
 	RTL_OSVERSIONINFOW osv;
 	osv.dwOSVersionInfoSize = sizeof(osv);
@@ -122,8 +123,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (NT_SUCCESS(status))
 		status = register_power_callback(&g_dev_ext);
 
-	if (NT_SUCCESS(status))
+	if (NT_SUCCESS(status)) {
 		status = PsCreateSystemThread(&hThread, STANDARD_RIGHTS_ALL, NULL, NULL, &cid, (PKSTART_ROUTINE)sys_thread, NULL);
+		ZwClose(hThread);
+	}
 
 	VCPU_DEBUG("ret: 0x%08X\n", status);
 	return status;
