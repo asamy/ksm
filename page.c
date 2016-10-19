@@ -1,6 +1,5 @@
 #include "ksm.h"
 #include "dpc.h"
-#include "ldasm.h"
 
 static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 {
