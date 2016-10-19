@@ -45,10 +45,8 @@ relevant bits (VE, VMFUNC, and EPTP Switching CTL in VM_FUNCTION_CTL).
 Since we use 3 EPT pointers, and since the page needs to be read and written to sometimes (e.g. patchguard
 											   verification),
       we also need to catch RW access to the page and then switch the EPTP appropriately according to
-      the access, if it's a read access, then we need to give it the original page pfn, otherwise
-      give it the normal one as no harm will be done anyway.  Do also note that we always mark the page
-      as "RW" because the processor does not support the write-only bit.
-
+      the access, if it's a read access, then we need to give it the original page pfn with RW access only.
+	The third pointer is used for when we need to call the original function.
 
 ## Thanks to...
 
