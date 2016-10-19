@@ -38,17 +38,14 @@ static PVOID hk_MmMapLockedPagesSpecifyCache(_In_     PMDLX               Memory
 					     _In_     ULONG               BugCheckOnFailure,
 					     _In_     MM_PAGE_PRIORITY    Priority)
 {
-	PVOID ret = ((MmMapLockedPagesSpecifyCache_t)(uintptr_t)ksm_find_page(MmMapLockedPagesSpecifyCache)->data)(MemoryDescriptorList,
-														   AccessMode,
-														   CacheType,
-														   BaseAddress,
-														   BugCheckOnFailure,
-														   Priority);
 	PEPROCESS process = PsGetCurrentProcess();
 	VCPU_DEBUG("%d(%s): Bytecount 0x%X SysVA %p StartVA %p Size 0x%X\n",
 		   PsGetProcessId(process), PsGetProcessImageFileName(process),
 		   MemoryDescriptorList->ByteCount, MemoryDescriptorList->MappedSystemVa,
 		   MemoryDescriptorList->StartVa, MemoryDescriptorList->Size);
+	__vmx_vmfunc(EPTP_NORMAL, 0);
+	void *ret = MmMapLockedPagesSpecifyCache(MemoryDescriptorList, AccessMode, CacheType, BaseAddress, BugCheckOnFailure, Priority);
+	__vmx_vmfunc(EPTP_EXHOOK, 0);
 	return ret;
 }
 

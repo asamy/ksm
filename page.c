@@ -9,10 +9,10 @@ static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 	__set_epte_ar_pfn(epte, EPT_ACCESS_EXEC, phi->c_pfn);
 
 	epte = ept_pte(ept, EPT4(ept, EPTP_RWHOOK), dpa);
-	__set_epte_ar_pfn(epte, EPT_ACCESS_RW, phi->c_pfn);
+	__set_epte_ar(epte, EPT_ACCESS_RW);
 
 	epte = ept_pte(ept, EPT4(ept, EPTP_NORMAL), dpa);
-	__set_epte_ar(epte, EPT_ACCESS_RW);
+	__set_epte_ar(epte, EPT_ACCESS_ALL);
 
 	/* FIXME:  Maybe should switch to EPTP_EXHOOK incase we are not already,
 	 * should probably save a few cycles i.e. a violation?
@@ -64,52 +64,6 @@ static void init_trampoline(struct trampoline *trampo, u64 to)
 	trampo->ret = 0xC3;
 }
 
-static inline bool is_int3_ret(u8 opc, u32 len)
-{
-	return len == 1 && (opc == 0xCC || opc == 0xC3);
-}
-
-static inline bool is_retn(u8 opc, u32 len)
-{
-	return len == 3 && opc == 0xC2;
-}
-
-static bool copy_code(void *func, u8 *out, u32 *outlen)
-{
-	u8 *src = func;
-	u8 *tmp = out;
-	u32 size = 0;
-	ldasm_data ld;
-
-	do {
-		u32 len = ldasm(src, &ld, 1);
-		if (ld.flags & F_INVALID || len + size > 128 ||
-		    is_int3_ret(src[ld.opcd_offset], len) || is_retn(src[ld.opcd_offset], len))
-			break;
-
-		memcpy(tmp, src, len);
-		if (ld.flags & F_RELATIVE) {
-			const uintptr_t disp_offy = ld.disp_offset != 0 ? ld.disp_offset : ld.imm_offset;
-			const uintptr_t disp_size = ld.disp_size != 0 ? ld.disp_size : ld.imm_size;
-
-			long delta = 0;
-			memcpy(&delta, src + disp_offy, disp_size);
-			delta += (long)(src - tmp);
-			memcpy(tmp + disp_offy, &delta, disp_size);
-		}
-
-		src += len;
-		tmp += len;
-		size += len;
-	} while (size < sizeof(struct trampoline));
-	if (size < sizeof(struct trampoline))
-		return false;
-
-	init_trampoline((struct trampoline *)tmp, (u64)src);
-	*outlen = size;
-	return true;
-}
-
 STATIC_DEFINE_DPC(__do_hook_page, __vmx_vmcall, HYPERCALL_HOOK, ctx);
 STATIC_DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
 
@@ -118,9 +72,6 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 	struct page_hook_info *phi = ExAllocatePool(NonPagedPoolExecute, sizeof(*phi));
 	if (!phi)
 		return STATUS_NO_MEMORY;
-
-	if (!copy_code(original, &phi->data[0], &phi->size))
-		goto out_phi;
 
 	u8 *code_page = MmAllocateContiguousMemory(PAGE_SIZE, (PHYSICAL_ADDRESS) { .QuadPart = -1 });
 	if (!code_page)
