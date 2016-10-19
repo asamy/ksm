@@ -25,12 +25,6 @@ static NTSTATUS sleep_ms(int ms)
 	return KeDelayExecutionThread(KernelMode, FALSE, &ival);
 }
 
-typedef PVOID(*MmMapLockedPagesSpecifyCache_t)(_In_     PMDLX               MemoryDescriptorList,
-					       _In_     KPROCESSOR_MODE     AccessMode,
-					       _In_     MEMORY_CACHING_TYPE CacheType,
-					       _In_opt_ PVOID               BaseAddress,
-					       _In_     ULONG               BugCheckOnFailure,
-					       _In_     MM_PAGE_PRIORITY    Priority);
 static PVOID hk_MmMapLockedPagesSpecifyCache(_In_     PMDLX               MemoryDescriptorList,
 					     _In_     KPROCESSOR_MODE     AccessMode,
 					     _In_     MEMORY_CACHING_TYPE CacheType,
@@ -66,7 +60,7 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 {
 	UNREFERENCED_PARAMETER(driverObject);
 	deregister_power_callback(&g_dev_ext);
-	//	ksm_unhook_page(MmMapLockedPagesSpecifyCache);
+	ksm_unhook_page(MmMapLockedPagesSpecifyCache);
 	VCPU_DEBUG("ret: 0x%08X\n", ksm_exit());
 }
 
@@ -128,9 +122,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (NT_SUCCESS(status))
 		status = register_power_callback(&g_dev_ext);
 
-	//	Uncomment to enable the small hooking example
-	//	if (NT_SUCCESS(status))
-	//		status = PsCreateSystemThread(&hThread, STANDARD_RIGHTS_ALL, NULL, NULL, &cid, (PKSTART_ROUTINE)sys_thread, NULL);
+	if (NT_SUCCESS(status))
+		status = PsCreateSystemThread(&hThread, STANDARD_RIGHTS_ALL, NULL, NULL, &cid, (PKSTART_ROUTINE)sys_thread, NULL);
 
 	VCPU_DEBUG("ret: 0x%08X\n", status);
 	return status;
