@@ -22,10 +22,7 @@ static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 
 static inline u16 epage_select_eptp(struct page_hook_info *phi, u16 cur, u8 ar, u8 ac)
 {
-	if (ac & EPT_ACCESS_READ)
-		return EPTP_NORMAL;
-
-	if (ac & EPT_ACCESS_WRITE)
+	if (ac & EPT_ACCESS_RW)
 		return EPTP_RWHOOK;
 
 	return EPTP_EXHOOK;
