@@ -44,7 +44,6 @@
 #define REG_R15			15
 #define REG_MAX			16
 
-#define VCPU_EXIT_IRQL			HIGH_LEVEL
 #define VCPU_BUGCHECK_CODE		0xCCDDFF11
 #define VCPU_TRIPLEFAULT		0x33DDE83A
 #define VCPU_BUG_UNHANDLED		0xBAADF00D
@@ -91,13 +90,6 @@
 
 #define VCPU_EXIT_GUEST()	\
 	__writecr3(__save_cr3)
-
-#define VCPU_ENTER_GIRQL()	\
-	KIRQL __save_irql = KeGetCurrentIrql();		\
-	KeLowerIrql(gc->irql)						\
-
-#define VCPU_EXIT_GIRQL()	\
-	KfRaiseIrql(__save_irql)
 
 /* EPT Memory type  */
 #define EPT_MT_UNCACHABLE		0

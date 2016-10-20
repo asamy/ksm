@@ -963,16 +963,11 @@ static bool(*g_handlers[]) (struct guest_context *) = {
 
 bool vcpu_handle_exit(u64 *regs)
 {
-	KIRQL irql = KeGetCurrentIrql();
 	u64 cr8 = __readcr8();
-	if (irql < VCPU_EXIT_IRQL)
-		KfRaiseIrql(VCPU_EXIT_IRQL);
-
 	struct guest_context gc = {
 		.vcpu = ksm_current_cpu(),
 		.gp = regs,
 		.cr8 = cr8,
-		.irql = irql,
 	};
 	__vmx_vmread(GUEST_RFLAGS, &gc.eflags);
 	__vmx_vmread(GUEST_RIP, &gc.ip);
@@ -994,9 +989,6 @@ bool vcpu_handle_exit(u64 *regs)
 	    (ret = g_handlers[curr_handler](&gc)) &&
 	    (gc.eflags ^ eflags) != 0)
 		__vmx_vmwrite(GUEST_RFLAGS, gc.eflags);
-
-	if (gc.irql < VCPU_EXIT_IRQL)
-		KeLowerIrql(gc.irql);
 
 	if ((cr8 ^ gc.cr8) != 0)
 		__writecr8(gc.cr8);
