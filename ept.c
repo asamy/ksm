@@ -6,7 +6,6 @@ static uintptr_t *__ept_alloc_entry(void)
 	if (!entry)
 		return NULL;
 
-	RtlZeroMemory(entry, PAGE_SIZE);
 	return entry;
 }
 
@@ -160,7 +159,6 @@ bool ept_init(struct ept *ept)
 		if (!(*pml4 = mm_alloc_pool(NonPagedPool, PAGE_SIZE)))
 			goto err_pml4_list;
 
-		memset(*pml4, 0x00, PAGE_SIZE);
 		setup_eptp(&ept->ptr_list[i], __pa(*pml4) >> PAGE_SHIFT);
 	}
 
