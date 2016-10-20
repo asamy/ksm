@@ -65,7 +65,7 @@ STATIC_DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
 
 NTSTATUS ksm_hook_epage(void *original, void *redirect)
 {
-	struct page_hook_info *phi = mm_alloc_pool(NonPagedPoolExecute, sizeof(*phi));
+	struct page_hook_info *phi = mm_alloc_pool(NonPagedPool, sizeof(*phi));
 	if (!phi)
 		return STATUS_NO_MEMORY;
 

@@ -131,7 +131,7 @@
 #define EPTP_NORMAL			2			/* sane eptp index, no hooks  */
 #define EPTP_DEFAULT			EPTP_EXHOOK
 #define EPTP_USED			3			/* number of unique ptrs currently in use and should be freed  */
-#define EPT_MAX_PREALLOC		64*EPTP_USED
+#define EPT_MAX_PREALLOC		128
 #define EPTP(e, i)			(e)->ptr_list[(i)]
 #define EPT4(e, i)			(e)->pml4_list[(i)]
 #define for_each_eptp(i)		for (int i = 0; i < EPTP_USED; ++i)
@@ -158,7 +158,6 @@ struct guest_context {
 	u64 eflags;
 	u64 ip;
 	u64 cr8;
-	KIRQL irql;
 };
 
 static inline void ksm_write_reg16(struct guest_context *gc, int reg, u16 val)
