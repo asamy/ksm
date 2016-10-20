@@ -279,7 +279,6 @@ struct page_hook_info {
 	u64 origin;
 	void *c_va;
 	struct phi_ops *ops;
-	PMDL mdl;
 };
 
 static size_t page_hash(u64 h)

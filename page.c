@@ -73,19 +73,6 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 	if (!code_page)
 		goto out_phi;
 
-	void *aligned = PAGE_ALIGN(original);
-	PMDL mdl = IoAllocateMdl(aligned, PAGE_SIZE, FALSE, FALSE, NULL);
-	if (!mdl)
-		goto out_code;
-
-	__try {
-		/* attempt to lock the page in memory  */
-		MmProbeAndLockPages(mdl, KernelMode, IoReadAccess);
-	} __except (EXCEPTION_EXECUTE_HANDLER) {
-		/* failed  */
-		goto out_mdl;
-	}
-
 	/* Offset where code starts in this page  */
 	uintptr_t offset = (uintptr_t)original - (uintptr_t)aligned;
 
@@ -99,7 +86,6 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 	phi->d_pfn = __pa(original) >> PAGE_SHIFT;
 	phi->origin = (u64)aligned;
 	phi->ops = &epage_ops;
-	phi->mdl = mdl;
 
 	STATIC_CALL_DPC(__do_hook_page, phi);
 	if (NT_SUCCESS(STATIC_DPC_RET())) {
@@ -107,9 +93,6 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 		return STATUS_SUCCESS;
 	}
 
-out_mdl:
-	IoFreeMdl(mdl);
-out_code:
 	MmFreeContiguousMemory(code_page);
 out_phi:
 	ExFreePool(phi);
@@ -129,8 +112,6 @@ NTSTATUS __ksm_unhook_page(struct page_hook_info *phi)
 {
 	STATIC_CALL_DPC(__do_unhook_page, (void *)phi->d_pfn);
 	htable_del(&ksm.ht, page_hash(phi->origin), phi);
-	MmUnlockPages(phi->mdl);
-	IoFreeMdl(phi->mdl);
 	return STATIC_DPC_RET();
 }
 
