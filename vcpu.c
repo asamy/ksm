@@ -133,8 +133,10 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 
 	u64 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_TSC_SCALING |
 		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES |
-		SECONDARY_EXEC_ENABLE_VMFUNC | SECONDARY_EXEC_ENABLE_VE |
-		SECONDARY_EXEC_RDTSCP
+		SECONDARY_EXEC_ENABLE_VMFUNC | SECONDARY_EXEC_ENABLE_VE
+#if _WIN32_WINNT == 0x0A00 	/* Windows 10  */
+		| SECONDARY_EXEC_RDTSCP
+#endif
 #ifdef ENABLE_PML
 		| SECONDARY_EXEC_ENABLE_PML
 #endif
@@ -143,6 +145,8 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 #endif
 		;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
+	if (!(vm_2ndctl & (SECONDARY_EXEC_ENABLE_VMFUNC | SECONDARY_EXEC_ENABLE_VE)))
+		return false;
 
 	/* Processor control fields  */
 	err |= DEBUG_VMX_VMWRITE(PIN_BASED_VM_EXEC_CONTROL, vm_pinctl);
@@ -275,7 +279,7 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 		return;
 
 	vcpu->idt.limit = PAGE_SIZE - 1;
-	vcpu->idt.base = (uintptr_t)ExAllocatePool(NonPagedPool, PAGE_SIZE);
+	vcpu->idt.base = (uintptr_t)mm_alloc_pool(NonPagedPool, PAGE_SIZE);
 	if (!vcpu->idt.base)
 		return ept_exit(&vcpu->ept);
 
@@ -302,7 +306,7 @@ out:
 void vcpu_free(struct vcpu *vcpu)
 {
 	if (vcpu->idt.base)
-		ExFreePool((void *)vcpu->idt.base);
+		mm_free_pool((void *)vcpu->idt.base, PAGE_SIZE);
 
 	ept_exit(&vcpu->ept);
 }

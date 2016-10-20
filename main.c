@@ -41,19 +41,6 @@ static PVOID hk_MmMapLockedPagesSpecifyCache(_In_     PMDLX               Memory
 	return ret;
 }
 
-static NTSTATUS sys_thread(void *null)
-{
-	VCPU_DEBUG_RAW("waiting a bit\n");
-	sleep_ms(2000);
-
-	NTSTATUS status = ksm_hook_epage(MmMapLockedPagesSpecifyCache, hk_MmMapLockedPagesSpecifyCache);
-	if (!NT_SUCCESS(status))
-		return status;
-
-	VCPU_DEBUG_RAW("Done hooked MmMapLockedPagesSepcifyCache\n");
-	return status;
-}
-
 static void DriverUnload(PDRIVER_OBJECT driverObject)
 {
 	UNREFERENCED_PARAMETER(driverObject);
@@ -64,9 +51,6 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 {
-	HANDLE hThread;
-	CLIENT_ID cid;
-
 	/* On Windows build 14000+ Page table addresses are not static.  */
 	RTL_OSVERSIONINFOW osv;
 	osv.dwOSVersionInfoSize = sizeof(osv);
@@ -123,10 +107,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (NT_SUCCESS(status))
 		status = register_power_callback(&g_dev_ext);
 
-	if (NT_SUCCESS(status)) {
-		status = PsCreateSystemThread(&hThread, STANDARD_RIGHTS_ALL, NULL, NULL, &cid, (PKSTART_ROUTINE)sys_thread, NULL);
-		ZwClose(hThread);
-	}
+	if (NT_SUCCESS(status))
+		status = ksm_hook_epage(MmMapLockedPagesSpecifyCache, hk_MmMapLockedPagesSpecifyCache);
 
 	VCPU_DEBUG("ret: 0x%08X\n", status);
 	return status;

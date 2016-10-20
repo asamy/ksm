@@ -180,6 +180,9 @@ static bool vcpu_handle_cpuid(struct guest_context *gc)
 	int subf = ksm_read_reg32(gc, REG_CX);
 	__cpuidex(cpuid, func, subf);
 
+	if (func == 1)
+		cpuid[2] &= ~(1 << (X86_FEATURE_VMX & 31));
+
 	ksm_write_reg32(gc, REG_AX, cpuid[0]);
 	ksm_write_reg32(gc, REG_BX, cpuid[1]);
 	ksm_write_reg32(gc, REG_CX, cpuid[2]);
@@ -630,7 +633,10 @@ static bool vcpu_handle_msr_read(struct guest_context *gc)
 		val = read_tsc_msr();
 		break;
 	default:
-		val = __readmsr(msr);
+		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC)
+			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+		else
+			val = __readmsr(msr);
 		break;
 	}
 
@@ -670,7 +676,10 @@ static bool vcpu_handle_msr_write(struct guest_context *gc)
 	case MSR_IA32_FEATURE_CONTROL:
 		break;
 	default:
-		__writemsr(msr, val);
+		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC)
+			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+		else
+			__writemsr(msr, val);
 		break;
 	}
 

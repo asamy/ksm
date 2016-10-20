@@ -6,6 +6,7 @@
 
 #include "htable.h"
 #include <ntifs.h>
+#include "mm.h"
 
  /* We use 0x1 as deleted marker. */
 #define HTABLE_DELETED (0x1)
@@ -72,7 +73,7 @@ bool htable_init_sized(struct htable *ht,
 			break;
 	}
 
-	ht->table = ExAllocatePool(NonPagedPool, (1ULL << ht->bits) * sizeof(size_t));
+	ht->table = mm_alloc_pool(NonPagedPool, (1ULL << ht->bits) * sizeof(size_t));
 	if (!ht->table) {
 		ht->table = &ht->perfect_bit;
 		return false;
@@ -85,13 +86,13 @@ bool htable_init_sized(struct htable *ht,
 void htable_clear(struct htable *ht)
 {
 	if (ht->table != &ht->perfect_bit)
-		ExFreePool((void *)ht->table);
+		mm_free_pool((void *)ht->table, sizeof(size_t) << ht->bits);
 	htable_init(ht, ht->rehash, ht->priv);
 }
 
 bool htable_copy(struct htable *dst, const struct htable *src)
 {
-	uintptr_t *htable = ExAllocatePool(NonPagedPool, sizeof(size_t) << src->bits);
+	uintptr_t *htable = mm_alloc_pool(NonPagedPool, sizeof(size_t) << src->bits);
 
 	if (!htable)
 		return false;
@@ -188,7 +189,7 @@ static bool double_table(struct htable *ht)
 	uintptr_t *oldtable, e;
 
 	oldtable = ht->table;
-	ht->table = ExAllocatePool(NonPagedPool, (1ULL << (ht->bits+1)) * sizeof(size_t));
+	ht->table = mm_alloc_pool(NonPagedPool, (1ULL << (ht->bits+1)) * sizeof(size_t));
 	if (!ht->table) {
 		ht->table = oldtable;
 		return false;
@@ -214,7 +215,7 @@ static bool double_table(struct htable *ht)
 			}
 		}
 
-		ExFreePool(oldtable);
+		mm_free_pool(oldtable, sizeof(size_t) << (ht->bits - 1));
 	}
 	ht->deleted = 0;
 	return true;

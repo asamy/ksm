@@ -2,7 +2,7 @@
 
 static uintptr_t *__ept_alloc_entry(void)
 {
-	uintptr_t *entry = ExAllocatePool(NonPagedPool, PAGE_SIZE);
+	uintptr_t *entry = mm_alloc_pool(NonPagedPool, PAGE_SIZE);
 	if (!entry)
 		return NULL;
 
@@ -85,7 +85,7 @@ static void ept_free_prealloc(struct ept *ept)
 		if (!ept->pre_alloc[i])
 			break;
 
-		ExFreePool(ept->pre_alloc[i]);
+		mm_free_pool(ept->pre_alloc[i], PAGE_SIZE);
 	}
 }
 
@@ -98,11 +98,11 @@ static void ept_free_entries(uintptr_t *table, uint32_t lvl)
 			if (lvl > 2)
 				ept_free_entries(sub_table, lvl - 1);
 			else
-				ExFreePool(sub_table);
+				mm_free_pool(sub_table, PAGE_SIZE);
 		}
 	}
 
-	ExFreePool(table);
+	mm_free_pool(table, PAGE_SIZE);
 }
 
 static void ept_free_pml4_list(struct ept *ept)
@@ -138,7 +138,7 @@ static bool setup_pml4(struct ept *ept)
 			break;
 
 out:
-	ExFreePool(pm_ranges);
+	mm_free_pool(pm_ranges, sizeof(PPHYSICAL_MEMORY_RANGE));
 	return ret;
 }
 
@@ -157,7 +157,7 @@ bool ept_init(struct ept *ept)
 {
 	for_each_eptp(i) {
 		uintptr_t **pml4 = &ept->pml4_list[i];
-		if (!(*pml4 = ExAllocatePool(NonPagedPool, PAGE_SIZE)))
+		if (!(*pml4 = mm_alloc_pool(NonPagedPool, PAGE_SIZE)))
 			goto err_pml4_list;
 
 		memset(*pml4, 0x00, PAGE_SIZE);

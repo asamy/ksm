@@ -7,14 +7,27 @@ struct ksm ksm = {
 
 static void init_msr_bitmap(struct ksm *k)
 {
-	u8 *bitmap_read_lo = (u8 *)k->msr_bitmap;
+	u8 *bitmap_read_lo = k->msr_bitmap;
 	RTL_BITMAP bitmap_read_lo_hdr;
 	RtlInitializeBitMap(&bitmap_read_lo_hdr, (PULONG)bitmap_read_lo, 1024 * CHAR_BIT);
-	RtlClearBits(&bitmap_read_lo_hdr, MSR_IA32_MPERF, 2);
+	RtlSetBit(&bitmap_read_lo_hdr, MSR_IA32_FEATURE_CONTROL);
+	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
+		RtlSetBit(&bitmap_read_lo_hdr, msr);
 
 	u8 *bitmap_read_hi = bitmap_read_lo + 1024;
 	RTL_BITMAP bitmap_read_hi_hdr;
 	RtlInitializeBitMap(&bitmap_read_hi_hdr, (PULONG)bitmap_read_hi, 1024 * CHAR_BIT);
+
+	u8 *bitmap_write_lo = bitmap_read_hi + 1024;
+	RTL_BITMAP bitmap_write_lo_hdr;
+	RtlInitializeBitMap(&bitmap_write_lo_hdr, (PULONG)bitmap_write_lo, 1024 * CHAR_BIT);
+	RtlSetBit(&bitmap_write_lo_hdr, MSR_IA32_FEATURE_CONTROL);
+	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
+		RtlSetBit(&bitmap_write_lo_hdr, msr);
+
+	u8 *bitmap_write_hi = bitmap_write_lo + 1024;
+	RTL_BITMAP bitmap_write_hi_hdr;
+	RtlInitializeBitMap(&bitmap_write_hi_hdr, (PULONG)bitmap_write_hi, 1024 * CHAR_BIT);
 }
 
 static NTSTATUS set_lock_bit(void)
@@ -63,16 +76,13 @@ STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
 NTSTATUS ksm_init(void)
 {
 	NTSTATUS status;
-#ifndef DBG
-	/*  This prevents loading in a nested environment.  */
 	int info[4];
 	__cpuid(info, 1);
-	if (!(info[2] & (1 << 16)))
+	if (!(info[2] & (1 << (X86_FEATURE_VMX & 31))))
 		return STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR;
 
 	if (__readcr4() & X86_CR4_VMXE)
 		return STATUS_HV_FEATURE_UNAVAILABLE;
-#endif
 
 	if (!ept_check_capabilitiy())
 		return STATUS_HV_FEATURE_UNAVAILABLE;

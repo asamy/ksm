@@ -293,4 +293,24 @@ static inline uintptr_t subst_addr(uintptr_t *pte)
 }
 #endif
 
+static __forceinline void *mm_alloc_pool(POOL_TYPE type, size_t size)
+{
+	void *v = ExAllocatePool(type, size);
+	if (v)
+		memset(v, 0, size);
+
+	return v;
+}
+
+static __forceinline void mm_free_pool(void *v, size_t size)
+{
+	memset(v, 0, size);
+	ExFreePool(v);
+}
+
+static __forceinline void __mm_free_pool(void *v)
+{
+	ExFreePool(v);
+}
+
 #endif
