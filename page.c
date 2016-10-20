@@ -74,6 +74,7 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 		goto out_phi;
 
 	/* Offset where code starts in this page  */
+	void *aligned = PAGE_ALIGN(original);
 	uintptr_t offset = (uintptr_t)original - (uintptr_t)aligned;
 
 	struct trampoline trampo;
