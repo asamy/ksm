@@ -468,7 +468,7 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 			__vmx_vmwrite(GUEST_CR3, *val);
 			break;
 		case 4:
-			if (*val & X86_CR4_VMXE) {
+			if (*val & __CR4_GUEST_HOST_MASK) {
 				/* No nesting  */
 				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
 			} else {
