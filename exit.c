@@ -468,8 +468,13 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 			__vmx_vmwrite(GUEST_CR3, *val);
 			break;
 		case 4:
-			__vmx_vmwrite(GUEST_CR4, *val);
-			__vmx_vmwrite(CR4_READ_SHADOW, *val);
+			if (*val & X86_CR4_VMXE) {
+				/* No nesting  */
+				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+			} else {
+				__vmx_vmwrite(GUEST_CR4, *val);
+				__vmx_vmwrite(CR4_READ_SHADOW, *val);
+			}			
 			break;
 		case 8:
 			gc->cr8 = *val;
