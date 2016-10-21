@@ -2,11 +2,7 @@
 
 static uintptr_t *__ept_alloc_entry(void)
 {
-	uintptr_t *entry = mm_alloc_pool(NonPagedPool, PAGE_SIZE);
-	if (!entry)
-		return NULL;
-
-	return entry;
+	return mm_alloc_pool(NonPagedPool, PAGE_SIZE);
 }
 
 static uintptr_t *ept_alloc_entry(struct ept *ept)

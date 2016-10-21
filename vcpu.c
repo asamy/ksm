@@ -274,6 +274,7 @@ static inline void vcpu_launch(void)
 
 void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 {
+	RtlZeroMemory(vcpu, sizeof(*vcpu));
 	if (!ept_init(&vcpu->ept))
 		return;
 

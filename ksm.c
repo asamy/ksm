@@ -51,17 +51,21 @@ static NTSTATUS set_lock_bit(void)
 
 static NTSTATUS __ksm_init_cpu(struct ksm *k)
 {
-	NTSTATUS status = set_lock_bit();
-	if (!NT_SUCCESS(status))
-		return status;
+	__try {
+		NTSTATUS status = set_lock_bit();
+		if (!NT_SUCCESS(status))
+			return status;
 
-	k->kernel_cr3 = __readcr3();
-	if (__vmx_vminit(&k->vcpu_list[cpu_nr()])) {
-		k->active_vcpus++;
-		return STATUS_SUCCESS;
+		k->kernel_cr3 = __readcr3();
+		if (__vmx_vminit(&k->vcpu_list[cpu_nr()])) {
+			k->active_vcpus++;
+			return STATUS_SUCCESS;
+		}
+	} __except (EXCEPTION_EXECUTE_HANDLER)
+	{
 	}
 
-	return STATUS_UNSUCCESSFUL;
+	return STATUS_NOT_SUPPORTED;
 }
 
 static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT change_ctx, PNTSTATUS op_status)
