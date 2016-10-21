@@ -179,7 +179,7 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= DEBUG_VMX_VMWRITE(CR0_GUEST_HOST_MASK, __CR0_GUEST_HOST_MASK);
 	err |= DEBUG_VMX_VMWRITE(CR4_GUEST_HOST_MASK, __CR4_GUEST_HOST_MASK);
 	err |= DEBUG_VMX_VMWRITE(CR0_READ_SHADOW, cr0);
-	err |= DEBUG_VMX_VMWRITE(CR4_READ_SHADOW, cr4);
+	err |= DEBUG_VMX_VMWRITE(CR4_READ_SHADOW, cr4 & ~__CR4_GUEST_HOST_MASK);
 	err |= DEBUG_VMX_VMWRITE(VMCS_LINK_POINTER, -1ULL);
 
 	/* Guest  */

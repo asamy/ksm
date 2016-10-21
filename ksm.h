@@ -17,7 +17,7 @@
 
 #define KSM_MAX_VCPUS		32
 #define __CR0_GUEST_HOST_MASK	0
-#define __CR4_GUEST_HOST_MASK	0
+#define __CR4_GUEST_HOST_MASK	X86_CR4_VMXE
 #define __EXCEPTION_BITMAP	0
 
 #define HYPERCALL_STOP		0	/* Stop virtualization on this CPU  */

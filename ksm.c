@@ -116,6 +116,7 @@ static NTSTATUS __ksm_exit_cpu(struct ksm *k)
 	}
 
 	k->active_vcpus--;
+	__writecr4(__readcr4() & ~X86_CR4_VMXE);
 	vcpu_free(ksm_current_cpu());
 	return err ? STATUS_UNSUCCESSFUL : STATUS_SUCCESS;
 }
