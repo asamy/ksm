@@ -110,6 +110,21 @@ Since we use 3 EPT pointers, and since the page needs to be read and written to 
       the access.  In that case we switch over to `EPTP_RWHOOK` to allow RW access only!
 	The third pointer is used for when we need to call the original function.
 
+## Reporting bugs (or similar)
+
+You can report bugs by using Github issues, please provide the following:
+
+- System information (version including build number, CPU information perhaps codename too)
+- Anything else you feel is relevant
+
+If it's a crash, please provide the following:
+
+- A minidump (C:\windows\minidump) or a memory dump (C:\windows\memory.dmp).  Former prefered.
+- The compiled .sys and the .pdb file
+- The git tree hash of which you compiled it against.
+- The Kernel executable if possible, e.g. ntoskrnl.exe from C:\Windows\System32
+
+
 ## Thanks to...
 
 - Linux kernel (KVM)
