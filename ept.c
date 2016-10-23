@@ -224,25 +224,26 @@ bool ept_handle_violation(struct vcpu *vcpu)
 		for_each_eptp(i)
 			if (!ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa))
 				return false;
-		return true;
-	}
-
-	struct page_hook_info *h = ksm_find_page((void *)gva);
-	if (h) {
-		u16 eptp_switch = h->ops->select_eptp(h, eptp, ar, ac);
-		if (eptp_switch != eptp) {
-			VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
-			ept_switch_root_p(ept, eptp_switch);
-			__invept_all();		/* Do we need to invalidate here?  */
+	} else {
+		struct page_hook_info *h = ksm_find_page((void *)gva);
+		if (h) {
+			u16 eptp_switch = h->ops->select_eptp(h, eptp, ar, ac);
+			if (eptp_switch != eptp) {
+				VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
+				ept_switch_root_p(ept, eptp_switch);
+				__invept_all();		/* Do we need to invalidate here?  */
+			} else {
+				/* Crtical error  */
+				VCPU_DEBUG_RAW("Found hooked page but NO switching was required!\n");
+			}
+		} else {
+			VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
+			ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, gpa);
 		}
 
-		VCPU_DEBUG_RAW("Found hooked page but NO switching was required!\n");
-		return true;
+		__invept_all();
 	}
 
-	VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
-	ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, gpa);
-	__invept_all();
 	return true;
 }
 
@@ -267,22 +268,21 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 	if (ar == EPT_ACCESS_NONE) {
 		for_each_eptp(i)
 			ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa);
-		return;
-	}
-
-	struct page_hook_info *h = ksm_find_page((void *)gva);
-	if (h) {
-		u16 eptp_switch = h->ops->select_eptp(h, eptp, ar, ac);
-		if (eptp_switch != eptp) {
-			VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
-			__vmx_vmfunc(eptp_switch, 0);
-			return;
-		}
-
-		VCPU_DEBUG_RAW("Found hooked page but NO switching was required!\n");
 	} else {
-		VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
-		ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, gpa);
+		struct page_hook_info *h = ksm_find_page((void *)gva);
+		if (h) {
+			u16 eptp_switch = h->ops->select_eptp(h, eptp, ar, ac);
+			if (eptp_switch != eptp) {
+				VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
+				__vmx_vmfunc(eptp_switch, 0);
+			} else {
+				/* Typically a critical error...  */
+				VCPU_DEBUG_RAW("Found hooked page but NO switching was required!\n");
+			}
+		} else {
+			VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
+			ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, gpa);
+		}
 	}
 }
 

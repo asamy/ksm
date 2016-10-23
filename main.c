@@ -23,20 +23,18 @@ static NTSTATUS sleep_ms(int ms)
 	return KeDelayExecutionThread(KernelMode, FALSE, &ival);
 }
 
-static PVOID hk_MmMapLockedPagesSpecifyCache(_In_     PMDLX               MemoryDescriptorList,
-					     _In_     KPROCESSOR_MODE     AccessMode,
-					     _In_     MEMORY_CACHING_TYPE CacheType,
-					     _In_opt_ PVOID               BaseAddress,
-					     _In_     ULONG               BugCheckOnFailure,
-					     _In_     MM_PAGE_PRIORITY    Priority)
+static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
+			    _In_ SIZE_T              NumberOfBytes,
+			    _In_ MEMORY_CACHING_TYPE CacheType)
 {
-	PEPROCESS process = PsGetCurrentProcess();
-	VCPU_DEBUG("%d(%s): Bytecount 0x%X SysVA %p StartVA %p Size 0x%X\n",
-		   PsGetProcessId(process), PsGetProcessImageFileName(process),
-		   MemoryDescriptorList->ByteCount, MemoryDescriptorList->MappedSystemVa,
-		   MemoryDescriptorList->StartVa, MemoryDescriptorList->Size);
+	VCPU_DEBUG("Map %p, %d pages with cache %d\n",
+		   PhysicalAddress.QuadPart,
+		   BYTES_TO_PAGES(NumberOfBytes),
+		   CacheType);
+
+	/* Call original  */
 	__vmx_vmfunc(EPTP_NORMAL, 0);
-	void *ret = MmMapLockedPagesSpecifyCache(MemoryDescriptorList, AccessMode, CacheType, BaseAddress, BugCheckOnFailure, Priority);
+	void *ret = MmMapIoSpace(PhysicalAddress, NumberOfBytes, CacheType);
 	__vmx_vmfunc(EPTP_EXHOOK, 0);
 	return ret;
 }
@@ -45,13 +43,13 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 {
 	UNREFERENCED_PARAMETER(driverObject);
 	deregister_power_callback(&g_dev_ext);
-	ksm_unhook_page(MmMapLockedPagesSpecifyCache);
+	ksm_unhook_page(MmMapIoSpace);
 	VCPU_DEBUG("ret: 0x%08X\n", ksm_exit());
 }
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 {
-	/* On Windows build 14000+ Page table addresses are not static.  */
+	/* On Windows build 14316+ Page table addresses are not static.  */
 	RTL_OSVERSIONINFOW osv;
 	osv.dwOSVersionInfoSize = sizeof(osv);
 
@@ -108,7 +106,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		status = register_power_callback(&g_dev_ext);
 
 	if (NT_SUCCESS(status))
-		status = ksm_hook_epage(MmMapLockedPagesSpecifyCache, hk_MmMapLockedPagesSpecifyCache);
+		status = ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace);
 
 	VCPU_DEBUG("ret: 0x%08X\n", status);
 	return status;

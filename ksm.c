@@ -72,7 +72,9 @@ static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT chang
 {
 	if (change_ctx->State == KeProcessorAddCompleteNotify) {
 		/* virtualize it.   */
-		*op_status = __ksm_init_cpu(&ksm);
+		NTSTATUS status = __ksm_init_cpu(&ksm);
+		if (!NT_SUCCESS(status))
+			*op_status = status;
 	}
 }
 
@@ -86,7 +88,7 @@ NTSTATUS ksm_init(void)
 		return STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR;
 
 	if (__readcr4() & X86_CR4_VMXE)
-		return STATUS_HV_FEATURE_UNAVAILABLE;
+		return STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE;	/* closet...  */
 
 	if (!ept_check_capabilitiy())
 		return STATUS_HV_FEATURE_UNAVAILABLE;
@@ -119,10 +121,13 @@ static NTSTATUS __ksm_exit_cpu(struct ksm *k)
 		return STATUS_HV_NOT_PRESENT;
 	}
 
+	if (err)
+		return STATUS_UNSUCCESSFUL;
+
 	k->active_vcpus--;
 	__writecr4(__readcr4() & ~X86_CR4_VMXE);
 	vcpu_free(ksm_current_cpu());
-	return err ? STATUS_UNSUCCESSFUL : STATUS_SUCCESS;
+	return STATUS_SUCCESS;
 }
 
 STATIC_DEFINE_DPC(__call_exit, __ksm_exit_cpu, ctx);

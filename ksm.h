@@ -142,10 +142,13 @@
 #define EPT_BUGCHECK_EPTP_LIST		0xDFDFDFDF
 #define EPT_UNHANDLED_VIOLATION		0xEEEEEEEE
 
-#define EPT_VPID_CAP_REQUIRED		(VMX_EPT_PAGE_WALK_4_BIT | VMX_EPT_EXECUTE_ONLY_BIT |	\
-					 VMX_EPTP_WB_BIT | VMX_EPT_INVEPT_BIT |		\
-					 VMX_EPT_EXTENT_CONTEXT_BIT | VMX_EPT_EXTENT_GLOBAL_BIT |	\
-					 VMX_EPT_AD_BIT)
+#define KSM_EPT_REQUIRED_EPT		(VMX_EPT_PAGE_WALK_4_BIT | VMX_EPT_EXECUTE_ONLY_BIT |	\
+					 VMX_EPTP_WB_BIT | VMX_EPT_INVEPT_BIT | VMX_EPT_EXTENT_GLOBAL_BIT)
+#ifdef ENABLE_PML
+#define EPT_VPID_CAP_REQUIRED		(KSM_EPT_REQUIRED_EPT | VMX_EPT_AD_BIT)
+#else
+#define EPT_VPID_CAP_REQUIRED		KSM_EPT_REQUIRED_EPT
+#endif
 
 struct regs {
 	u64 gp[REG_MAX];
@@ -329,6 +332,32 @@ extern void __ept_handle_violation(u64 cs, uintptr_t rip);
 extern void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip);
 extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_set_mtf(bool enable);
+
+/* Execute function on a CPU.  */
+typedef NTSTATUS(*oncpu_fn_t) (void *);
+static inline NTSTATUS exec_on_cpu(int cpu, oncpu_fn_t oncpu, void *param)
+{
+	PROCESSOR_NUMBER nr;
+	NTSTATUS status = KeGetProcessorNumberFromIndex(cpu, &nr);
+	if (!NT_SUCCESS(status))
+		return status;
+
+	GROUP_AFFINITY affinity = {
+		.Group = nr.Group,
+		.Mask = 1ULL << nr.Number
+	};
+
+	/* Switch to specified CPU, storing old.  */
+	GROUP_AFFINITY prev;
+	KeSetSystemGroupAffinityThread(&affinity, &prev);
+
+	/* Fire in the hole!  */
+	status = oncpu(param);
+
+	/* Switch back to old CPU.  */
+	KeRevertToUserGroupAffinityThread(&prev);
+	return status;
+}
 
 static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)
 {

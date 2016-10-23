@@ -362,10 +362,9 @@ static bool vcpu_handle_hook(struct vcpu *vcpu, struct page_hook_info *h)
 	return true;
 }
 
-static inline bool vcpu_handle_unhook(struct vcpu *vcpu, uintptr_t dpfn)
+static inline bool vcpu_handle_unhook(struct vcpu *vcpu, uintptr_t dpa)
 {
 	struct ept *ept = &vcpu->ept;
-	uintptr_t dpa = dpfn << PAGE_SHIFT;
 	for_each_eptp(i)
 		ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, dpa);
 	__invept_all();

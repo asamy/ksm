@@ -13,9 +13,7 @@ static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 	epte = ept_pte(ept, EPT4(ept, EPTP_NORMAL), dpa);
 	__set_epte_ar(epte, EPT_ACCESS_ALL);
 
-	/* FIXME:  Maybe should switch to EPTP_EXHOOK incase we are not already,
-	 * should probably save a few cycles i.e. a violation?
-	 * This is not the case right now...  May also help find several bugs?  */
+	ept_switch_root_p(ept, EPTP_EXHOOK);
 	__invept_all();
 }
 
@@ -102,7 +100,7 @@ out_phi:
 
 NTSTATUS ksm_unhook_page(void *va)
 {
-	struct page_hook_info *phi = htable_get(&ksm.ht, page_hash((u64)va), ht_cmp, va);
+	struct page_hook_info *phi = ksm_find_page(va);
 	if (!phi)
 		return STATUS_NOT_FOUND;
 
@@ -111,7 +109,7 @@ NTSTATUS ksm_unhook_page(void *va)
 
 NTSTATUS __ksm_unhook_page(struct page_hook_info *phi)
 {
-	STATIC_CALL_DPC(__do_unhook_page, (void *)phi->d_pfn);
+	STATIC_CALL_DPC(__do_unhook_page, (void *)(phi->d_pfn << PAGE_SHIFT));
 	htable_del(&ksm.ht, page_hash(phi->origin), phi);
 	return STATIC_DPC_RET();
 }

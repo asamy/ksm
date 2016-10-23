@@ -292,13 +292,18 @@ static inline uintptr_t subst_addr(uintptr_t *pte)
 	return (*pte >> SSP_SUBST_ADDR_SHIFT) & SSP_SUBST_ADDR_MASK;
 }
 #endif
-
-#ifdef _MSC_VER
-#pragma optimize("", off)
+#ifdef DBG
+#define POOL_TAG	'kmPv'
 #endif
+
+#pragma optimize("", off)
 static __forceinline void *mm_alloc_pool(POOL_TYPE type, size_t size)
 {
+#ifdef DBG
+	void *v = ExAllocatePoolWithTag(type, size, POOL_TAG);
+#else
 	void *v = ExAllocatePool(type, size);
+#endif
 	if (v)
 		memset(v, 0, size);
 
@@ -308,15 +313,21 @@ static __forceinline void *mm_alloc_pool(POOL_TYPE type, size_t size)
 static __forceinline void mm_free_pool(void *v, size_t size)
 {
 	memset(v, 0, size);
+#ifdef DBG
+	ExFreePoolWithTag(v, POOL_TAG);
+#else
 	ExFreePool(v);
+#endif
 }
 
 static __forceinline void __mm_free_pool(void *v)
 {
+#ifdef DBG
+	ExFreePoolWithTag(v, POOL_TAG);
+#else
 	ExFreePool(v);
-}
-#ifdef _MSC_VER
-#pragma optimize("", on)
 #endif
+}
+#pragma optimize("", on)
 
 #endif
