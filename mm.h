@@ -55,7 +55,7 @@ static uintptr_t pte_top = 0xFFFFF6FFFFFFFFFFULL;
 
 #define PAGE_PRESENT			0x1
 #define PAGE_WRITE			0x2
-#define PAGE_OWNER			0x4
+#define PAGE_USER			0x4
 #define PAGE_WRITETHRU			0x8
 #define PAGE_CACHEDISABLE		0x10
 #define PAGE_ACCESSED			0x20
@@ -293,6 +293,9 @@ static inline uintptr_t subst_addr(uintptr_t *pte)
 }
 #endif
 
+#ifdef _MSC_VER
+#pragma optimize("", off)
+#endif
 static __forceinline void *mm_alloc_pool(POOL_TYPE type, size_t size)
 {
 	void *v = ExAllocatePool(type, size);
@@ -312,5 +315,8 @@ static __forceinline void __mm_free_pool(void *v)
 {
 	ExFreePool(v);
 }
+#ifdef _MSC_VER
+#pragma optimize("", on)
+#endif
 
 #endif

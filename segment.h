@@ -1,5 +1,5 @@
-#ifndef __IDT_H
-#define __IDT_H
+#ifndef __SEGMENT_H
+#define __SEGMENT_H
 
 #include <pshpack1.h>
 struct gdtr {

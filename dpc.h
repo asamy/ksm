@@ -52,6 +52,6 @@ static NTSTATUS __g_dpc_logical_rval = 0;
 	__g_dpc_logical_rval = 0;	\
 	KeGenericCallDpc(__percpu_##name, __VA_ARGS__);	\
 } while (0)
-#define STATIC_DPC_RET()	__g_dpc_logical_rval
+#define STATIC_DPC_RET() 	__g_dpc_logical_rval
 
 #endif

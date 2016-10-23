@@ -836,10 +836,10 @@ static bool vcpu_handle_ept_violation(struct guest_context *gc)
 	struct vcpu *vcpu = to_vcpu(gc);
 	if (!ept_handle_violation(vcpu)) {
 #ifdef DBG
-		u64 fault_pa;
-		__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &fault_pa);
+		u64 gpa;
+		__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &gpa);
 
-		VCPU_BUGCHECK(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, gc->ip, fault_pa);
+		VCPU_BUGCHECK(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, gc->ip, gpa);
 #else
 		vcpu_inject_ve(vcpu);
 #endif
@@ -859,6 +859,7 @@ static bool vcpu_handle_ept_misconfig(struct guest_context *gc)
 	struct ept *ept = &to_vcpu(gc)->ept;
 	uintptr_t *pte = ept_pte(ept, EPT4(ept, curr_eptp), fault_pa);
 	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, EPT_BUGCHECK_MISCONFIG, fault_pa, *pte);
+	return false;
 }
 
 static bool vcpu_handle_rdtscp(struct guest_context *gc)
@@ -984,18 +985,21 @@ bool vcpu_handle_exit(u64 *regs)
 	prev_handler = curr_handler;
 	curr_handler = (u16)exit_reason;
 
-	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY) {
-		u64 exit_qualification;
-		__vmx_vmread(EXIT_QUALIFICATION, &exit_qualification);
-		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, gc.ip, exit_qualification, curr_handler);
-	}
-
 	bool ret = false;
 	u64 eflags = gc.eflags;
 	if (curr_handler < sizeof(g_handlers) / sizeof(g_handlers[0]) &&
 	    (ret = g_handlers[curr_handler](&gc)) &&
 	    (gc.eflags ^ eflags) != 0)
 		__vmx_vmwrite(GUEST_RFLAGS, gc.eflags);
+
+	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY) {
+		/*
+		 * Mostly comes via invalid guest state, and is due to a cruical
+		 * thing that happened past VM-exit, let the handler see what it does first
+		 */
+		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, gc.ip,
+			      vmcs_read(EXIT_QUALIFICATION), curr_handler);
+	}
 
 	if ((cr8 ^ gc.cr8) != 0)
 		__writecr8(gc.cr8);
@@ -1013,10 +1017,6 @@ void vcpu_handle_fail(struct regs *regs)
 
 void vcpu_dump_regs(const struct regs *regs, uintptr_t sp)
 {
-	KIRQL irql = KeGetCurrentIrql();
-	if (irql < DISPATCH_LEVEL)
-		KeRaiseIrqlToDpcLevel();
-
 	VCPU_DEBUG("Context at %p: "
 		   "rax=%p rbx=%p rcx=%p "
 		   "rdx=%p rsi=%p rdi=%p "
@@ -1029,6 +1029,4 @@ void vcpu_dump_regs(const struct regs *regs, uintptr_t sp)
 		   regs->gp[REG_BP], regs->gp[REG_R8], regs->gp[REG_R9], regs->gp[REG_R10],
 		   regs->gp[REG_R11], regs->gp[REG_R12], regs->gp[REG_R13], regs->gp[REG_R14],
 		   regs->gp[REG_R15], regs->eflags);
-	if (irql < DISPATCH_LEVEL)
-		KeLowerIrql(irql);
 }

@@ -272,6 +272,9 @@ static inline void vcpu_launch(void)
 	}
 }
 
+#ifdef _MSC_VER
+#pragma optimize("", off)
+#endif
 void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 {
 	RtlZeroMemory(vcpu, sizeof(*vcpu));
@@ -302,6 +305,9 @@ out_off:
 out:
 	vcpu_free(vcpu);
 }
+#ifdef _MSC_VER
+#pragma optimize("", on)
+#endif
 
 void vcpu_free(struct vcpu *vcpu)
 {

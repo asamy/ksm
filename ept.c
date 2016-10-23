@@ -133,7 +133,7 @@ static bool setup_pml4(struct ept *ept)
 			break;
 
 out:
-	mm_free_pool(pm_ranges, sizeof(PPHYSICAL_MEMORY_RANGE));
+	mm_free_pool(pm_ranges, sizeof(PHYSICAL_MEMORY_RANGE));
 	return ret;
 }
 
@@ -204,11 +204,11 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	u64 exit;
 	__vmx_vmread(EXIT_QUALIFICATION, &exit);
 
-	u64 fault_pa;
-	__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &fault_pa);
+	u64 gpa;
+	__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &gpa);
 
-	u64 fault_va;
-	__vmx_vmread(GUEST_LINEAR_ADDRESS, &fault_va);
+	u64 gva;
+	__vmx_vmread(GUEST_LINEAR_ADDRESS, &gva);
 
 	u64 eptp;
 	__vmx_vmread(EPTP_INDEX, &eptp);
@@ -217,18 +217,18 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	u8 ar = (exit >> EPT_VE_SHIFT) & EPT_VE_MASK;
 	u8 ac = exit & 7;
 	VCPU_DEBUG("PA %p VA %p (%d AR %s - %d AC %s)\n",
-		   fault_pa, fault_va,
+		   gpa, fault_va,
 		   ar, ar_get_bits(ar),
 		   ac, ar_get_bits(ac));
 	if (ar == EPT_ACCESS_NONE) {
 		for_each_eptp(i)
-			if (!ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, fault_pa))
+			if (!ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa))
 				return false;
 		__invept_all();
 		return true;
 	}
 
-	struct page_hook_info *h = ksm_find_page((void *)fault_va);
+	struct page_hook_info *h = ksm_find_page((void *)gva);
 	if (h) {
 		u16 eptp_switch = h->ops->select_eptp(h, eptp, ar, ac);
 		if (eptp_switch != eptp) {
@@ -242,7 +242,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	}
 
 	VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
-	ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, fault_pa);
+	ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, gpa);
 	__invept_all();
 	return true;
 }
@@ -254,24 +254,24 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 	struct ept *ept = &vcpu->ept;
 
 	u16 eptp = info->eptp;
-	u64 fault_pa = info->gpa;
-	u64 fault_va = info->gla;
+	u64 gpa = info->gpa;
+	u64 gva = info->gla;
 	u64 exit = info->exit;
 	u8 ar = (exit >> EPT_VE_SHIFT) & EPT_VE_MASK;
 	u8 ac = exit & 7;
 
 	VCPU_DEBUG("0x%X:%p [%d]: PA %p VA %p (%d AR %s - %d AC %s)\n",
-		   cs, rip, eptp, fault_pa, fault_va,
+		   cs, rip, eptp, gpa, gva,
 		   ar, ar_get_bits(ar), ac, ar_get_bits(ac));
 
 	info->except_mask = 0;
 	if (ar == EPT_ACCESS_NONE) {
 		for_each_eptp(i)
-			ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, fault_pa);
+			ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa);
 		return;
 	}
 
-	struct page_hook_info *h = ksm_find_page((void *)fault_va);
+	struct page_hook_info *h = ksm_find_page((void *)gva);
 	if (h) {
 		u16 eptp_switch = h->ops->select_eptp(h, eptp, ar, ac);
 		if (eptp_switch != eptp) {
@@ -283,7 +283,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 		VCPU_DEBUG_RAW("Found hooked page but NO switching was required!\n");
 	} else {
 		VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
-		ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, fault_pa);
+		ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, gpa);
 	}
 }
 
