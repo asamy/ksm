@@ -4,16 +4,11 @@
 static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 {
 	uintptr_t dpa = phi->d_pfn << PAGE_SHIFT;
-	uintptr_t *epte = ept_pte(ept, EPT4(ept, EPTP_EXHOOK), dpa);
+	uintptr_t *epte = ept_alloc_page(ept, EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, dpa);
 	__set_epte_ar_pfn(epte, EPT_ACCESS_EXEC, phi->c_pfn);
 
-	epte = ept_pte(ept, EPT4(ept, EPTP_RWHOOK), dpa);
-	__set_epte_ar(epte, EPT_ACCESS_RW);
-
-	epte = ept_pte(ept, EPT4(ept, EPTP_NORMAL), dpa);
-	__set_epte_ar(epte, EPT_ACCESS_ALL);
-
-	ept_switch_root_p(ept, EPTP_EXHOOK);
+	ept_alloc_page(ept, EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, dpa);
+	ept_alloc_page(ept, EPT4(ept, EPTP_NORMAL), EPT_ACCESS_ALL, dpa);
 	__invept_all();
 }
 
@@ -89,6 +84,7 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 	STATIC_CALL_DPC(__do_hook_page, phi);
 	if (NT_SUCCESS(STATIC_DPC_RET())) {
 		htable_add(&ksm.ht, page_hash(phi->origin), phi);
+		KeInvalidateAllCaches();
 		return STATUS_SUCCESS;
 	}
 
