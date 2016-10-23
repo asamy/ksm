@@ -463,8 +463,13 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 		val = ksm_reg(gc, reg);
 		switch (cr) {
 		case 0:
-			__vmx_vmwrite(GUEST_CR0, *val);
-			__vmx_vmwrite(CR0_READ_SHADOW, *val);
+			if (*val & __CR0_GUEST_HOST_MASK) {
+				/* unsupported  */
+				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+			} else {
+				__vmx_vmwrite(GUEST_CR0, *val);
+				__vmx_vmwrite(CR0_READ_SHADOW, *val);
+			}
 			break;
 		case 3:
 			__vmx_vmwrite(GUEST_CR3, *val);
@@ -508,6 +513,7 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 
 		cr0 = (cr0 & ~(X86_CR0_MP | X86_CR0_EM | X86_CR0_TS)) |
 			(msw & (X86_CR0_PE | X86_CR0_MP | X86_CR0_EM | X86_CR0_TS));
+		cr0 &= ~__CR0_GUEST_HOST_MASK;
 
 		__vmx_vmwrite(GUEST_CR0, cr0);
 		__vmx_vmwrite(CR0_READ_SHADOW, cr0);
