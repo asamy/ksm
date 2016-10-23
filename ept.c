@@ -217,7 +217,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	u8 ar = (exit >> EPT_VE_SHIFT) & EPT_VE_MASK;
 	u8 ac = exit & 7;
 	VCPU_DEBUG("PA %p VA %p (%d AR %s - %d AC %s)\n",
-		   gpa, fault_va,
+		   gpa, gva,
 		   ar, ar_get_bits(ar),
 		   ac, ar_get_bits(ac));
 	if (ar == EPT_ACCESS_NONE) {
