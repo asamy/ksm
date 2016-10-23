@@ -310,3 +310,15 @@ void vcpu_free(struct vcpu *vcpu)
 
 	ept_exit(&vcpu->ept);
 }
+
+void vcpu_set_mtf(bool enable)
+{
+	u64 vm_cpuctl;
+	__vmx_vmread(CPU_BASED_VM_EXEC_CONTROL, &vm_cpuctl);
+
+	if (enable)
+		vm_cpuctl |= CPU_BASED_MONITOR_TRAP_FLAG;
+	else
+		vm_cpuctl &= ~CPU_BASED_MONITOR_TRAP_FLAG;
+	__vmx_vmwrite(CPU_BASED_VM_EXEC_CONTROL, vm_cpuctl);
+}

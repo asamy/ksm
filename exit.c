@@ -288,6 +288,8 @@ static bool vcpu_dump_pml(struct guest_context *gc)
 	__vmx_vmwrite(GUEST_PML_INDEX, pml_index);
 	/* We're done here  */
 	VCPU_DEBUG_RAW("PML dump done\n");
+	/* We definitely modified AD bits  */
+	__invept_all();
 	return true;
 }
 #endif
@@ -1029,16 +1031,4 @@ void vcpu_dump_regs(const struct regs *regs, uintptr_t sp)
 		   regs->gp[REG_R15], regs->eflags);
 	if (irql < DISPATCH_LEVEL)
 		KeLowerIrql(irql);
-}
-
-void vcpu_set_mtf(bool enable)
-{
-	u64 vm_cpuctl;
-	__vmx_vmread(CPU_BASED_VM_EXEC_CONTROL, &vm_cpuctl);
-
-	if (enable)
-		vm_cpuctl |= CPU_BASED_MONITOR_TRAP_FLAG;
-	else
-		vm_cpuctl &= ~CPU_BASED_MONITOR_TRAP_FLAG;
-	__vmx_vmwrite(CPU_BASED_VM_EXEC_CONTROL, vm_cpuctl);
 }

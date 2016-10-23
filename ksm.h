@@ -325,15 +325,10 @@ extern void ept_switch_root_p(struct ept *ept, u16 index);
 extern bool ept_handle_violation(struct vcpu *vcpu);
 extern void __ept_handle_violation(u64 cs, uintptr_t rip);
 
-/* exit.c  */
-extern bool vcpu_handle_exit(u64 *regs);
-extern void vcpu_handle_fail(struct regs *regs);
-extern void vcpu_dump_regs(const struct regs *regs, uintptr_t sp);
-extern void vcpu_set_mtf(bool enable);
-
 /* vcpu.c  */
 extern void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip);
 extern void vcpu_free(struct vcpu *vcpu);
+extern void vcpu_set_mtf(bool enable);
 
 static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)
 {
