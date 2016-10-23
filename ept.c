@@ -224,7 +224,6 @@ bool ept_handle_violation(struct vcpu *vcpu)
 		for_each_eptp(i)
 			if (!ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa))
 				return false;
-		__invept_all();
 		return true;
 	}
 
