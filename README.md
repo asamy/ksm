@@ -1,6 +1,6 @@
 # ksm
 
-A really simple and lightweight x64 hypervisor written in C for Windows for Intel processors.
+A really simple and lightweight x64 hypervisor written in C for Intel processors.
 
 ## Features
 
@@ -33,12 +33,12 @@ All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested 
 
 ## Porting to other kernels (e.g. Linux or similar) guidelines
 
-- Port Makefile and/or provide some project (e.g. KDevelop or similar)
-- Port mm functions (`mm_alloc_pool, mm_free_pool, __mm_free_pool`).  You'll need `__get_free_page` instead of `ExAllocatePool`.
-- Port acpi (not really needed) for power handling (re-virtualization) or comment it out otherwise.
-- Port main.c for some internal windows stuff, e.g. `DriverEntry`, etc.  Perhaps even rename to something like main_windows.c or similar.
-- Port the hooking example (not required, but it's essential to demonstrate usage).
-- Port x64.asm to inline assembly perhaps or some other GAS file, shouldn't be too difficult (MASM -> GAS/NASM, GAS prefered).
+- Port `Makefile` and/or provide some project (e.g. `KDevelop` or similar).  Makefile is prefered
+- Port `mm.h` functions (`mm_alloc_pool, mm_free_pool, __mm_free_pool`).  You'll need `__get_free_page` instead of `ExAllocatePool`.
+- Port `acpi.cp` (not really needed) for power handling (re-virtualization) or comment it out otherwise.
+- Port `main.c` for some internal windows stuff, e.g. `DriverEntry`, etc.  Perhaps even rename to something like main_windows.c or similar.
+- Port `page.c` for the hooking example (not required, but it's essential to demonstrate usage).
+- Port `x64.asm` to inline assembly perhaps or some other GAS file, shouldn't be too difficult (MASM -> GAS/NASM, GAS prefered).
 - Port intrinsic functions, should be easy, `__vmx_vmwrite, __vmx_vmread`, etc.  Just defining them should be OK (e.g.
 														  in
 														  vmx.h
@@ -92,16 +92,16 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 We use 3 EPT pointers, one for executable pages, one for readwrite pages, and last one for normal usage.  (see next
 													   section)
 
-- vcpu.c: in setup_vmcs() where we initially setup the VMCS fields, we then set the relevant fields (VE_INFO_ADDRESS,
-													EPTP_LIST_ADDRESS,
-													...) and enable
-relevant bits (VE, VMFUNC, and EPTP Switching CTL in VM_FUNCTION_CTL).
+- `vcpu.c`: in `setup_vmcs()` where we initially setup the VMCS fields, we then set the relevant fields (`VE_INFO_ADDRESS`,
+													`EPTP_LIST_ADDRESS`,
+													`VM_FUNCTION_CTL`) and enable
+relevant bits VE and VMFUNC in secondary processor control.
 
-- x64.asm: which contains the #VE handler (__ept_violation) then does the usual interrupt handling and then calls
-	__ept_handle_violation (ept.c) where it actually does what it needs to do.
-- ept.c: in __ept_handle_violation (#VE handler not VM-exit), usually the processor will do the #VE handler instead of
+- `x64.asm`: which contains the #VE handler (`__ept_violation`) then does the usual interrupt handling and then calls
+	`__ept_handle_violation` (ept.c) where it actually does what it needs to do.
+- `ept.c`: in `__ept_handle_violation` (#VE handler not VM-exit), usually the processor will do the #VE handler instead of
 	the VM-exit way, but sometimes it won't do so if it's delivering another exception.  This is very rare.
-- ept.c: while handling the violation via #VE, we switch vmfunc only when we detect that the faulting address is one of
+- `ept.c`: while handling the violation via #VE, we switch vmfunc only when we detect that the faulting address is one of
 	our interest (e.g. a hooked page), then we determine which EPTP we want and do vmfunc with that EPTP index.
 
 ### Hooking executable pages
