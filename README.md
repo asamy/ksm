@@ -10,12 +10,8 @@ A really simple and lightweight x64 hypervisor written in C for Windows for Inte
 
 ## Requirements
 
-An Intel processor that supports VMFUNC (for EPTP switching) and #VE.  Usually Broadwell or better.  Haswell may partially support the features (#VE only IIRC).
-
-## Compilation
-
-Simply use whatever Visual Studio version with a proper DDK and compile.  Currently, the Makefile is just a stub  
-as I am too lazy to implement stuff for it, feel free to provide a pull request and/or patch via e-mail.
+- An Intel processor that supports VMFUNC (for EPTP switching) and #VE.  Usually Broadwell or newer.  Haswell may partially support the features (#VE only IIRC).
+- Microsoft compiler (CL).  VS 2015 prefered.  Others are not currently supported.
 
 ## Unsupported features (hardware, etc.)
 
@@ -52,15 +48,22 @@ All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested 
 
 Hopefully didn't miss something important, but these are definitely the mains.
 
-As an extra task, you can also provide cross-compilation for Makefile.
+## Porting to processors that do not support #VE, vmfunc, etc.
+
+It can be easily done since #VE is mainly not required, the only issue is VMFUNC which can be emulated using a VMCALL
+and calling `ept_switch_root_p` will satisfy.
+
+As this degrades performance, it's not implemented, but feel free to do so and submit a patch.
 
 ## Contributions
 
-Contributions are really appreciated and can be provided by one of the following:
+Contributions are really appreciated and can be submitted by one of the following:
 
 - Patches (e-mail)
 - Github pull requests
 - git request-pull
+
+It'd be appreciated if you use a separate branch for your submissions (other than master, that is).
 
 ## TODO / In consideration
 
@@ -68,6 +71,9 @@ Contributions are really appreciated and can be provided by one of the following
 - Intel TXT support
 - Nesting support (shouldn't be too difficult, not mandatory.)
 - Interrupt queueing (currently if an injection fails, it will just ignore it, should be simple).
+- Cross-compiling Makefile
+- Native-compiling Makefile
+- GCC / CLang support (you can discard SEH aka `__try` and `__except` if required)
 
 ## Technical information
 
