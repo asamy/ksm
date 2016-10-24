@@ -98,8 +98,8 @@ static void ept_free_entries(uintptr_t *table, uint32_t lvl)
 static void ept_free_pml4_list(struct ept *ept)
 {
 	for (int i = 0; i < EPTP_USED; ++i)
-		if (ept->pml4_list[i])
-			ept_free_entries(ept->pml4_list[i], 4);
+		if (EPT4(ept, i))
+			ept_free_entries(EPT4(ept, i), 4);
 }
 
 static bool setup_pml4(struct ept *ept)
@@ -211,11 +211,6 @@ bool ept_handle_violation(struct vcpu *vcpu)
 
 	VCPU_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   eptp, gpa, gva, ar, ar_get_bits(ar), ac, ar_get_bits(ac));
-
-	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VMFUNC)
-		VCPU_DEBUG("NATIVE\n");
-	else
-		VCPU_DEBUG("EMU\n");
 
 	struct ept *ept = &vcpu->ept;
 	if (ar == EPT_ACCESS_NONE) {

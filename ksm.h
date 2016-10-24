@@ -133,7 +133,7 @@
 #define EPTP_NORMAL			2			/* sane eptp index, no hooks  */
 #define EPTP_DEFAULT			EPTP_EXHOOK
 #define EPTP_USED			3			/* number of unique ptrs currently in use and should be freed  */
-#define EPT_MAX_PREALLOC		512			/* FIXME:  This is retarded!  */
+#define EPT_MAX_PREALLOC		256			/* FIXME:  This is retarded!  */
 #define EPTP(e, i)			(e)->ptr_list[(i)]
 #define EPT4(e, i)			(e)->pml4_list[(i)]
 #define for_each_eptp(i)		for (int i = 0; i < EPTP_USED; ++i)
@@ -300,11 +300,11 @@ extern void deregister_power_callback(PDEV_EXT ext);
 
 struct ksm {
 	int active_vcpus;
+	struct vcpu vcpu_list[KSM_MAX_VCPUS];
 	void *hotplug_cpu;
 	u64 kernel_cr3;
 	u64 origin_cr3;
 	struct htable ht;
-	struct vcpu vcpu_list[KSM_MAX_VCPUS];
 	__align(PAGE_SIZE) u8 msr_bitmap[PAGE_SIZE];
 };
 extern struct ksm ksm;

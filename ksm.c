@@ -134,13 +134,11 @@ static NTSTATUS __ksm_exit_cpu(struct ksm *k)
 STATIC_DEFINE_DPC(__call_exit, __ksm_exit_cpu, ctx);
 NTSTATUS ksm_exit(void)
 {
-	STATIC_CALL_DPC(__call_exit, &ksm);
-
-	NTSTATUS status = STATIC_DPC_RET();
-	if (NT_SUCCESS(status) && ksm.hotplug_cpu)
+	if (ksm.hotplug_cpu)
 		KeDeregisterProcessorChangeCallback(ksm.hotplug_cpu);
 
-	return status;
+	STATIC_CALL_DPC(__call_exit, &ksm);
+	return STATIC_DPC_RET();
 }
 
 STATIC_DEFINE_DPC(__call_idt_hook, __vmx_vmcall, HYPERCALL_IDT, ctx);

@@ -72,7 +72,6 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 1. BSOD on exit due to `ept_free_prealloc`, moreover, the reason is `BAD_POOL_CALLER`...  Only happens when:
 	- An executable page is hooked
 	- A hooked page gets called at least once.
-2. BSOD on initial startup (rare) due to win32k, reason: `PAGE_FAULT_IN_NON_PAGED_AREA` (Windows 8.1/10 bug)
 
 ## Technical information
 

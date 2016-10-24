@@ -83,7 +83,7 @@ static uintptr_t pte_top = 0xFFFFF6FFFFFFFFFFULL;
 
 static inline uintptr_t *page_addr(uintptr_t *page)
 {
-	if (!*page)
+	if (!page || !*page)
 		return 0;
 
 	return __va(PAGE_PA(*page));

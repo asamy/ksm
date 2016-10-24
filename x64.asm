@@ -193,9 +193,9 @@ __vmx_entrypoint PROC
 	PUSHAQ
 	mov	rcx, rsp
     
-	sub	rsp, 20h
+	sub	rsp, 48h
 	call	vcpu_handle_exit
-	add	rsp, 20h
+	add	rsp, 48h
 
 	test	al, al
 	jz	exit
@@ -205,6 +205,10 @@ __vmx_entrypoint PROC
 	jmp	error
 
 exit:
+	; at this point:
+	;	rax = eflags
+	;	rdx = rsp
+	;	rcx = return address	(aka RIP prior to this call plus instruction length)
 	POPAQ
 	vmxoff
 	jz	error
@@ -228,14 +232,14 @@ __vmx_entrypoint ENDP
 
 __vmx_vmcall PROC
 	vmcall
-	setnbe 	al
+	setbe 	al
 	ret
 __vmx_vmcall ENDP
 
 __vmx_vmfunc PROC
 	mov	eax, edx
 	db	0fh, 01h, 0d4h
-	setnbe 	al
+	setbe 	al
 	ret
 __vmx_vmfunc ENDP
 
@@ -346,13 +350,13 @@ __invd ENDP
 
 __invept PROC
 	invept	ecx, oword ptr [rdx]
-	setnbe 	al
+	setbe 	al
 	ret
 __invept ENDP
 
 __invvpid PROC
 	invvpid	ecx, oword ptr [rdx]
-	setnbe 	al
+	setbe 	al
 	ret
 __invvpid ENDP
 

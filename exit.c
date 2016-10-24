@@ -363,9 +363,11 @@ static bool vcpu_handle_hook(struct vcpu *vcpu, struct page_hook_info *h)
 static inline bool vcpu_handle_unhook(struct vcpu *vcpu, uintptr_t dpa)
 {
 	struct ept *ept = &vcpu->ept;
+	VCPU_DEBUG("unhook page %p\n", dpa);
 	for_each_eptp(i)
 		ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, dpa);
 	__invept_all();
+	__invvpid_all();
 	return true;
 }
 
@@ -1005,6 +1007,15 @@ bool vcpu_handle_exit(u64 *regs)
 		 */
 		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, gc.ip,
 			      vmcs_read(EXIT_QUALIFICATION), curr_handler);
+	}
+
+	if (!ret) {
+		/*
+		 * It can be done here or on initialization, we do it in both... 
+		 * Just incase someone screws it up somehow.
+		 */
+		__invept_all();
+		__invvpid_all();
 	}
 
 	if ((cr8 ^ gc.cr8) != 0)

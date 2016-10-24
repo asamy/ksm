@@ -65,8 +65,10 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 		return STATUS_NO_MEMORY;
 
 	u8 *code_page = MmAllocateContiguousMemory(PAGE_SIZE, (PHYSICAL_ADDRESS) { .QuadPart = -1 });
-	if (!code_page)
-		goto out_phi;
+	if (!code_page) {
+		mm_free_pool(phi, sizeof(*phi));
+		return STATUS_INSUFFICIENT_RESOURCES;
+	}
 
 	/* Offset where code starts in this page  */
 	void *aligned = PAGE_ALIGN(original);
@@ -84,16 +86,9 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 	phi->ops = &epage_ops;
 
 	STATIC_CALL_DPC(__do_hook_page, phi);
-	if (NT_SUCCESS(STATIC_DPC_RET())) {
-		htable_add(&ksm.ht, page_hash(phi->origin), phi);
-		KeInvalidateAllCaches();
-		return STATUS_SUCCESS;
-	}
-
-	MmFreeContiguousMemory(code_page);
-out_phi:
-	mm_free_pool(phi, sizeof(*phi));
-	return STATUS_INSUFFICIENT_RESOURCES;
+	htable_add(&ksm.ht, page_hash(phi->origin), phi);
+	__wbinvd();
+	return STATUS_SUCCESS;
 }
 
 NTSTATUS ksm_unhook_page(void *va)
@@ -108,7 +103,9 @@ NTSTATUS ksm_unhook_page(void *va)
 NTSTATUS __ksm_unhook_page(struct page_hook_info *phi)
 {
 	STATIC_CALL_DPC(__do_unhook_page, (void *)(phi->d_pfn << PAGE_SHIFT));
+	MmFreeContiguousMemory(phi->c_va);
 	htable_del(&ksm.ht, page_hash(phi->origin), phi);
+	mm_free_pool(phi, sizeof(*phi));
 	return STATIC_DPC_RET();
 }
 

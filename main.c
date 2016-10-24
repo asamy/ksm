@@ -4,6 +4,12 @@
 
 static DEV_EXT g_dev_ext = { NULL, NULL };
 
+// Uncommenting the following will enable a tiny demonstration for
+// executable page hooking for MmMapIoSpace.
+// it's usually not a good idea to hook this function specifically,
+// so use with caution.
+//#define RUN_TEST
+
 DRIVER_INITIALIZE DriverEntry;
 #pragma alloc_text(INIT, DriverEntry)
 
@@ -23,6 +29,7 @@ static NTSTATUS sleep_ms(int ms)
 	return KeDelayExecutionThread(KernelMode, FALSE, &ival);
 }
 
+#ifdef RUN_TEST
 static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
 			    _In_ SIZE_T              NumberOfBytes,
 			    _In_ MEMORY_CACHING_TYPE CacheType)
@@ -38,12 +45,15 @@ static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
 	vcpu_vmfunc(EPTP_EXHOOK, 0);
 	return ret;
 }
+#endif
 
 static void DriverUnload(PDRIVER_OBJECT driverObject)
 {
 	UNREFERENCED_PARAMETER(driverObject);
 	deregister_power_callback(&g_dev_ext);
+#ifdef RUN_TEST
 	ksm_unhook_page(MmMapIoSpace);
+#endif
 	VCPU_DEBUG("ret: 0x%08X\n", ksm_exit());
 }
 
@@ -105,10 +115,13 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (NT_SUCCESS(status))
 		status = register_power_callback(&g_dev_ext);
 
+#ifdef RUN_TEST
 	if (NT_SUCCESS(status))
 		status = ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace);
+#endif
 
 	VCPU_DEBUG("ret: 0x%08X\n", status);
+#ifdef RUN_TEST
 	if (NT_SUCCESS(status)) {
 		/* Quick test  */
 		void *va = MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = __pa(g_kernel_base) },
@@ -119,6 +132,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 			MmUnmapIoSpace(va, PAGE_SIZE);
 		}
 	}
+#endif
 
 	return status;
 }
