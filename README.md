@@ -8,6 +8,18 @@ A really simple and lightweight x64 hypervisor written in C for Intel processors
 - EPT violation #VE (if not available natively, it will keep using VM-Exit instead)
 - EPTP switching VMFUNC (if not available natively, it will be emulated using a VMCALL)
 
+## Why not other hypervisors?
+
+You may have already guessed from the `Features` part, if not, here are some reasons:
+
+- Do not implement the new processor features KSM implements (VMFUNC, #VE, etc.)
+- Are not simple enough to work with or understand
+- Simply, just have messy code base or try too hard to implement endless C++ features that just make code ugly.
+- Too big code base and do not have the same purpose (e.g. research or similar)
+
+Such features for such purpose is really crucial, for my purpose, I wanted a quicker physical memory virtualization
+technique that I can relay on.
+
 ## Requirements
 
 - An Intel processor
@@ -109,6 +121,15 @@ Since we use 3 EPT pointers, and since the page needs to be read and written to 
       we also need to catch RW access to the page and then switch the EPTP appropriately according to
       the access.  In that case we switch over to `EPTP_RWHOOK` to allow RW access only!
 	The third pointer is used for when we need to call the original function.
+
+## Enabling certain features / tests
+
+You can define one or more of the following:
+
+- `RUN_TEST` - Runs a small MmMapIoSpace shadow hook test.
+- `ENABLE_PML` - Enables Page Modification Log if supported.
+- `EMULATE_VMFUNC` - Forces emulation of VMFUNC even if CPU supports it.
+- `EPT_SUPPRESS_VE` - Force suppress VE bit in EPT.
 
 ## Reporting bugs (or similar)
 

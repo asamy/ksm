@@ -1,9 +1,29 @@
+/*
+ * ksm - a really simple and fast x64 hypervisor
+ * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License along
+ * with this program; if not, write to the Free Software Foundation, Inc.,
+ * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+*/
 #include "ksm.h"
 
 static inline bool enter_vmx(struct vmcs *vmxon)
 {
-	/* If we're running nested on a hypervisor that does not
-	 * support VT-x, this will cause #GP.  */
+	/*
+	 * If we're running nested on a hypervisor that does not
+	 * support VT-x, this will cause #GP.
+	 */
 	u64 cr0 = __readcr0();
 	cr0 &= __readmsr(MSR_IA32_VMX_CR0_FIXED1);
 	cr0 |= __readmsr(MSR_IA32_VMX_CR0_FIXED0);
@@ -22,8 +42,10 @@ static inline bool enter_vmx(struct vmcs *vmxon)
 	if (__vmx_on(&pa))
 		return false;
 
-	/* This is necessary here or just before we exit the VM,
-	 * we do it here as it's easier.  */
+	/*
+	 * This is necessary here or just before we exit the VM,
+	 * we do it here as it's easier.
+	 */
 	__invept_all();
 	__invvpid_all();
 	return true;
@@ -131,8 +153,10 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
 
 	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID |
-		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES |
-		SECONDARY_EXEC_ENABLE_VMFUNC | SECONDARY_EXEC_ENABLE_VE
+		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES
+#ifndef EMULATE_VMFUNC
+		| SECONDARY_EXEC_ENABLE_VMFUNC | SECONDARY_EXEC_ENABLE_VE
+#endif
 #if _WIN32_WINNT == 0x0A00 	/* Windows 10  */
 		| SECONDARY_EXEC_RDTSCP
 #endif
@@ -166,10 +190,6 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= DEBUG_VMX_VMWRITE(IO_BITMAP_B, 0);
 	err |= DEBUG_VMX_VMWRITE(MSR_BITMAP, __pa(ksm.msr_bitmap));
 	err |= DEBUG_VMX_VMWRITE(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
-#ifdef ENABLE_PML
-	err |= DEBUG_VMX_VMWRITE(PML_ADDRESS, __pa(&vcpu->pml));
-	err |= DEBUG_VMX_VMWRITE(GUEST_PML_INDEX, PML_MAX_ENTRIES - 1);
-#endif
 	err |= DEBUG_VMX_VMWRITE(CR0_GUEST_HOST_MASK, __CR0_GUEST_HOST_MASK);
 	err |= DEBUG_VMX_VMWRITE(CR4_GUEST_HOST_MASK, __CR4_GUEST_HOST_MASK);
 	err |= DEBUG_VMX_VMWRITE(CR0_READ_SHADOW, cr0 & ~__CR0_GUEST_HOST_MASK);
@@ -201,6 +221,13 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 		ve->eptp = EPTP_DEFAULT;
 	}
 
+#ifdef ENABLE_PML
+	/* PML if supported  */
+	if (vm_2ndctl & SECONDARY_EXEC_ENABLE_PML) {
+		err |= DEBUG_VMX_VMWRITE(PML_ADDRESS, __pa(&vcpu->pml));
+		err |= DEBUG_VMX_VMWRITE(GUEST_PML_INDEX, PML_MAX_ENTRIES - 1);
+	}
+#endif
 	/* Guest  */
 	err |= DEBUG_VMX_VMWRITE(GUEST_ES_SELECTOR, es);
 	err |= DEBUG_VMX_VMWRITE(GUEST_CS_SELECTOR, cs);
