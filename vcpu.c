@@ -48,7 +48,7 @@ static inline u32 __accessright(u16 selector)
 	return 0x10000;
 }
 
-static inline void adjust_ctl_val(u32 msr, u64 *val)
+static inline void adjust_ctl_val(u32 msr, u32 *val)
 {
 	u64 v = __readmsr(msr);
 	*val &= (u32)(v >> 32);			/* bit == 0 in high word ==> must be zero  */
@@ -104,35 +104,33 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	unsigned count = idtr.limit / sizeof(*shadow);
 	for (unsigned n = 0; n < count; ++n)
 		memcpy(&shadow[n], &current[n], sizeof(*shadow));
-	vcpu_put_idt(vcpu, cs, X86_TRAP_VE, __ept_violation);
 
-	u8 msr_off = 0;
+	u32 msr_off = 0;
 	if (__readmsr(MSR_IA32_VMX_BASIC) & VMX_BASIC_TRUE_CTLS)
 		msr_off = 0xC;
 
-	u64 vm_entry = VM_ENTRY_IA32E_MODE
+	u32 vm_entry = VM_ENTRY_IA32E_MODE
 #ifndef DBG
 		| VM_ENTRY_CONCEAL_IPT
 #endif
 		;
 	adjust_ctl_val(MSR_IA32_VMX_ENTRY_CTLS + msr_off, &vm_entry);
 
-	u64 vm_exit = VM_EXIT_ACK_INTR_ON_EXIT | VM_EXIT_HOST_ADDR_SPACE_SIZE
+	u32 vm_exit = VM_EXIT_ACK_INTR_ON_EXIT | VM_EXIT_HOST_ADDR_SPACE_SIZE
 #ifndef DBG
 		| VM_EXIT_CONCEAL_IPT
 #endif
 		;
 	adjust_ctl_val(MSR_IA32_VMX_EXIT_CTLS + msr_off, &vm_exit);
 
-	u64 vm_pinctl = 0;
+	u32 vm_pinctl = 0;
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 
-	u64 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
-		CPU_BASED_USE_TSC_OFFSETING;
+	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
 
-	u64 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_TSC_SCALING |
-		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES |
+	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT |// SECONDARY_EXEC_ENABLE_VPID |
+		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES  |
 		SECONDARY_EXEC_ENABLE_VMFUNC | SECONDARY_EXEC_ENABLE_VE
 #if _WIN32_WINNT == 0x0A00 	/* Windows 10  */
 		| SECONDARY_EXEC_RDTSCP
@@ -145,33 +143,27 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 #endif
 		;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
-	if (!(vm_2ndctl & (SECONDARY_EXEC_ENABLE_VMFUNC | SECONDARY_EXEC_ENABLE_VE)))
-		return false;
 
 	/* Processor control fields  */
 	err |= DEBUG_VMX_VMWRITE(PIN_BASED_VM_EXEC_CONTROL, vm_pinctl);
 	err |= DEBUG_VMX_VMWRITE(CPU_BASED_VM_EXEC_CONTROL, vm_cpuctl);
-	err |= DEBUG_VMX_VMWRITE(EXCEPTION_BITMAP, __EXCEPTION_BITMAP);
-	err |= DEBUG_VMX_VMWRITE(PAGE_FAULT_ERROR_CODE_MASK, 0);
-	err |= DEBUG_VMX_VMWRITE(PAGE_FAULT_ERROR_CODE_MATCH, 0);
-	err |= DEBUG_VMX_VMWRITE(CR3_TARGET_COUNT, 0);
+	err |= DEBUG_VMX_VMWRITE(SECONDARY_VM_EXEC_CONTROL, vm_2ndctl);
 	err |= DEBUG_VMX_VMWRITE(VM_EXIT_CONTROLS, vm_exit);
 	err |= DEBUG_VMX_VMWRITE(VM_EXIT_MSR_STORE_COUNT, 0);
 	err |= DEBUG_VMX_VMWRITE(VM_EXIT_MSR_LOAD_COUNT, 0);
 	err |= DEBUG_VMX_VMWRITE(VM_ENTRY_CONTROLS, vm_entry);
 	err |= DEBUG_VMX_VMWRITE(VM_ENTRY_MSR_LOAD_COUNT, 0);
 	err |= DEBUG_VMX_VMWRITE(VM_ENTRY_INTR_INFO_FIELD, 0);
-	err |= DEBUG_VMX_VMWRITE(SECONDARY_VM_EXEC_CONTROL, vm_2ndctl);
 
 	/* Control Fields */
+	err |= DEBUG_VMX_VMWRITE(EXCEPTION_BITMAP, __EXCEPTION_BITMAP);
+	err |= DEBUG_VMX_VMWRITE(PAGE_FAULT_ERROR_CODE_MASK, 0);
+	err |= DEBUG_VMX_VMWRITE(PAGE_FAULT_ERROR_CODE_MATCH, 0);
+	err |= DEBUG_VMX_VMWRITE(CR3_TARGET_COUNT, 0);
 	err |= DEBUG_VMX_VMWRITE(IO_BITMAP_A, 0);
 	err |= DEBUG_VMX_VMWRITE(IO_BITMAP_B, 0);
 	err |= DEBUG_VMX_VMWRITE(MSR_BITMAP, __pa(ksm.msr_bitmap));
 	err |= DEBUG_VMX_VMWRITE(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
-	err |= DEBUG_VMX_VMWRITE(VM_FUNCTION_CTRL, VM_FUNCTION_CTL_EPTP_SWITCHING);
-	err |= DEBUG_VMX_VMWRITE(EPTP_INDEX, EPTP_DEFAULT);
-	err |= DEBUG_VMX_VMWRITE(EPTP_LIST_ADDRESS, __pa(&ept->ptr_list));
-	err |= DEBUG_VMX_VMWRITE(VE_INFO_ADDRESS, __pa(&vcpu->ve));
 #ifdef ENABLE_PML
 	err |= DEBUG_VMX_VMWRITE(PML_ADDRESS, __pa(&vcpu->pml));
 	err |= DEBUG_VMX_VMWRITE(GUEST_PML_INDEX, PML_MAX_ENTRIES - 1);
@@ -181,6 +173,31 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= DEBUG_VMX_VMWRITE(CR0_READ_SHADOW, cr0 & ~__CR0_GUEST_HOST_MASK);
 	err |= DEBUG_VMX_VMWRITE(CR4_READ_SHADOW, cr4 & ~__CR4_GUEST_HOST_MASK);
 	err |= DEBUG_VMX_VMWRITE(VMCS_LINK_POINTER, -1ULL);
+
+	/* Cache secondary ctl for emulation purposes  */
+	vcpu->secondary_ctl = vm_2ndctl;
+	vcpu->vm_func_ctl = 0;
+
+	/* See if we need to emulate VMFUNC via a VMCALL  */
+	if (vm_2ndctl & SECONDARY_EXEC_ENABLE_VMFUNC) {
+		err |= DEBUG_VMX_VMWRITE(VM_FUNCTION_CTRL, VM_FUNCTION_CTL_EPTP_SWITCHING);
+		err |= DEBUG_VMX_VMWRITE(EPTP_LIST_ADDRESS, __pa(&ept->ptr_list));
+	} else {
+		/* Enable emulation for VMFUNC  */
+		vcpu->vm_func_ctl |= VM_FUNCTION_CTL_EPTP_SWITCHING;
+	}
+
+	/* We shouldn't emulate VE unless we're nesting someone,
+	 * it'll add pointless overhead.  */
+	if (vm_2ndctl & SECONDARY_EXEC_ENABLE_VE) {
+		err |= DEBUG_VMX_VMWRITE(EPTP_INDEX, EPTP_DEFAULT);
+		err |= DEBUG_VMX_VMWRITE(VE_INFO_ADDRESS, __pa(&vcpu->ve));
+		vcpu_put_idt(vcpu, cs, X86_TRAP_VE, __ept_violation);
+	} else {
+		/* Emulate EPTP Index  */
+		struct ve_except_info *ve = &vcpu->ve;
+		ve->eptp = EPTP_DEFAULT;
+	}
 
 	/* Guest  */
 	err |= DEBUG_VMX_VMWRITE(GUEST_ES_SELECTOR, es);
@@ -272,8 +289,10 @@ static inline void vcpu_launch(void)
 	}
 }
 
+#if 0
 #ifdef _MSC_VER
 #pragma optimize("", off)
+#endif
 #endif
 void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 {
@@ -305,8 +324,10 @@ out_off:
 out:
 	vcpu_free(vcpu);
 }
+#if 0
 #ifdef _MSC_VER
 #pragma optimize("", on)
+#endif
 #endif
 
 void vcpu_free(struct vcpu *vcpu)
@@ -327,4 +348,21 @@ void vcpu_set_mtf(bool enable)
 	else
 		vm_cpuctl &= ~CPU_BASED_MONITOR_TRAP_FLAG;
 	__vmx_vmwrite(CPU_BASED_VM_EXEC_CONTROL, vm_cpuctl);
+}
+
+void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
+{
+	if (vcpu->secondary_ctl & VM_FUNCTION_CTL_EPTP_SWITCHING) {
+		/* Native  */
+		__vmx_vmwrite(EPTP_INDEX, index);
+	} else {
+		/* Emulated  */
+		struct ve_except_info *ve = &vcpu->ve;
+		ve->eptp = index;
+	}
+
+	/* Update EPT pointer  */
+	__vmx_vmwrite(EPT_POINTER, EPTP(&vcpu->ept, index));
+	/* We have to invalidate, we just switched to a new paging hierarchy  */
+	__invept_all();
 }

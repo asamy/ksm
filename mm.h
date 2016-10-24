@@ -1,5 +1,5 @@
 /* Several helper memory management functions regarding
-  * paging and page tarnsition state.  */
+ * paging and page tarnsition state.  */
 #ifndef __MM_H
 #define __MM_H
 
@@ -292,11 +292,11 @@ static inline uintptr_t subst_addr(uintptr_t *pte)
 	return (*pte >> SSP_SUBST_ADDR_SHIFT) & SSP_SUBST_ADDR_MASK;
 }
 #endif
+
 #ifdef DBG
 #define POOL_TAG	'kmPv'
 #endif
 
-#pragma optimize("", off)
 static __forceinline void *mm_alloc_pool(POOL_TYPE type, size_t size)
 {
 #ifdef DBG
@@ -305,14 +305,14 @@ static __forceinline void *mm_alloc_pool(POOL_TYPE type, size_t size)
 	void *v = ExAllocatePool(type, size);
 #endif
 	if (v)
-		memset(v, 0, size);
+		__stosq(v, 0x00, size >> 3);
 
 	return v;
 }
 
 static __forceinline void mm_free_pool(void *v, size_t size)
 {
-	memset(v, 0, size);
+	__stosq(v, 0x00, size >> 3);
 #ifdef DBG
 	ExFreePoolWithTag(v, POOL_TAG);
 #else
@@ -328,6 +328,5 @@ static __forceinline void __mm_free_pool(void *v)
 	ExFreePool(v);
 #endif
 }
-#pragma optimize("", on)
 
 #endif

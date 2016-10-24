@@ -33,9 +33,9 @@ static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
 		   CacheType);
 
 	/* Call original  */
-	__vmx_vmfunc(EPTP_NORMAL, 0);
+	vcpu_vmfunc(EPTP_NORMAL, 0);
 	void *ret = MmMapIoSpace(PhysicalAddress, NumberOfBytes, CacheType);
-	__vmx_vmfunc(EPTP_EXHOOK, 0);
+	vcpu_vmfunc(EPTP_EXHOOK, 0);
 	return ret;
 }
 
@@ -49,7 +49,7 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 {
-	/* On Windows build 14316+ Page table addresses are not static.  */
+	/* On Windows build 14316+ Page table base addresses are not static.  */
 	RTL_OSVERSIONINFOW osv;
 	osv.dwOSVersionInfoSize = sizeof(osv);
 
@@ -109,5 +109,16 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		status = ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace);
 
 	VCPU_DEBUG("ret: 0x%08X\n", status);
+	if (NT_SUCCESS(status)) {
+		/* Quick test  */
+		void *va = MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = __pa(g_kernel_base) },
+					PAGE_SIZE,
+					MmNonCached);
+		if (va) {
+			VCPU_DEBUG("Mapped kernel base at %p\n", va);
+			MmUnmapIoSpace(va, PAGE_SIZE);
+		}
+	}
+
 	return status;
 }

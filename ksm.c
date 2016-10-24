@@ -13,7 +13,7 @@ static void init_msr_bitmap(struct ksm *k)
 	RtlSetBit(&bitmap_read_lo_hdr, MSR_IA32_FEATURE_CONTROL);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		RtlSetBit(&bitmap_read_lo_hdr, msr);
-
+	
 	u8 *bitmap_read_hi = bitmap_read_lo + 1024;
 	RTL_BITMAP bitmap_read_hi_hdr;
 	RtlInitializeBitMap(&bitmap_read_hi_hdr, (PULONG)bitmap_read_hi, 1024 * CHAR_BIT);
@@ -63,8 +63,11 @@ static NTSTATUS __ksm_init_cpu(struct ksm *k)
 		}
 	} __except (EXCEPTION_EXECUTE_HANDLER)
 	{
+		__writecr4(__readcr4() & ~X86_CR4_VMXE);
+		return GetExceptionCode();
 	}
 
+	__writecr4(__readcr4() & ~X86_CR4_VMXE);
 	return STATUS_NOT_SUPPORTED;
 }
 
@@ -83,6 +86,7 @@ NTSTATUS ksm_init(void)
 {
 	NTSTATUS status;
 	int info[4];
+
 	__cpuid(info, 1);
 	if (!(info[2] & (1 << (X86_FEATURE_VMX & 31))))
 		return STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR;

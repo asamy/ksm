@@ -25,6 +25,7 @@
 #define HYPERCALL_UIDT		2	/* Unhook IDT entry  */
 #define HYPERCALL_HOOK		3	/* Hook page  */
 #define HYPERCALL_UNHOOK	4	/* Unhook page  */
+#define HYPERCALL_VMFUNC	5	/* Emulate VMFunc  */
 
 #define REG_AX			0
 #define REG_CX			1
@@ -118,8 +119,8 @@
 #define EPT_VE_WRITABLE			0x10			/* EPTE is writable  */
 #define EPT_VE_EXECUTABLE		0x20			/* EPTE is executable  */
 #define EPT_VE_RWX			0x38			/* All of the above OR'd  */
-#define EPT_VE_SHIFT			0x3
-#define EPT_VE_MASK			0x7
+#define EPT_AR_SHIFT			0x3
+#define EPT_AR_MASK			0x7
 #define EPT_VE_VALID_GLA		0x80			/* Valid guest linear address */
 #define EPT_VE_TRANSLATION		0x100			/* Translation fault  */
 #define EPT_VE_NMI_UNBLOCKING		0x2000			/* NMI unblocking due to IRET  */
@@ -131,7 +132,7 @@
 #define EPTP_NORMAL			2			/* sane eptp index, no hooks  */
 #define EPTP_DEFAULT			EPTP_EXHOOK
 #define EPTP_USED			3			/* number of unique ptrs currently in use and should be freed  */
-#define EPT_MAX_PREALLOC		128
+#define EPT_MAX_PREALLOC		0x1000			/* FIXME:  This is retarded!  */
 #define EPTP(e, i)			(e)->ptr_list[(i)]
 #define EPT4(e, i)			(e)->pml4_list[(i)]
 #define for_each_eptp(i)		for (int i = 0; i < EPTP_USED; ++i)
@@ -235,10 +236,10 @@ struct ve_except_info {
 };
 
 struct ept {
-	__declspec(align(PAGE_SIZE)) uintptr_t ptr_list[EPT_MAX_EPTP_LIST];
+	__align(PAGE_SIZE) uintptr_t ptr_list[EPT_MAX_EPTP_LIST];
 	uintptr_t *pml4_list[EPTP_USED];
 	uintptr_t *pre_alloc[EPT_MAX_PREALLOC];
-	int pre_alloc_used;
+	u32 pre_alloc_used;
 };
 
 #ifdef ENABLE_PML
@@ -246,13 +247,15 @@ struct ept {
 #endif
 
 struct vcpu {
-	__declspec(align(PAGE_SIZE)) u8 stack[PAGE_SIZE];
+	__align(PAGE_SIZE) u8 stack[PAGE_SIZE];
 #ifdef ENABLE_PML
-	__declspec(align(PAGE_SIZE)) uintptr_t pml[PML_MAX_ENTRIES];
+	__align(PAGE_SIZE) uintptr_t pml[PML_MAX_ENTRIES];
 #endif
-	__declspec(align(PAGE_SIZE)) struct vmcs vmxon;
-	__declspec(align(PAGE_SIZE)) struct vmcs vmcs;
-	__declspec(align(PAGE_SIZE)) struct ve_except_info ve;
+	__align(PAGE_SIZE) struct vmcs vmxon;
+	__align(PAGE_SIZE) struct vmcs vmcs;
+	__align(PAGE_SIZE) struct ve_except_info ve;
+	u32 secondary_ctl;	/* Emulation purposes of VE / VMFUNC  */
+	u32 vm_func_ctl;	/* Same as above  */
 	struct ept ept;
 	/* Guest IDT (emulated)  */
 	struct gdtr g_idt;
@@ -275,9 +278,10 @@ struct page_hook_info {
 	struct phi_ops *ops;
 };
 
-static size_t page_hash(u64 h)
+static inline size_t page_hash(u64 va)
 {
-	return h >> PAGE_SHIFT;
+	/* Just take out the offset.  */
+	return va >> PAGE_SHIFT;
 }
 
 static inline size_t rehash(const void *e, void *unused)
@@ -300,7 +304,7 @@ struct ksm {
 	u64 origin_cr3;
 	struct htable ht;
 	struct vcpu vcpu_list[KSM_MAX_VCPUS];
-	__declspec(align(PAGE_SIZE)) u8 msr_bitmap[PAGE_SIZE];
+	__align(PAGE_SIZE) u8 msr_bitmap[PAGE_SIZE];
 };
 extern struct ksm ksm;
 
@@ -324,7 +328,6 @@ extern bool ept_init(struct ept *ept);
 extern void ept_exit(struct ept *ept);
 extern uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uintptr_t phys);
 extern uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys);
-extern void ept_switch_root_p(struct ept *ept, u16 index);
 extern bool ept_handle_violation(struct vcpu *vcpu);
 extern void __ept_handle_violation(u64 cs, uintptr_t rip);
 
@@ -332,6 +335,33 @@ extern void __ept_handle_violation(u64 cs, uintptr_t rip);
 extern void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip);
 extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_set_mtf(bool enable);
+extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
+
+struct h_vmfunc {
+	u32 eptp;
+	u32 func;
+};
+
+static inline u16 vcpu_eptp_idx(const struct vcpu *vcpu)
+{
+	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VE)
+		return vmcs_read16(EPTP_INDEX);
+
+	const struct ve_except_info *ve = &vcpu->ve;
+	return ve->eptp;
+}
+
+static inline u8 vcpu_vmfunc(u32 eptp, u32 func)
+{
+	struct vcpu *vcpu = ksm_current_cpu();
+	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VMFUNC)
+		return __vmx_vmfunc(eptp, func);
+
+	return __vmx_vmcall(HYPERCALL_VMFUNC, &(struct h_vmfunc) {
+		.eptp = eptp,
+		.func = func,
+	});
+}
 
 /* Execute function on a CPU.  */
 typedef NTSTATUS(*oncpu_fn_t) (void *);

@@ -1,20 +1,15 @@
 #include "ksm.h"
 
-static uintptr_t *__ept_alloc_entry(void)
-{
-	return mm_alloc_pool(NonPagedPool, PAGE_SIZE);
-}
-
 static uintptr_t *ept_alloc_entry(struct ept *ept)
 {
 	if (ept) {
-		if (ept->pre_alloc_used + 1 > EPT_MAX_PREALLOC)
-			VCPU_BUGCHECK(EPT_BUGCHECK_CODE, EPT_BUGCHECK_TOOMANY, 0, 0);
+		if (ept->pre_alloc_used >= EPT_MAX_PREALLOC)
+			return NULL;
 
 		return ept->pre_alloc[ept->pre_alloc_used++];
 	}
 
-	return __ept_alloc_entry();
+	return mm_alloc_pool(NonPagedPool, PAGE_SIZE);
 }
 
 static inline void ept_init_entry(uintptr_t *entry, uint8_t access, uintptr_t phys)
@@ -76,7 +71,7 @@ uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uint
 
 static void ept_free_prealloc(struct ept *ept)
 {
-	for (int i = ept->pre_alloc_used; i < EPT_MAX_PREALLOC; ++i) {
+	for (u32 i = ept->pre_alloc_used; i < EPT_MAX_PREALLOC; ++i) {
 		if (!ept->pre_alloc[i])
 			break;
 
@@ -151,18 +146,18 @@ static inline void setup_eptp(uintptr_t *ptr, uintptr_t pml4_pfn)
 bool ept_init(struct ept *ept)
 {
 	for_each_eptp(i) {
-		uintptr_t **pml4 = &ept->pml4_list[i];
+		uintptr_t **pml4 = &EPT4(ept, i);
 		if (!(*pml4 = mm_alloc_pool(NonPagedPool, PAGE_SIZE)))
 			goto err_pml4_list;
 
-		setup_eptp(&ept->ptr_list[i], __pa(*pml4) >> PAGE_SHIFT);
+		setup_eptp(&EPTP(ept, i), __pa(*pml4) >> PAGE_SHIFT);
 	}
 
 	if (!setup_pml4(ept))
 		goto err_pml4_list;
 
 	for (int i = 0; i < EPT_MAX_PREALLOC; ++i) {
-		uintptr_t *entry = __ept_alloc_entry();
+		uintptr_t *entry = mm_alloc_pool(NonPagedPool, PAGE_SIZE);
 		if (!entry)
 			goto err_pre;
 
@@ -188,50 +183,54 @@ void ept_exit(struct ept *ept)
 uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys)
 {
 	uintptr_t *pxe = page_addr(&pml[__pxe_idx(phys)]);
-	uintptr_t *ppe = page_addr(&pxe[__ppe_idx(phys)]);
-	uintptr_t *pde = page_addr(&ppe[__pde_idx(phys)]);
-	return &pde[__pte_idx(phys)];
-}
+	if (!pxe)
+		return 0;
 
-void ept_switch_root_p(struct ept *ept, u16 index)
-{
-	__vmx_vmwrite(EPTP_INDEX, index);
-	__vmx_vmwrite(EPT_POINTER, EPTP(ept, index));
+	uintptr_t *ppe = page_addr(&pxe[__ppe_idx(phys)]);
+	if (!ppe)
+		return 0;
+
+	uintptr_t *pde = page_addr(&ppe[__pde_idx(phys)]);
+	if (!pde)
+		return 0;
+
+	return &pde[__pte_idx(phys)];
 }
 
 bool ept_handle_violation(struct vcpu *vcpu)
 {
-	u64 exit;
-	__vmx_vmread(EXIT_QUALIFICATION, &exit);
+	u64 exit = vmcs_read(EXIT_QUALIFICATION);
+	u64 gpa = vmcs_read(GUEST_PHYSICAL_ADDRESS);
+	u64 gva = vmcs_read(GUEST_LINEAR_ADDRESS);
+	u16 eptp = vcpu_eptp_idx(vcpu);
+	u8 ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
+	u8 ac = exit & EPT_AR_MASK;
 
-	u64 gpa;
-	__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &gpa);
+	if (!(exit & EPT_VE_VALID_GLA))
+		gva = 0;
 
-	u64 gva;
-	__vmx_vmread(GUEST_LINEAR_ADDRESS, &gva);
+	VCPU_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
+		   eptp, gpa, gva, ar, ar_get_bits(ar), ac, ar_get_bits(ac));
 
-	u64 eptp;
-	__vmx_vmread(EPTP_INDEX, &eptp);
+	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VMFUNC)
+		VCPU_DEBUG("NATIVE\n");
+	else
+		VCPU_DEBUG("EMU\n");
 
 	struct ept *ept = &vcpu->ept;
-	u8 ar = (exit >> EPT_VE_SHIFT) & EPT_VE_MASK;
-	u8 ac = exit & 7;
-	VCPU_DEBUG("PA %p VA %p (%d AR %s - %d AC %s)\n",
-		   gpa, gva,
-		   ar, ar_get_bits(ar),
-		   ac, ar_get_bits(ac));
 	if (ar == EPT_ACCESS_NONE) {
 		for_each_eptp(i)
 			if (!ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa))
 				return false;
+
+		VCPU_DEBUG("Used %d/%d\n", ept->pre_alloc_used, EPT_MAX_PREALLOC);
 	} else {
-		struct page_hook_info *h = ksm_find_page((void *)gva);
-		if (h) {
-			u16 eptp_switch = h->ops->select_eptp(h, eptp, ar, ac);
+		struct page_hook_info *phi = ksm_find_page((void *)gva);
+		if (phi) {
+			u16 eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
 			if (eptp_switch != eptp) {
 				VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
-				ept_switch_root_p(ept, eptp_switch);
-				__invept_all();		/* Do we need to invalidate here?  */
+				vcpu_switch_root_eptp(vcpu, eptp_switch);
 			} else {
 				/* Crtical error  */
 				VCPU_DEBUG_RAW("Found hooked page but NO switching was required!\n");
@@ -240,10 +239,9 @@ bool ept_handle_violation(struct vcpu *vcpu)
 			VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
 			ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, gpa);
 		}
-
-		__invept_all();
 	}
 
+	__invept_all();
 	return true;
 }
 
@@ -253,28 +251,32 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 	struct ve_except_info *info = &vcpu->ve;
 	struct ept *ept = &vcpu->ept;
 
-	u16 eptp = info->eptp;
 	u64 gpa = info->gpa;
 	u64 gva = info->gla;
 	u64 exit = info->exit;
-	u8 ar = (exit >> EPT_VE_SHIFT) & EPT_VE_MASK;
-	u8 ac = exit & 7;
+	u16 eptp = info->eptp;
+	u8 ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
+	u8 ac = exit & EPT_AR_MASK;
+
+	if (!(exit & EPT_VE_VALID_GLA))
+		gva = 0;
 
 	VCPU_DEBUG("0x%X:%p [%d]: PA %p VA %p (%d AR %s - %d AC %s)\n",
-		   cs, rip, eptp, gpa, gva,
-		   ar, ar_get_bits(ar), ac, ar_get_bits(ac));
+		   cs, rip, eptp, gpa, gva, ar, ar_get_bits(ar), ac, ar_get_bits(ac));
 
 	info->except_mask = 0;
 	if (ar == EPT_ACCESS_NONE) {
 		for_each_eptp(i)
 			ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa);
+
+		VCPU_DEBUG("Used %d/%d\n", ept->pre_alloc_used, EPT_MAX_PREALLOC);
 	} else {
-		struct page_hook_info *h = ksm_find_page((void *)gva);
-		if (h) {
-			u16 eptp_switch = h->ops->select_eptp(h, eptp, ar, ac);
+		struct page_hook_info *phi = ksm_find_page((void *)gva);
+		if (phi) {
+			u16 eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
 			if (eptp_switch != eptp) {
 				VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
-				__vmx_vmfunc(eptp_switch, 0);
+				vcpu_vmfunc(eptp_switch, 0);	/* One does not imply the other  */
 			} else {
 				/* Typically a critical error...  */
 				VCPU_DEBUG_RAW("Found hooked page but NO switching was required!\n");

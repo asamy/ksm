@@ -57,6 +57,24 @@ static inline bool test_bit(u64 bits, u64 bs)
 	return (bits & bs) == bs;
 }
 
+static inline u64 vmcs_read(u64 what)
+{
+	u64 x;
+	__vmx_vmread(what, &x);
+
+	return x;
+}
+
+static inline u32 vmcs_read32(u64 what)
+{
+	return (u32)vmcs_read(what);
+}
+
+static inline u16 vmcs_read16(u64 what)
+{
+	return (u16)vmcs_read32(what);
+}
+
 extern bool __vmx_vminit(struct vcpu *);
 extern void __vmx_entrypoint(void);
 

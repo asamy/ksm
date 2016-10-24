@@ -1,6 +1,6 @@
 #include "ksm.h"
 
-static void power_callback(void *ctx, void *arg0, void *arg1)
+static void power_callback(PDEV_EXT ctx, void *arg0, void *arg1)
 {
 	if (arg0 != (void *)PO_CB_SYSTEM_STATE_LOCK)
 		return;

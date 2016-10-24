@@ -1,4 +1,4 @@
-; Copyright (c) 2015-2016, tandasat. All rights reserved .  Original initialization code
+; Copyright (c) 2015-2016, tandasat. All rights reserved.  Original initialization code
 ; Copyright (C) 2015-2016, asamy, improvements and added support for IDT #VE handling, and optimized some operations
 EXTERN vcpu_init : PROC
 EXTERN vcpu_handle_exit : PROC

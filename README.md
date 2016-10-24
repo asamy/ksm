@@ -5,13 +5,13 @@ A really simple and lightweight x64 hypervisor written in C for Intel processors
 ## Features
 
 - IDT Shadowing
-- EPT violation handling via #VE
-- EPTP switching VMFUNC and a small hooking example included
+- EPT violation #VE (if not available natively, it will keep using VM-Exit instead)
+- EPTP switching VMFUNC (if not available natively, it will be emulated using a VMCALL)
 
 ## Requirements
 
-- An Intel processor that supports VMFUNC (for EPTP switching) and #VE.  Usually Broadwell or newer.  Haswell may partially support the features (#VE only IIRC).
-- Microsoft compiler (CL).  VS 2015 prefered.  Others are not currently supported.
+- An Intel processor
+- Microsoft compiler (CL).  VS 2015 prefered, Others are not currently supported.
 
 ## Unsupported features (hardware, etc.)
 
@@ -21,11 +21,8 @@ A really simple and lightweight x64 hypervisor written in C for Intel processors
 
 ## Debugging and/or testing
 
-Unfortunately, no currently available VM is able to emulate it (or "nest" it), because these features  
-are quite new, so testing on a VM is not an option, you'd need to test on a physical machine for it to work.  
-
-Further more, XEN may support nesting for it, I am not entirely sure.  But I am looking forward to port KVM to do so,  
-however KVM seems to be (currently) failing at nesting Windows VMs in general, so it might be difficult.
+Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it, you can now test under VMs with
+emulation for VMFUNC.
 
 ## Supported Kernels
 
@@ -35,7 +32,7 @@ All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested 
 
 - Port `Makefile` and/or provide some project (e.g. `KDevelop` or similar).  Makefile is prefered
 - Port `mm.h` functions (`mm_alloc_pool, mm_free_pool, __mm_free_pool`).  You'll need `__get_free_page` instead of `ExAllocatePool`.
-- Port `acpi.cp` (not really needed) for power handling (re-virtualization) or comment it out otherwise.
+- Port `acpi.c` (not really needed) for re-virtualization on S1-3 or S4 state (commenting it out is OK).
 - Port `main.c` for some internal windows stuff, e.g. `DriverEntry`, etc.  Perhaps even rename to something like main_windows.c or similar.
 - Port `page.c` for the hooking example (not required, but it's essential to demonstrate usage).
 - Port `x64.asm` to inline assembly perhaps or some other GAS file, shouldn't be too difficult (MASM -> GAS/NASM, GAS prefered).
@@ -47,13 +44,6 @@ All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested 
 														  assembly).
 
 Hopefully didn't miss something important, but these are definitely the mains.
-
-## Porting to processors that do not support #VE, vmfunc, etc.
-
-It can be easily done since #VE is mainly not required, the only issue is VMFUNC which can be emulated using a VMCALL
-and calling `ept_switch_root_p` will satisfy.
-
-As this degrades performance, it's not implemented, but feel free to do so and submit a patch.
 
 ## Contributions
 
@@ -67,6 +57,8 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 
 ## TODO / In consideration
 
+- APIC virtualization (if nesting)
+- MMIO (if nesting)
 - UEFI support
 - Intel TXT support
 - Nesting support (shouldn't be too difficult, not mandatory.)
@@ -75,7 +67,16 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 - Native-compiling Makefile
 - GCC / CLang support (you can discard SEH aka `__try` and `__except` if required)
 
+## Known bugs
+
+1. BSOD on exit due to `ept_free_prealloc`, moreover, the reason is `BAD_POOL_CALLER`...  Only happens when:
+	- An executable page is hooked
+	- A hooked page gets called at least once.
+2. BSOD on initial startup (rare) due to win32k, reason: `PAGE_FAULT_IN_NON_PAGED_AREA` (Windows 8.1/10 bug)
+
 ## Technical information
+
+Note: If the processor does not support VMFUNC or #VE, they will be disabled and instead, emulated via VM-exit.
 
 ### IDT shadowing
 
@@ -100,9 +101,9 @@ relevant bits VE and VMFUNC in secondary processor control.
 - `x64.asm`: which contains the #VE handler (`__ept_violation`) then does the usual interrupt handling and then calls
 	`__ept_handle_violation` (ept.c) where it actually does what it needs to do.
 - `ept.c`: in `__ept_handle_violation` (#VE handler not VM-exit), usually the processor will do the #VE handler instead of
-	the VM-exit way, but sometimes it won't do so if it's delivering another exception.  This is very rare.
+	the VM-exit route, but sometimes it won't do so if it's delivering another exception.  This is very rare.
 - `ept.c`: while handling the violation via #VE, we switch vmfunc only when we detect that the faulting address is one of
-	our interest (e.g. a hooked page), then we determine which EPTP we want and do vmfunc with that EPTP index.
+	our interest (e.g. a hooked page), then we determine which EPTP we want and execute `VMFUNC` with that EPTP index.
 
 ### Hooking executable pages
 
@@ -121,15 +122,14 @@ Since we use 3 EPT pointers, and since the page needs to be read and written to 
 You can report bugs by using Github issues, please provide the following:
 
 - System information (version including build number, CPU information perhaps codename too)
+- The git tree hash
 - Anything else you feel is relevant
 
 If it's a crash, please provide the following:
 
 - A minidump (C:\windows\minidump) or a memory dump (C:\windows\memory.dmp).  Former prefered.
 - The compiled .sys and the .pdb file
-- The git tree hash of which you compiled it against.
 - The Kernel executable if possible, e.g. ntoskrnl.exe from C:\Windows\System32
-
 
 ## Thanks to...
 

@@ -7,25 +7,6 @@
 static u16 curr_handler = 0;
 static u16 prev_handler = 0;
 
-/* For easier casting  */
-static inline u64 vmcs_read(u64 what)
-{
-	u64 x;
-	__vmx_vmread(what, &x);
-
-	return x;
-}
-
-static inline u32 vmcs_read32(u64 what)
-{
-	return (u32)vmcs_read(what);
-}
-
-static inline u16 vmcs_read16(u64 what)
-{
-	return (u16)vmcs_read32(what);
-}
-
 static inline int vcpu_read_cpl(void)
 {
 	u32 ar = vmcs_read32(GUEST_SS_AR_BYTES);
@@ -81,18 +62,37 @@ static inline void vcpu_advance_rip(struct guest_context *gc)
 		      interruptibility & ~(GUEST_INTR_STATE_MOV_SS | GUEST_INTR_STATE_STI));
 }
 
-static inline void vcpu_inject_ve(struct vcpu *vcpu)
+static inline bool vcpu_inject_ve(struct vcpu *vcpu)
 {
+	/*
+	 * Shouldn't really call this function at all unless 
+	 * "fake" injection is really required, otherwise this is going
+	 * to cause a unneeded overhead.
+	 *
+	 * See if we support #VE handling.
+	 */
+	if (!(vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VE))
+		return false;
+
+	/* Make sure there is an IDT entry for #VE  */
+	if (!idte_present(idt_entry(vcpu->idt.base, X86_TRAP_VE))) {
+		VCPU_DEBUG("Trying to inject #VE into a non-existent IDT entry.\n");
+		return false;
+	}
+
 	struct ve_except_info *info = &vcpu->ve;
-	info->eptp = (u16)vmcs_read(EPTP_INDEX);
+	if (info->except_mask != 0)	/* Just warn  */
+		VCPU_DEBUG("Trying to inject #VE but guest opted-out.\n");
+
+	/* Set appropriate data in VE structure  */
+	info->eptp = vcpu_eptp_idx(vcpu);
 	info->except_mask = ~0UL;
 	info->reason = EXIT_REASON_EPT_VIOLATION;
 	__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &info->gpa);
 	__vmx_vmread(GUEST_LINEAR_ADDRESS, &info->gla);
 	__vmx_vmread(EXIT_QUALIFICATION, &info->exit);
 
-	if (!vcpu_inject_hardirq_noerr(X86_TRAP_VE))
-		VCPU_DEBUG_RAW("could not inject #VE into guest\n");
+	return vcpu_inject_hardirq_noerr(X86_TRAP_VE);
 }
 
 static bool vcpu_nop(struct guest_context *gc)
@@ -265,14 +265,11 @@ static bool vcpu_dump_pml(struct guest_context *gc)
 	else
 		pml_index++;
 
-	u64 curr;
-	__vmx_vmread(EPTP_INDEX, &curr);
-
 	/* Dump it...  */
 	struct vcpu *vcpu = to_vcpu(gc);
 	struct ept *ept = &vcpu->ept;
 
-	VCPU_DEBUG_RAW("PML dump start\n");
+	u16 eptp = vcpu_eptp_idx(vcpu);
 	for (; pml_index < PML_MAX_ENTRIES; ++pml_index) {
 		/* CPU guarantees that the lower 12 bits (the offset) are always 0.  */
 		u64 gpa = vcpu->pml[pml_index];
@@ -280,7 +277,7 @@ static bool vcpu_dump_pml(struct guest_context *gc)
 		VCPU_DEBUG("On PML %d: GPA %p GVA %p\n", pml_index, gpa, gva);
 
 		/* Reset AD bits now otherwise we probably won't get this page again  */
-		uintptr_t *epte = ept_pte(ept, EPT4(ept, curr), gpa);
+		uintptr_t *epte = ept_pte(ept, EPT4(ept, eptp), gpa);
 		*epte &= ~(EPT_ACCESSED | EPT_DIRTY);
 	}
 
@@ -397,6 +394,18 @@ static inline bool vcpu_unhook_idte(struct vcpu *vcpu, struct shadow_idt_entry *
 	return true;
 }
 
+static inline bool vcpu_emulate_vmfunc(struct vcpu *vcpu, struct h_vmfunc *vmfunc)
+{
+	if (vmfunc->func >= 64 || !(vcpu->vm_func_ctl & (1 << vmfunc->func)) ||
+	    (vmfunc->func == 0 && vmfunc->eptp >= EPTP_USED)) {
+		vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+		return false;
+	}
+
+	vcpu_switch_root_eptp(vcpu, vmfunc->eptp);
+	return true;
+}
+
 static bool vcpu_handle_vmcall(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
@@ -425,6 +434,9 @@ static bool vcpu_handle_vmcall(struct guest_context *gc)
 		break;
 	case HYPERCALL_UNHOOK:
 		vcpu_adjust_rflags(gc, vcpu_handle_unhook(vcpu, arg));
+		break;
+	case HYPERCALL_VMFUNC:
+		vcpu_adjust_rflags(gc, vcpu_emulate_vmfunc(vcpu, (struct h_vmfunc *)arg));
 		break;
 	default:
 		VCPU_DEBUG("unsupported hypercall: %d\n", nr);
@@ -510,9 +522,9 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 		u64 msw = exit >> LMSW_SOURCE_DATA_SHIFT;
 		u64 cr0 = vmcs_read(GUEST_CR0);
 
-		cr0 = (cr0 & ~(X86_CR0_MP | X86_CR0_EM | X86_CR0_TS)) |
-			(msw & (X86_CR0_PE | X86_CR0_MP | X86_CR0_EM | X86_CR0_TS));
-		cr0 &= ~__CR0_GUEST_HOST_MASK;
+		cr0 = ((cr0 & ~(X86_CR0_MP | X86_CR0_EM | X86_CR0_TS)) |
+			(msw & (X86_CR0_PE | X86_CR0_MP | X86_CR0_EM | X86_CR0_TS)))
+			& ~__CR0_GUEST_HOST_MASK;
 
 		__vmx_vmwrite(GUEST_CR0, cr0);
 		__vmx_vmwrite(CR0_READ_SHADOW, cr0);
@@ -622,24 +634,10 @@ static bool vcpu_handle_msr_read(struct guest_context *gc)
 		__vmx_vmread(GUEST_GS_BASE, &val);
 		break;
 	case MSR_IA32_DEBUGCTLMSR:
-#ifdef DBG
 		__vmx_vmread(GUEST_IA32_DEBUGCTL, &val);
-#endif
 		break;
 	case MSR_IA32_FEATURE_CONTROL:
 		val = __readmsr(msr) & ~(FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX);
-		break;
-	case MSR_IA32_VMX_CR0_FIXED0:
-		val = X86_CR0_PE | X86_CR0_PG | X86_CR0_NE;
-		break;
-	case MSR_IA32_VMX_CR0_FIXED1:
-		val = -1ULL;
-		break;
-	case MSR_IA32_VMX_CR4_FIXED0:
-		val = X86_CR4_VMXE;
-		break;
-	case MSR_IA32_VMX_CR4_FIXED1:
-		val = -1ULL;
 		break;
 	case MSR_IA32_TSC:
 		val = read_tsc_msr();
@@ -681,9 +679,7 @@ static bool vcpu_handle_msr_write(struct guest_context *gc)
 		__vmx_vmwrite(GUEST_GS_BASE, val);
 		break;
 	case MSR_IA32_DEBUGCTLMSR:
-#ifdef DBG
 		__vmx_vmwrite(GUEST_IA32_DEBUGCTL, val);
-#endif
 		break;
 	case MSR_IA32_FEATURE_CONTROL:
 		break;
@@ -840,14 +836,15 @@ static bool vcpu_handle_ept_violation(struct guest_context *gc)
 
 	struct vcpu *vcpu = to_vcpu(gc);
 	if (!ept_handle_violation(vcpu)) {
-#ifdef DBG
-		u64 gpa;
-		__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &gpa);
-
-		VCPU_BUGCHECK(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, gc->ip, gpa);
-#else
-		vcpu_inject_ve(vcpu);
+#ifndef DBG
+		if (vcpu_inject_ve(vcpu))
+			return true;
 #endif
+
+		VCPU_BUGCHECK(EPT_BUGCHECK_CODE,
+			      EPT_UNHANDLED_VIOLATION,
+			      gc->ip,
+			      vmcs_read(GUEST_PHYSICAL_ADDRESS));
 	}
 
 	VCPU_TRACER_END();
@@ -858,12 +855,13 @@ static bool vcpu_handle_ept_misconfig(struct guest_context *gc)
 {
 	VCPU_TRACER_START();
 
-	u64 fault_pa = vmcs_read(GUEST_PHYSICAL_ADDRESS);
-	u16 curr_eptp = vmcs_read(EPTP_INDEX);
+	struct vcpu *vcpu = to_vcpu(gc);
+	struct ept *ept = &vcpu->ept;
+	u64 gpa = vmcs_read(GUEST_PHYSICAL_ADDRESS);
+	u16 eptp = vcpu_eptp_idx(vcpu);
 
-	struct ept *ept = &to_vcpu(gc)->ept;
-	uintptr_t *pte = ept_pte(ept, EPT4(ept, curr_eptp), fault_pa);
-	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, EPT_BUGCHECK_MISCONFIG, fault_pa, *pte);
+	uintptr_t *pte = ept_pte(ept, EPT4(ept, eptp), gpa);
+	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, EPT_BUGCHECK_MISCONFIG, gpa, *pte);
 	return false;
 }
 

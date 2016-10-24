@@ -71,4 +71,10 @@ typedef signed long long intptr_t;
 #define PRIh64	"llx"
 #define PRIH64	"016llx"
 
+#ifdef _MSC_VER
+#define __align(alignment)	__declspec(align(alignment))
+#else
+#define __align(alignemtn)	__attribute__((__aligned__(alignment)))
+#endif
+
 #endif
