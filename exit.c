@@ -2,6 +2,12 @@
  * ksm - a really simple and fast x64 hypervisor
  * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
  *
+ * This file handles a VM-exit from guest, if any error occurs,
+ * it either:
+ *	1) crash the system
+ *	2) inject an exception into guest
+ * Otherwise it returns execution to guest.
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -148,6 +154,7 @@ static bool vcpu_handle_except_nmi(struct guest_context *gc)
 
 static bool vcpu_handle_triplefault(struct guest_context *gc)
 {
+	/* A triple fault occured during handling of a double fault in guest, bug check.  */
 	VCPU_TRACER_START();
 	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, VCPU_TRIPLEFAULT, curr_handler, prev_handler);
 	VCPU_TRACER_END();
@@ -156,7 +163,9 @@ static bool vcpu_handle_triplefault(struct guest_context *gc)
 
 static bool vcpu_handle_taskswitch(struct guest_context *gc)
 {
+	/* Not really called  */
 	VCPU_TRACER_START();
+
 	u64 exit;
 	__vmx_vmread(EXIT_QUALIFICATION, &exit);
 
@@ -198,6 +207,7 @@ static bool vcpu_handle_cpuid(struct guest_context *gc)
 	int subf = ksm_read_reg32(gc, REG_CX);
 	__cpuidex(cpuid, func, subf);
 
+	/* We do not support nesting, so take out the VMX bit.  */
 	if (func == 1)
 		cpuid[2] &= ~(1 << (X86_FEATURE_VMX & 31));
 
@@ -258,6 +268,10 @@ static bool vcpu_handle_rdtsc(struct guest_context *gc)
 
 static bool vcpu_handle_vmfunc(struct guest_context *gc)
 {
+	/* VM functions do not cause VM exit unless:
+	 *	1) funciton is not supported
+	 *	2) EPTP index is too high.
+	 */
 	VCPU_TRACER_START();
 	VCPU_DEBUG("vmfunc caused VM-exit!  func is %d eptp index is %d\n",
 		   ksm_read_reg32(gc, REG_AX), ksm_read_reg32(gc, REG_CX));
@@ -417,6 +431,7 @@ static inline bool vcpu_unhook_idte(struct vcpu *vcpu, struct shadow_idt_entry *
 
 static inline bool vcpu_emulate_vmfunc(struct vcpu *vcpu, struct h_vmfunc *vmfunc)
 {
+	/* Emulate a VMFUNC due it to not being supported natively.  */
 	if (vmfunc->func >= 64 || !(vcpu->vm_func_ctl & (1 << vmfunc->func)) ||
 	    (vmfunc->func == 0 && vmfunc->eptp >= EPTP_USED)) {
 		vcpu_inject_hardirq_noerr(X86_TRAP_UD);
@@ -473,6 +488,7 @@ out:
 
 static bool vcpu_handle_vmx(struct guest_context *gc)
 {
+	/* No nesting is currently supported  */
 	VCPU_TRACER_START();
 	vcpu_inject_hardirq_noerr(X86_TRAP_UD);
 	vcpu_advance_rip(gc);
@@ -569,8 +585,10 @@ static bool vcpu_handle_dr_access(struct guest_context *gc)
 	u64 exit = vmcs_read(EXIT_QUALIFICATION);
 	int dr = exit & DEBUG_REG_ACCESS_NUM;
 
-	/* See Intel Manual, when CR4.DE is enabled, dr4/5 cannot be used,
-	 * when clear, they are aliased to 6/7.  */
+	/*
+	 * See Intel Manual, when CR4.DE is enabled, dr4/5 cannot be used,
+	 * when clear, they are aliased to 6/7.
+	 * */
 	u64 cr4 = vmcs_read(GUEST_CR4);
 	if (cr4 & X86_CR4_DE && (dr == 4 || dr == 5)) {
 		vcpu_inject_hardirq_noerr(X86_TRAP_GP);
@@ -666,6 +684,7 @@ static bool vcpu_handle_msr_read(struct guest_context *gc)
 		val = read_tsc_msr();
 		break;
 	default:
+		/* No nesting support  */
 		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC)
 			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
 		else
@@ -729,6 +748,7 @@ static bool vcpu_handle_invalid_state(struct guest_context *gc)
 
 static bool vcpu_handle_mtf(struct guest_context *gc)
 {
+	/* Monitor Trap Flag, it's not recommended to use this at all.  */
 	VCPU_TRACER_START();
 	vcpu_set_mtf(false);
 	vcpu_advance_rip(gc);
@@ -738,6 +758,10 @@ static bool vcpu_handle_mtf(struct guest_context *gc)
 
 static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 {
+	/*
+	 * Synchronize shadow IDT with Guest's IDT, taking into account
+	 * entries that we set, by simply just discarding them.
+	 */
 	unsigned entries = min(idt->limit, PAGE_SIZE - 1) / sizeof(struct kidt_entry64);
 	struct kidt_entry64 *current = (struct kidt_entry64 *)idt->base;
 	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
@@ -926,7 +950,8 @@ static bool vcpu_handle_xsetbv(struct guest_context *gc)
 	return true;
 }
 
-static bool(*g_handlers[]) (struct guest_context *) = {
+/* VM-exit handlers.  */
+static bool (*g_handlers[]) (struct guest_context *) = {
 	[EXIT_REASON_EXCEPTION_NMI] = vcpu_handle_except_nmi,
 	[EXIT_REASON_EXTERNAL_INTERRUPT] = vcpu_nop,
 	[EXIT_REASON_TRIPLE_FAULT] = vcpu_handle_triplefault,
@@ -1043,6 +1068,11 @@ bool vcpu_handle_exit(u64 *regs)
 
 void vcpu_handle_fail(struct regs *regs)
 {
+	/*
+	 * Handle failure due to either:
+	 *	1) VM entry failure
+	 *	2) vmxoff failure
+	 */
 	size_t err = 0;
 	if (regs->eflags & X86_EFLAGS_ZF)
 		__vmx_vmread(VM_INSTRUCTION_ERROR, &err);

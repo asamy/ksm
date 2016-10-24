@@ -79,6 +79,15 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 - Native-compiling Makefile
 - GCC / CLang support (you can discard SEH aka `__try` and `__except` if required)
 
+## Loading the driver
+
+	In commandline as administrator:
+1. sc create ksm type= kernel binPath= C:\path\to\your\ksm.sys
+2. sc start ksm
+
+	Unloading:
+`sc stop ksm`
+
 ## Technical information
 
 Note: If the processor does not support VMFUNC or #VE, they will be disabled and instead, emulated via VM-exit.

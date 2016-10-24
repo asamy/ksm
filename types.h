@@ -19,25 +19,28 @@
 #ifndef __TYPES_H
 #define __TYPES_H
 
-#pragma warning(disable:4115)
-#pragma warning(disable:4242)
-#pragma warning(disable:4244)
-#pragma warning(disable:4201)
-#pragma warning(disable:4311)
-#pragma warning(disable:4214)
-#pragma warning(disable:4133)
-#pragma warning(disable:4146)
-#pragma warning(disable:4366)
-#pragma warning(disable:4702)
-#pragma warning(disable:4100)
-#pragma warning(disable:4200)
-#pragma warning(disable:4098)
-#pragma warning(disable:4152)
-#pragma warning(disable:4204)
-#pragma warning(disable:4189)
-#pragma warning(disable:4706)
-#pragma warning(disable:4221)
-#pragma warning(disable:4054)
+#ifdef _MSC_VER
+/* Disable annoying warnings  */
+#pragma warning(disable:4115)		/* 'type' : named type definition in parentheses  */
+#pragma warning(disable:4242)		/* 'identifier' : conversion from 'type1' to 'type2', possible loss of data*/
+#pragma warning(disable:4244)		/* 'conversion' conversion from 'type1' to 'type2', possible loss of data  */
+#pragma warning(disable:4201)		/* nonstandard extension used : nameless struct/union  */
+#pragma warning(disable:4311)		/* 'variable' : pointer truncation from 'type' to 'type'  */
+#pragma warning(disable:4214)		/* nonstandard extension used : bit field types other than int  */
+#pragma warning(disable:4133)		/* 'type' : incompatible types - from 'type1' to 'type2'  */
+#pragma warning(disable:4146)		/* unary minus operator applied to unsigned type, result still unsigned  */
+#pragma warning(disable:4366)		/* The result of the unary 'operator' operator may be unaligned  */
+#pragma warning(disable:4702)		/* unreachable code  */
+#pragma warning(disable:4100)		/* 'identifier' : unreferenced formal parameter  */
+#pragma warning(disable:4200)		/* nonstandard extension used : zero-sized array in struct/union  */
+#pragma warning(disable:4098)		/* 'function' : void function returning a value  */
+#pragma warning(disable:4152)		/* non standard extension, function/data ptr conversion in expression  */
+#pragma warning(disable:4204)		/* nonstandard extension used : non-constant aggregate initializer  */
+#pragma warning(disable:4189)		/* 'identifier' : local variable is initialized but not referenced  */
+#pragma warning(disable:4706)		/* assignment within conditional expression  */
+#pragma warning(disable:4221)		/* nonstandard extension used : 'identifier' : cannot be initialized using address of automatic variable  */
+#pragma warning(disable:4054)		/*  'conversion' : from function pointer 'type1' to data pointer 'type2'  */
+#endif
 
 /* Long names  */
 typedef unsigned char uint8_t;
@@ -61,11 +64,11 @@ typedef sint16_t s16;
 typedef sint32_t s32;
 typedef sint64_t s64;
 
-#ifndef _bool_true_false_defined
+#ifndef _bool_true_false_are_defined
 #define bool	_Bool
 #define true	1
 #define false	0
-#define _bool_true_false_defined
+#define _bool_true_false_arE_defined
 #endif
 
 #ifndef _UINTPTR_T_DEFINED

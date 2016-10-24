@@ -19,6 +19,9 @@
 #ifndef __SEGMENT_H
 #define __SEGMENT_H
 
+/*
+ * Helper functions for segmentation (IDT, GDT, LDT, etc.)
+ */
 #include <pshpack1.h>
 struct gdtr {
 	u16 limit;

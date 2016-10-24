@@ -23,8 +23,28 @@ struct ksm ksm = {
 	.active_vcpus = 0,
 };
 
+/*
+ * This file manages CPUs initialization, for per-cpu initializaiton
+ * see vcpu.c, for VM-exit handlers see exit.c
+ *
+ * For the macro magic (aka STATIC_DEFINE_DPC, etc.) see dpc.h,
+ * DPCs are for per-processor callbacks.
+ */
 static void init_msr_bitmap(struct ksm *k)
 {
+	/*
+	 * Setup the MSR bitmap, opt-in for VM-exit for some MSRs
+	 * Mostly the VMX msrs so we don't cause too much havoc.
+	 *
+	 * There are 4 things here:
+	 *	- Read bitmap low (aka MSR indices of 0 to 1FFFH)
+	 *	- Read bitmap high (aka MSR indices of 0xC0000000 to 0xC0001FFFH)
+	 *	- Write bitmap low (same thing as read)
+	 *	- Write bitmap high (same thing as read)
+	 *
+	 * To opt-in for an MSR vm-exit, simply set the bit of it.
+	 * Note: for high msrs, subtract it with 0xC0000000.
+	 */
 	u8 *bitmap_read_lo = k->msr_bitmap;
 	RTL_BITMAP bitmap_read_lo_hdr;
 	RtlInitializeBitMap(&bitmap_read_lo_hdr, (PULONG)bitmap_read_lo, 1024 * CHAR_BIT);
@@ -91,6 +111,7 @@ static NTSTATUS __ksm_init_cpu(struct ksm *k)
 
 static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT change_ctx, PNTSTATUS op_status)
 {
+	/* CPU Hotplug callback, a CPU just came online.  */
 	if (change_ctx->State == KeProcessorAddCompleteNotify) {
 		/* virtualize it.   */
 		NTSTATUS status = __ksm_init_cpu(&ksm);
@@ -142,6 +163,9 @@ static NTSTATUS __ksm_exit_cpu(struct ksm *k)
 		VCPU_DEBUG("this processor is not virtualized: 0x%08X\n", GetExceptionCode());
 		return STATUS_HV_NOT_PRESENT;
 	}
+
+	if (err)
+		return STATUS_UNSUCCESSFUL;
 
 	k->active_vcpus--;
 	__writecr4(__readcr4() & ~X86_CR4_VMXE);

@@ -21,6 +21,8 @@
 static inline bool enter_vmx(struct vmcs *vmxon)
 {
 	/*
+	 * Actually enter VMX root mode.
+	 *
 	 * If we're running nested on a hypervisor that does not
 	 * support VT-x, this will cause #GP.
 	 */
@@ -53,6 +55,10 @@ static inline bool enter_vmx(struct vmcs *vmxon)
 
 static inline bool init_vmcs(struct vmcs *vmcs)
 {
+	/*
+	 * Initialize VMCS (VM control structure) that we're going to use
+	 * to store stuff in it, see setup_vmcs().
+	 */
 	u64 vmx = __readmsr(MSR_IA32_VMX_BASIC);
 	vmcs->revision_id = (u32)vmx;
 
@@ -68,6 +74,7 @@ static inline u32 __accessright(u16 selector)
 	if (selector)
 		return (__lar(selector) >> 8) & 0xF0FF;
 
+	/* unusable  */
 	return 0x10000;
 }
 
@@ -228,6 +235,7 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 		err |= DEBUG_VMX_VMWRITE(GUEST_PML_INDEX, PML_MAX_ENTRIES - 1);
 	}
 #endif
+
 	/* Guest  */
 	err |= DEBUG_VMX_VMWRITE(GUEST_ES_SELECTOR, es);
 	err |= DEBUG_VMX_VMWRITE(GUEST_CS_SELECTOR, cs);
@@ -306,6 +314,14 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 
 static inline void vcpu_launch(void)
 {
+	/*
+	 * Actually launch the VM, returning to guest on success
+	 * or returning here on failure.
+	 *
+	 * The return to guest address is determined by __vmx_vminit in x64.asm
+	 * which is do_resume label, which then returns to the original
+	 * caller, usually __ksm_init_cpu in ksm.c
+	 */
 	size_t vmerr;
 	uint8_t err = __vmx_vmread(VM_INSTRUCTION_ERROR, &vmerr);
 	if (err)
@@ -318,14 +334,27 @@ static inline void vcpu_launch(void)
 	}
 }
 
-#if 0
-#ifdef _MSC_VER
-#pragma optimize("", off)
-#endif
-#endif
 void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 {
-	RtlZeroMemory(vcpu, sizeof(*vcpu));
+	/*
+	 * zero out vcpu to prevent un-needed behavior,
+	 * note: this is allocated by kernel device driver load
+	 * aka IopLoadDriver or IopInitializeBuiltInDriver if we're a boot driver
+	 * because all vcpus are allocated via the structure ksm, which is a global variable.
+	 *
+	 * Note: that we return to __ksm_init_cpu anyway regardless of failure or
+	 * success, but the difference is, if we fail, vcpu_launch() will give us back control
+	 * instead of directly returning to __ksm_init_cpu.
+	 *
+	 * What we do here (in order):
+	 *	- Setup EPT
+	 *	- Setup the shadow IDT (later initialized)
+	 *	- Enter VMX root mode
+	 *	- Initialize VMCS (shadow IDT initialized here)
+	 *	- Setup VMCS
+	 *	- Launch VM
+	 */
+	__stosq(vcpu, 0x00, sizeof(*vcpu) >> 3);
 	if (!ept_init(&vcpu->ept))
 		return;
 
@@ -343,7 +372,8 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	if (setup_vmcs(vcpu, sp, ip, (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE))
 		vcpu_launch();
 
-	/* setup_vmcs() failed if we got here, we had already overwritten the
+	/*
+	 * setup_vmcs()/vcpu_launch() failed if we got here, we had already overwritten the
 	 * IDT entry for #VE (X86_TRAP_VE), restore it now otherwise PatchGuard is gonna
 	 * notice and BSOD us.  */
 	__lidt(&vcpu->g_idt);
@@ -353,11 +383,6 @@ out_off:
 out:
 	vcpu_free(vcpu);
 }
-#if 0
-#ifdef _MSC_VER
-#pragma optimize("", on)
-#endif
-#endif
 
 void vcpu_free(struct vcpu *vcpu)
 {
@@ -365,6 +390,7 @@ void vcpu_free(struct vcpu *vcpu)
 		mm_free_pool((void *)vcpu->idt.base, PAGE_SIZE);
 
 	ept_exit(&vcpu->ept);
+	__stosq(vcpu, 0x00, sizeof(*vcpu) >> 3);
 }
 
 void vcpu_set_mtf(bool enable)

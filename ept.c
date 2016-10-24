@@ -40,6 +40,35 @@ static inline void ept_init_entry(uintptr_t *entry, uint8_t access, uintptr_t ph
 #endif
 }
 
+/*
+ * Sets up page tables for the required guest physical address, aka AMD64 page
+ * tables, which are ugly and can be confusing, so here's an explanation of what
+ * this does:
+ *
+ *	PML4 (aka Page Map Level 4) ->
+ *		PML4E (aka PDPT or Page Directory Pointer Table) ->
+ *			PDPTE (aka PDT or Page Directory Table) ->
+ *				PDTE (aka PT or Page Table) ->
+ *					PTE (aka Page)
+ *
+ * Assuming:
+ *	1) Each PML4 entry is 1 GB, so that makes the whole PML4 table 512 GB
+ *	2) Each PDPT entry is 2 MB, so that makes the whole PDPT table 1 GB
+ *	3) Each PDT entry is 4 KG, so that makes the whole PDT table 2 MB
+ *
+ * So, with that being said, while we only have the initial table (PML4) virtual address
+ * to work with, we need first need to get an offset into it (for the PDPT), and so on, so
+ * we use the following macros:
+ *	- __pxe_idx(pa)		- Gives an offset into PML4 to get the PDPT
+ *	- __ppe_idx(pa)		- Gives an offset into PDPT to get the PDT
+ *	- __pde_idx(pa)		- Gives an offset into PDT to get the PT 
+ *	- __pte_idx(pa)		- Gives an offset into PT to get the final page!
+ *
+ * And since each of those entries contain a physical address, we need to use
+ * page_addr() to obtain the virtual address for that specific table, what page_addr()
+ * does is quite simple, it checks if the entry is not NULL and is present, then does
+ * __va(PAGE_PA(entry)).
+ */
 uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uintptr_t phys)
 {
 	/* PML4 (512 GB) */
@@ -87,6 +116,9 @@ uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uint
 	return page;
 }
 
+/*
+ * Free pre-allocated EPT entries, discarding used entries because they were
+ * used by ept_alloc_page(), so no need to confuse each other.  */
 static void ept_free_prealloc(struct ept *ept)
 {
 	for (u32 i = ept->pre_alloc_used; i < EPT_MAX_PREALLOC; ++i) {
@@ -97,6 +129,9 @@ static void ept_free_prealloc(struct ept *ept)
 	}
 }
 
+/*
+ * Recursively free each table entries, see ept_alloc_page()
+ * for an explanation.  */
 static void ept_free_entries(uintptr_t *table, uint32_t lvl)
 {
 	for (int i = 0; i < 512; ++i) {
@@ -123,8 +158,10 @@ static void ept_free_pml4_list(struct ept *ept)
 static bool setup_pml4(struct ept *ept)
 {
 	PPHYSICAL_MEMORY_RANGE pm_ranges = MmGetPhysicalMemoryRanges();
-	bool ret = false;
+	if (!pm_ranges)
+		return false;
 
+	bool ret = false;
 	for (int run = 0;; ++run) {
 		uintptr_t base_addr = pm_ranges[run].BaseAddress.QuadPart;
 		uintptr_t bytes = pm_ranges[run].NumberOfBytes.QuadPart;
@@ -198,6 +235,10 @@ void ept_exit(struct ept *ept)
 	ept_free_pml4_list(ept);
 }
 
+/*
+ * Get a PTE for the specified guest physical address, this can be used
+ * to get the host physical address it redirects to or redirect to it.
+ */
 uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys)
 {
 	uintptr_t *pxe = page_addr(&pml[__pxe_idx(phys)]);
@@ -215,6 +256,9 @@ uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys)
 	return &pde[__pte_idx(phys)];
 }
 
+/*
+ * Handle a VM-Exit EPT violation (we're inside VMX root here).
+ */
 bool ept_handle_violation(struct vcpu *vcpu)
 {
 	u64 exit = vmcs_read(EXIT_QUALIFICATION);
@@ -258,6 +302,10 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	return true;
 }
 
+/*
+ * This is called from the IDT handler (__ept_violation) see x64.asm
+ * We're inside Guest here
+ * */
 void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 {
 	struct vcpu *vcpu = ksm_current_cpu();

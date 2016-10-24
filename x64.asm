@@ -84,6 +84,15 @@ ASM_DUMP_REGISTERS MACRO
 	popfq
 ENDM
 
+; General IDT trap handler (entry)
+;	assumes:
+;		1) There is an error code on the stack
+;		2) NO_SWAP_LABEL is provided in case the trap is a kernel mode trap.
+; Note: This does not save XMM registers, you need to do that with TRAP_SAVE_XMM.
+;
+; Saves non-volatile registers on the frame pointer and jumps to NO_SWAP_LABEL if no
+; GS swapping required (MSR_IA32_KERNEL_GS_BASE <-> MSR_IA32_GS_BASE), otherwise does
+; swapgs and that's it.
 TRAP_ENTER MACRO	NO_SWAP_LABEL
 	; stack:
 	;		ss (+40)
@@ -122,6 +131,7 @@ TRAP_ENTER MACRO	NO_SWAP_LABEL
 	swapgs
 ENDM
 
+; cleans up stack from TRAP_ENTER.
 TRAP_EXIT MACRO
 	mov	r11, [rbp + KFRAME_R11]
 	mov	r10, [rbp + KFRAME_R10]
@@ -136,6 +146,7 @@ TRAP_EXIT MACRO
 	add	rsp, 0E8h
 ENDM
 
+; cleans up XMM registers and CSR
 TRAP_REST_XMM MACRO
 	ldmxcsr	dword ptr[rbp + KFRAME_CSR]
 	movaps	xmm0, xmmword ptr[rbp + KFRAME_XMM0]
@@ -146,6 +157,7 @@ TRAP_REST_XMM MACRO
 	movaps	xmm5, xmmword ptr[rbp + KFRAME_XMM5]
 ENDM
 
+; save XMM registers and CSR
 TRAP_SAVE_XMM MACRO
 	stmxcsr	dword ptr [rbp + KFRAME_CSR]
 	ldmxcsr	dword ptr gs:[180h]
@@ -190,6 +202,9 @@ do_resume:
 __vmx_vminit ENDP
 
 __vmx_entrypoint PROC
+	; This is the VM entry point, aka root mode.
+	; This saves guest registers (as they are untouched for now)
+	; and restores control to guest if all good, otherwise, fail.
 	PUSHAQ
 	mov	rcx, rsp
     
@@ -201,8 +216,8 @@ __vmx_entrypoint PROC
 	jz	exit
 
 	POPAQ
-	vmresume
-	jmp	error
+	vmresume		; give them control
+	jmp	error		; something went wrong.
 
 exit:
 	; at this point:
@@ -214,12 +229,13 @@ exit:
 	jz	error
 	jc	error
 	push	rax
-	popfq
-	mov	rsp, rdx
-	push	rcx
+	popfq			; eflags to indicate success
+	mov	rsp, rdx	; stack pointer
+	push	rcx		; return address (rip + instr len)
 	ret
 
 error:
+	; otherwise, we are rip.
 	pushfq
 	PUSHAQ
 	mov	rcx, rsp
@@ -231,12 +247,18 @@ error:
 __vmx_entrypoint ENDP
 
 __vmx_vmcall PROC
+	; assumes:
+	;	rcx = hypercall
+	;	rdx = data
 	vmcall
 	setbe 	al
 	ret
 __vmx_vmcall ENDP
 
 __vmx_vmfunc PROC
+	; assumes:
+	;	ecx = EPTP index
+	;	edx = function
 	mov	eax, edx
 	db	0fh, 01h, 0d4h
 	setbe 	al
@@ -361,6 +383,8 @@ __invvpid PROC
 __invvpid ENDP
 
 __ept_violation PROC
+	; #VE handler, standard interrupt handling then
+	; calls C handler aka __ept_handle_violation, see ept.c
 	sub	rsp, 8
 	TRAP_ENTER(ept_no_swap)
 

@@ -22,12 +22,11 @@
 
 static DEV_EXT g_dev_ext = { NULL, NULL };
 
-// Uncommenting the following will enable a tiny demonstration for
-// executable page hooking for MmMapIoSpace.
-// it's usually not a good idea to hook this function specifically,
-// so use with caution.
-//#define RUN_TEST
-
+/*
+ * Main entry point, calls ksm_init() to virtualize the system, on failure,
+ * an error is printed, DebugView can be used to see the error if compiled
+ * with debug.
+ */
 DRIVER_INITIALIZE DriverEntry;
 #pragma alloc_text(INIT, DriverEntry)
 
