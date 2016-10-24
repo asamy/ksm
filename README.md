@@ -67,12 +67,6 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 - Native-compiling Makefile
 - GCC / CLang support (you can discard SEH aka `__try` and `__except` if required)
 
-## Known bugs
-
-1. BSOD on exit due to `ept_free_prealloc`, moreover, the reason is `BAD_POOL_CALLER`...  Only happens when:
-	- An executable page is hooked
-	- A hooked page gets called at least once.
-
 ## Technical information
 
 Note: If the processor does not support VMFUNC or #VE, they will be disabled and instead, emulated via VM-exit.
