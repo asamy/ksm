@@ -218,6 +218,7 @@ static bool vcpu_handle_invlpg(struct guest_context *gc)
 	uintptr_t addr;
 	__vmx_vmread(EXIT_QUALIFICATION, &addr);
 	__invlpg((void *)addr);
+	__invvpid_addr(vpid_nr(), addr);
 	vcpu_advance_rip(gc);
 
 	VCPU_TRACER_END();
@@ -483,9 +484,11 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 			}
 			break;
 		case 3:
+			__invvpid_no_global(vpid_nr());
 			__vmx_vmwrite(GUEST_CR3, *val);
 			break;
 		case 4:
+			__invvpid_single(vpid_nr());
 			if (*val & __CR4_GUEST_HOST_MASK) {
 				/* No nesting  */
 				vcpu_inject_hardirq_noerr(X86_TRAP_GP);

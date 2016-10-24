@@ -60,6 +60,7 @@
 
 /* Short name:  */
 #define cpu_nr()			KeGetCurrentProcessorNumberEx(NULL)
+#define vpid_nr()			(cpu_nr() + 1)
 #define proc_nr()			PsGetCurrentProcessId()
 
 #ifndef __func__
@@ -132,7 +133,7 @@
 #define EPTP_NORMAL			2			/* sane eptp index, no hooks  */
 #define EPTP_DEFAULT			EPTP_EXHOOK
 #define EPTP_USED			3			/* number of unique ptrs currently in use and should be freed  */
-#define EPT_MAX_PREALLOC		0x1000			/* FIXME:  This is retarded!  */
+#define EPT_MAX_PREALLOC		512			/* FIXME:  This is retarded!  */
 #define EPTP(e, i)			(e)->ptr_list[(i)]
 #define EPT4(e, i)			(e)->pml4_list[(i)]
 #define for_each_eptp(i)		for (int i = 0; i < EPTP_USED; ++i)

@@ -21,31 +21,49 @@ typedef struct {
 	u64 gpa;
 } invept_t;
 
-extern void __invvpid(u32 type, invvpid_t *i);
-extern void __invept(u32 type, invept_t *i);
+extern u8 __invvpid(u32 type, invvpid_t *i);
+extern u8 __invept(u32 type, invept_t *i);
 extern void __ept_violation(void);
 
-static inline void __invept_all(void)
+static inline u8 __invept_all(void)
 {
-	__invept(VMX_EPT_EXTENT_GLOBAL, &(invept_t) { 0, 0 });
+	return __invept(VMX_EPT_EXTENT_GLOBAL, &(invept_t) { 0, 0 });
 }
 
-static inline void __invept_gpa(u64 ptr, u64 gpa)
+static inline u8 __invept_gpa(u64 ptr, u64 gpa)
 {
-	__invept(VMX_EPT_EXTENT_CONTEXT, &(invept_t) {
+	return __invept(VMX_EPT_EXTENT_CONTEXT, &(invept_t) {
 		.ptr = ptr,
 		.gpa = gpa,
 	});
 }
 
-static inline void __invvpid_all(void)
+static inline u8 __invvpid_all(void)
 {
-	__invvpid(VMX_VPID_EXTENT_ALL_CONTEXT, &(invvpid_t) { 0, 0, 0 });
+	return __invvpid(VMX_VPID_EXTENT_ALL_CONTEXT, &(invvpid_t) { 0, 0, 0 });
 }
 
-static inline void __invvpid_vpid(u16 vpid, u64 gva)
+static inline u8 __invvpid_single(u16 vpid)
 {
-	__invvpid(VMX_VPID_EXTENT_SINGLE_CONTEXT, &(invvpid_t) {
+	return __invvpid(VMX_VPID_EXTENT_SINGLE_CONTEXT, &(invvpid_t) {
+		.vpid = vpid,
+		.rsvd = 0,
+		.gva = 0,
+	});
+}
+
+static inline u8 __invvpid_no_global(u16 vpid)
+{
+	return __invvpid(VMX_VPID_EXTEND_ALL_GLOBAL, &(invvpid_t) {
+		.vpid = vpid,
+		.rsvd = 0,
+		.gva = 0
+	});
+}
+
+static inline u8 __invvpid_addr(u16 vpid, u64 gva)
+{
+	return __invvpid(VMX_VPID_EXTENT_SINGLE_CONTEXT, &(invvpid_t) {
 		.vpid = vpid,
 		.rsvd = 0,
 		.gva = gva

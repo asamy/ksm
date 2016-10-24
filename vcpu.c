@@ -25,6 +25,7 @@ static inline bool enter_vmx(struct vmcs *vmxon)
 	/* This is necessary here or just before we exit the VM,
 	 * we do it here as it's easier.  */
 	__invept_all();
+	__invvpid_all();
 	return true;
 }
 
@@ -129,7 +130,7 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
 
-	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT |// SECONDARY_EXEC_ENABLE_VPID |
+	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID |
 		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES  |
 		SECONDARY_EXEC_ENABLE_VMFUNC | SECONDARY_EXEC_ENABLE_VE
 #if _WIN32_WINNT == 0x0A00 	/* Windows 10  */
@@ -156,6 +157,7 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= DEBUG_VMX_VMWRITE(VM_ENTRY_INTR_INFO_FIELD, 0);
 
 	/* Control Fields */
+	err |= DEBUG_VMX_VMWRITE(VIRTUAL_PROCESSOR_ID, vpid_nr());
 	err |= DEBUG_VMX_VMWRITE(EXCEPTION_BITMAP, __EXCEPTION_BITMAP);
 	err |= DEBUG_VMX_VMWRITE(PAGE_FAULT_ERROR_CODE_MASK, 0);
 	err |= DEBUG_VMX_VMWRITE(PAGE_FAULT_ERROR_CODE_MATCH, 0);

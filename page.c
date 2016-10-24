@@ -9,7 +9,9 @@ static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 
 	ept_alloc_page(ept, EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, dpa);
 	ept_alloc_page(ept, EPT4(ept, EPTP_NORMAL), EPT_ACCESS_ALL, dpa);
+
 	__invept_all();
+	__invvpid_all();
 }
 
 static inline u16 epage_select_eptp(struct page_hook_info *phi, u16 cur, u8 ar, u8 ac)
