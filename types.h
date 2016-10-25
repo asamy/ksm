@@ -98,4 +98,7 @@ typedef signed long long intptr_t;
 #define __align(alignemtn)	__attribute__((__aligned__(alignment)))
 #endif
 
+/* Opt-in NX bit  */
+#define POOL_NX_OPTIN 1
+
 #endif
