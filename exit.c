@@ -35,9 +35,9 @@
 static u16 curr_handler = 0;
 static u16 prev_handler = 0;
 
-static inline bool vcpu_check_addr(u64 gpa, u64 mask)
+static inline bool vcpu_check_addr(u64 gva, u64 mask)
 {
-	u64 *pte = __cr3_resolve_va(gpa);
+	u64 *pte = __cr3_resolve_va(gva);
 	if (!pte || !pte_present(pte))
 		return false;
 
