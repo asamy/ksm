@@ -38,7 +38,7 @@ emulation for VMFUNC.
 
 ## Supported Kernels
 
-All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested under Windows 8/8.1/10, but no reason not to support 7.
+All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested under Windows 7/8/8.1/10.
 
 ## Porting to other kernels (e.g. Linux or similar) guidelines
 
@@ -81,11 +81,12 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 
 ## Loading the driver
 
-	In commandline as administrator:
-1. sc create ksm type= kernel binPath= C:\path\to\your\ksm.sys
-2. sc start ksm
+In commandline as administrator:
 
-	Unloading:
+1. `sc create ksm type= kernel binPath= C:\path\to\your\ksm.sys`
+2. `sc start ksm`
+
+Unloading:
 `sc stop ksm`
 
 ## Technical information
