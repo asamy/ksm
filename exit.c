@@ -4,9 +4,13 @@
  *
  * This file handles a VM-exit from guest, if any error occurs,
  * it either:
- *	1) crash the system
- *	2) inject an exception into guest
+ *	1) crashes the system
+ *	2) injects an exception into guest
  * Otherwise it returns execution to guest.
+ *
+ * TODO:
+ *	1) APIC virtualization
+ *	2) Interrupt Queueing (currently, if it fails, it just ignores error)
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -30,6 +34,15 @@
 /* For debugging...  */
 static u16 curr_handler = 0;
 static u16 prev_handler = 0;
+
+static inline bool vcpu_check_addr(u64 gpa, u64 mask)
+{
+	u64 *pte = __cr3_resolve_va(gpa);
+	if (!pte || !pte_present(pte))
+		return false;
+
+	return (*pte & mask) == mask;
+}
 
 static inline int vcpu_read_cpl(void)
 {
@@ -721,9 +734,13 @@ static bool vcpu_handle_msr_write(struct guest_context *gc)
 		__vmx_vmwrite(GUEST_GS_BASE, val);
 		break;
 	case MSR_IA32_DEBUGCTLMSR:
-		__vmx_vmwrite(GUEST_IA32_DEBUGCTL, val);
+		if (val & ~(DEBUGCTLMSR_LBR | DEBUGCTLMSR_BTF))
+			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+		else
+			__vmx_vmwrite(GUEST_IA32_DEBUGCTL, val);
 		break;
 	case MSR_IA32_FEATURE_CONTROL:
+		/* No nesting!  */
 		break;
 	default:
 		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC)
@@ -803,7 +820,7 @@ static bool vcpu_handle_gdt_idt_access(struct guest_context *gc)
 	struct gdtr *dt = (struct gdtr *)addr;
 	switch ((exit >> 28) & 3) {
 	case 0:		/* sgdt  */
-		dt->limit = (u16)vmcs_read(GUEST_GDTR_LIMIT);
+		dt->limit = vmcs_read16(GUEST_GDTR_LIMIT);
 		dt->base = vmcs_read(GUEST_GDTR_BASE);
 		break;
 	case 1:		/* sidt */
@@ -859,10 +876,10 @@ static bool vcpu_handle_ldt_tr_access(struct guest_context *gc)
 	u16 *selector = (u16 *)addr;
 	switch ((exit >> 28) & 3) {
 	case 0:		/* sldt  */
-		*selector = (u16)vmcs_read(GUEST_LDTR_SELECTOR);
+		*selector = vmcs_read16(GUEST_LDTR_SELECTOR);
 		break;
 	case 1:		/* str  */
-		*selector = (u16)vmcs_read(GUEST_TR_SELECTOR);
+		*selector = vmcs_read16(GUEST_TR_SELECTOR);
 		break;
 	case 2:		/* lldt  */
 		__vmx_vmwrite(GUEST_LDTR_SELECTOR, *selector);

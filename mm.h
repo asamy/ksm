@@ -195,6 +195,44 @@ static inline uintptr_t va_to_pa(uintptr_t va)
 	return PAGE_PA(*pte) | addr_offset(va);
 }
 
+static inline u64 *__cr3_resolve_va(u64 va)
+{
+	/* NB: You can also use va_to_pte / va_to_pde, etc.  */
+	u64 cr3 = __readcr3();
+	u64 pml4_pa = cr3 & PAGE_MASK;
+
+	u64 *pml4 = __va(pml4_pa);
+	u64 *pdpt = page_addr(&pml4[__pxe_idx(va)]);
+	if (!pdpt)
+		return 0;
+
+	u64 *pdt = page_addr(&pdpt[__ppe_idx(va)]);
+	if (!pdt)
+		return 0;
+
+	u64 *pdte = &pdt[__pde_idx(va)];
+	if (!pte_present(pdte))
+		return 0;
+
+	if (pte_large(pdte))
+		return pdte;
+
+	u64 *pt = page_addr(pdte);
+	if (pt)
+		return &pt[__pte_idx(va)];
+
+	return 0;
+}
+
+static inline u64 cr3_resolve_va(u64 va)
+{
+	u64 *page = __cr3_resolve_va(va);
+	if (!pte_present(page))
+		return 0;
+
+	return PAGE_PA(*page) | addr_offset(va);
+}
+
 static inline bool consult_vad(uintptr_t va)
 {
 	return !pte_present(va_to_pde(va)) || *va_to_pte(va) == 0;

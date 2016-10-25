@@ -266,7 +266,7 @@ struct ept {
 #endif
 
 struct vcpu {
-	__align(PAGE_SIZE) u8 stack[PAGE_SIZE];
+	__align(PAGE_SIZE) u8 stack[KERNEL_STACK_SIZE];
 #ifdef ENABLE_PML
 	__align(PAGE_SIZE) uintptr_t pml[PML_MAX_ENTRIES];
 #endif

@@ -75,7 +75,7 @@ uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uint
 	uintptr_t *pml4e = &pml4[__pxe_idx(phys)];
 	uintptr_t *pdpt = page_addr(pml4e);
 
-	if (!*pml4e) {
+	if (!pdpt) {
 		pdpt = ept_alloc_entry(ept);
 		if (!pdpt)
 			return NULL;
@@ -86,7 +86,7 @@ uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uint
 	/* PDPT (1 GB)  */
 	uintptr_t *pdpte = &pdpt[__ppe_idx(phys)];
 	uintptr_t *pdt = page_addr(pdpte);
-	if (!*pdpte) {
+	if (!pdt) {
 		pdt = ept_alloc_entry(ept);
 		if (!pdt)
 			return NULL;
@@ -97,7 +97,7 @@ uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uint
 	/* PDT (2 MB)  */
 	uintptr_t *pdte = &pdt[__pde_idx(phys)];
 	uintptr_t *pt = page_addr(pdte);
-	if (!*pdte) {
+	if (!pt) {
 		pt = ept_alloc_entry(ept);
 		if (!pt)
 			return NULL;
@@ -118,26 +118,25 @@ uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uint
 
 /*
  * Free pre-allocated EPT entries, discarding used entries because they were
- * used by ept_alloc_page(), so no need to confuse each other.  */
+ * used by ept_alloc_page(), so no need to confuse each other.
+ */
 static void ept_free_prealloc(struct ept *ept)
 {
-	for (u32 i = ept->pre_alloc_used; i < EPT_MAX_PREALLOC; ++i) {
-		if (!ept->pre_alloc[i])
-			break;
-
-		mm_free_pool(ept->pre_alloc[i], PAGE_SIZE);
-	}
+	for (u32 i = ept->pre_alloc_used; i < EPT_MAX_PREALLOC; ++i)
+		if (ept->pre_alloc[i])
+			mm_free_pool(ept->pre_alloc[i], PAGE_SIZE);
 }
 
 /*
  * Recursively free each table entries, see ept_alloc_page()
- * for an explanation.  */
+ * for an explanation.
+ */
 static void ept_free_entries(uintptr_t *table, uint32_t lvl)
 {
 	for (int i = 0; i < 512; ++i) {
-		uintptr_t pa = PAGE_PA(table[i]);
-		if (pa) {
-			uintptr_t *sub_table = __va(pa);
+		uintptr_t entry = table[i];
+		if (entry) {
+			uintptr_t *sub_table = __va(PAGE_PA(entry));
 			if (lvl > 2)
 				ept_free_entries(sub_table, lvl - 1);
 			else
@@ -268,9 +267,6 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	u8 ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
 	u8 ac = exit & EPT_AR_MASK;
 
-	if (!(exit & EPT_VE_VALID_GLA))
-		gva = 0;
-
 	VCPU_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   eptp, gpa, gva, ar, ar_get_bits(ar), ac, ar_get_bits(ac));
 
@@ -279,8 +275,6 @@ bool ept_handle_violation(struct vcpu *vcpu)
 		for_each_eptp(i)
 			if (!ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa))
 				return false;
-
-		VCPU_DEBUG("Used %d/%d\n", ept->pre_alloc_used, EPT_MAX_PREALLOC);
 	} else {
 		struct page_hook_info *phi = ksm_find_page((void *)gva);
 		if (phi) {
@@ -305,7 +299,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 /*
  * This is called from the IDT handler (__ept_violation) see x64.asm
  * We're inside Guest here
- * */
+ */
 void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 {
 	struct vcpu *vcpu = ksm_current_cpu();
@@ -319,9 +313,6 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 	u8 ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
 	u8 ac = exit & EPT_AR_MASK;
 
-	if (!(exit & EPT_VE_VALID_GLA))
-		gva = 0;
-
 	VCPU_DEBUG("0x%X:%p [%d]: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   cs, rip, eptp, gpa, gva, ar, ar_get_bits(ar), ac, ar_get_bits(ac));
 
@@ -329,8 +320,6 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 	if (ar == EPT_ACCESS_NONE) {
 		for_each_eptp(i)
 			ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa);
-
-		VCPU_DEBUG("Used %d/%d\n", ept->pre_alloc_used, EPT_MAX_PREALLOC);
 	} else {
 		struct page_hook_info *phi = ksm_find_page((void *)gva);
 		if (phi) {

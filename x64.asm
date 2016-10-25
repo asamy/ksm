@@ -205,6 +205,8 @@ __vmx_entrypoint PROC
 	; This is the VM entry point, aka root mode.
 	; This saves guest registers (as they are untouched for now)
 	; and restores control to guest if all good, otherwise, fail.
+	;
+	; All interrupts are disabled at this point.
 	PUSHAQ
 	mov	rcx, rsp
     
@@ -255,6 +257,8 @@ __vmx_vmcall PROC
 	ret
 __vmx_vmcall ENDP
 
+; it's unsafe to call this function directly, so unless
+; you're 100% sure the CPU supports it, use vcpu_vmfunc instead.
 __vmx_vmfunc PROC
 	; assumes:
 	;	ecx = EPTP index

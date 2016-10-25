@@ -76,7 +76,7 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 {
-	/* On Windows build 14316+ Page table base addresses are not static.  */
+	/* On Windows 10 build 14316+ Page table base addresses are not static.  */
 	RTL_OSVERSIONINFOW osv;
 	osv.dwOSVersionInfoSize = sizeof(osv);
 
@@ -106,6 +106,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 				ppe_base = pde_base | (idx << PDI_SHIFT);
 				pxe_base = ppe_base | (idx << PTI_SHIFT);
 				found = true;
+				break;
 			}
 		}
 
@@ -128,18 +129,14 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		   kentry->FullDllName.Buffer);
 	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
 
-	status = ksm_init();
-	if (NT_SUCCESS(status))
-		status = register_power_callback(&g_dev_ext);
+	if (!NT_SUCCESS(status = ksm_init()))
+		goto out;
+
+	if (!NT_SUCCESS(status = register_power_callback(&g_dev_ext)))
+		goto out_exit;
 
 #ifdef RUN_TEST
-	if (NT_SUCCESS(status))
-		status = ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace);
-#endif
-
-	VCPU_DEBUG("ret: 0x%08X\n", status);
-#ifdef RUN_TEST
-	if (NT_SUCCESS(status)) {
+	if (NT_SUCCESS(status = ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace))) {
 		/* Quick test  */
 		void *va = MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = __pa(g_kernel_base) },
 					PAGE_SIZE,
@@ -148,8 +145,17 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 			VCPU_DEBUG("Mapped kernel base at %p\n", va);
 			MmUnmapIoSpace(va, PAGE_SIZE);
 		}
+
+		return status;
 	}
+#else
+	/* Good to go...  */
+	goto out;
 #endif
 
+out_exit:
+	ksm_exit();
+out:
+	VCPU_DEBUG("ret: 0x%08X\n", status);
 	return status;
 }

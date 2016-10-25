@@ -17,6 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 #include "ksm.h"
+#define EMULATE_VMFUNC
 
 static inline bool enter_vmx(struct vmcs *vmxon)
 {
