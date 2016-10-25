@@ -379,7 +379,7 @@ static inline void vcpu_adjust_rflags(struct guest_context *gc, bool success)
 static inline void vcpu_do_exit(struct guest_context *gc)
 {
 	struct gdtr gdt;
-	gdt.limit = (u16)vmcs_read(GUEST_GDTR_LIMIT);
+	gdt.limit = vmcs_read16(GUEST_GDTR_LIMIT);
 	gdt.base = vmcs_read(GUEST_GDTR_BASE);
 	__lgdt(&gdt);
 
