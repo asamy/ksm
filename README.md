@@ -89,6 +89,8 @@ In commandline as administrator:
 Unloading:
 `sc stop ksm`
 
+You can also use [kload](https://github.com/asamy/kload)
+
 ## Technical information
 
 Note: If the processor does not support VMFUNC or #VE, they will be disabled and instead, emulated via VM-exit.
