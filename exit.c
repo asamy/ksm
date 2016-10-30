@@ -854,7 +854,7 @@ static bool vcpu_handle_ldt_tr_access(struct guest_context *gc)
 	uintptr_t addr;
 	if ((exit >> 10) & 1) {
 		// register
-		addr = (uintptr_t)gc->gp[(exit >> 3) & 15];
+		addr = (uintptr_t)ksm_reg(gc, (exit >> 3) & 15);
 		VCPU_DEBUG("LDT/TR access, addr %p\n", addr);
 	} else {
 		// base
