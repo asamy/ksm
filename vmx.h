@@ -408,7 +408,16 @@ enum vmcs_field {
 #define VMX_EPT_ACCESS_BIT				(1ull << 8)
 #define VMX_EPT_DIRTY_BIT				(1ull << 9)
 
-#define VMX_EPT_IDENTITY_PAGETABLE_ADDR		0xfffbc000ul
+typedef struct {
+	u64 vpid : 16;
+	u64 rsvd : 48;
+	u64 gva;
+} invvpid_t;
+
+typedef struct {
+	u64 ptr;
+	u64 gpa;
+} invept_t;
 
 #ifdef MINGW
 #define ASM_VMX_VMCLEAR_RAX       ".byte 0x66, 0x0f, 0xc7, 0x30"
@@ -420,8 +429,9 @@ enum vmcs_field {
 #define ASM_VMX_VMWRITE_RSP_RDX   ".byte 0x0f, 0x79, 0xd4"
 #define ASM_VMX_VMXOFF            ".byte 0x0f, 0x01, 0xc4"
 #define ASM_VMX_VMXON_RAX         ".byte 0xf3, 0x0f, 0xc7, 0x30"
-#define ASM_VMX_INVEPT			 ".byte 0x66, 0x0f, 0x38, 0x80, 0x08"
-#define ASM_VMX_INVVPID			 ".byte 0x66, 0x0f, 0x38, 0x81, 0x08"
+#define ASM_VMX_INVEPT		  ".byte 0x66, 0x0f, 0x38, 0x80, 0x08"
+#define ASM_VMX_INVVPID		  ".byte 0x66, 0x0f, 0x38, 0x81, 0x08"
+#define ASM_VMX_VMFUNC		  ".byte 0x0f, 0x01, 0xd4"
 
 static inline unsigned char __vmx_on(unsigned long long *pa)
 {
@@ -475,7 +485,108 @@ static inline unsigned char __vmx_vmwrite(unsigned long long field, unsigned lon
 			 : "=q" (error) : "a" (value), "d" (field) : "cc");
 	return error;
 }
+
+static inline unsigned char __vmx_vmcall(uintptr_t hc, void *d)
+{
+	unsigned char error;
+	__asm __volatile("vmcall; setna %0"
+			 : "=q" (error) : "c" (hc), "d" (d));
+	return error;
+}
+
+static inline unsigned char __vmx_vmfunc(u32 eptp, u32 func)
+{
+	unsigned char error;
+	__asm __volatile(ASM_VMX_VMFUNC "; setna %0"
+			 : "=q" (error) : "c" (eptp), "a" (func));
+	return error;
+}
+
+static inline u8 __invept(int ext, const invept_t *i)
+{
+	__asm __volatile(ASM_VMX_INVEPT "; ja 1f ; ud2 ; 1:\n"
+			 :: "a" (i), "c" (ext) : "cc", "memory");
+	return 0;
+}
+
+static inline u8 __invvpid(int ext, const invvpid_t *i)
+{
+	return 0;
+}
+
+static inline u8 __invept_all(void)
+{
+	return __invept(VMX_EPT_EXTENT_GLOBAL, &(invept_t) { 0, 0 });
+}
+
+static inline u8 __invept_gpa(u64 ptr, u64 gpa)
+{
+	return __invept(VMX_EPT_EXTENT_CONTEXT, &(invept_t) {
+		.ptr = ptr,
+		.gpa = gpa,
+	});
+}
+
+static inline u8 __invvpid_all(void)
+{
+	return __invvpid(VMX_VPID_EXTENT_ALL_CONTEXT, &(invvpid_t) { 0, 0, 0 });
+}
+
+static inline u8 __invvpid_single(u16 vpid)
+{
+	return __invvpid(VMX_VPID_EXTENT_SINGLE_CONTEXT, &(invvpid_t) {
+		.vpid = vpid,
+		.rsvd = 0,
+		.gva = 0,
+	});
+}
+
+static inline u8 __invvpid_no_global(u16 vpid)
+{
+	return __invvpid(VMX_VPID_EXTEND_ALL_GLOBAL, &(invvpid_t) {
+		.vpid = vpid,
+		.rsvd = 0,
+		.gva = 0
+	});
+}
+
+static inline u8 __invvpid_addr(u16 vpid, u64 gva)
+{
+	return __invvpid(VMX_VPID_EXTENT_SINGLE_CONTEXT, &(invvpid_t) {
+		.vpid = vpid,
+		.rsvd = 0,
+		.gva = gva
+	});
+}
+
+#else
+extern u8 __invvpid(u32 type, const invvpid_t *i);
+extern u8 __invept(u32 type, const invept_t *i);
+
+extern u8 __vmx_vmcall(uintptr_t, void *);
+extern u8 __vmx_vmfunc(u32, u32);
 #endif
+
+static inline u64 vmcs_read(u64 what)
+{
+	u64 x;
+	__vmx_vmread(what, &x);
+
+	return x;
+}
+
+static inline u32 vmcs_read32(u64 what)
+{
+	return (u32)vmcs_read(what);
+}
+
+static inline u16 vmcs_read16(u64 what)
+{
+	return (u16)vmcs_read32(what);
+}
+
+/* #VE handler  */
+extern void __ept_violation(void);
 
 /*
  * Exit Qualifications for entry failure during or after loading guest state

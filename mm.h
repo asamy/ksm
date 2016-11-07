@@ -351,7 +351,7 @@ static inline uintptr_t subst_addr(uintptr_t *pte)
 #define POOL_TAG	'kmPv'
 #endif
 
-static __forceinline void *mm_alloc_pool(POOL_TYPE type, size_t size)
+static inline void *mm_alloc_pool(POOL_TYPE type, size_t size)
 {
 #ifdef DBG
 	void *v = ExAllocatePoolWithTag(type, size, POOL_TAG);
@@ -364,7 +364,7 @@ static __forceinline void *mm_alloc_pool(POOL_TYPE type, size_t size)
 	return v;
 }
 
-static __forceinline void mm_free_pool(void *v, size_t size)
+static inline void mm_free_pool(void *v, size_t size)
 {
 	__stosq(v, 0x00, size >> 3);
 #ifdef DBG
@@ -374,7 +374,7 @@ static __forceinline void mm_free_pool(void *v, size_t size)
 #endif
 }
 
-static __forceinline void __mm_free_pool(void *v)
+static inline void __mm_free_pool(void *v)
 {
 #ifdef DBG
 	ExFreePoolWithTag(v, POOL_TAG);

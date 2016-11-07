@@ -26,7 +26,7 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
-#include <ntifs.h>
+#include <ntddk.h>
 #include <intrin.h>
 
 #include "ksm.h"
@@ -663,7 +663,11 @@ static inline u64 read_tsc_msr(void)
 	u64 tsc_mul;
 	__vmx_vmread(TSC_MULTIPLIER, &tsc_mul);
 
+#ifdef MINGW
+	return (u64)(((unsigned __int128)host_tsc * tsc_mul) >> 48);
+#else
 	return (u64)MultiplyExtract128(host_tsc, tsc_mul, 48);
+#endif
 }
 
 static bool vcpu_handle_msr_read(struct guest_context *gc)
@@ -1106,7 +1110,7 @@ void vcpu_dump_regs(const struct regs *regs, uintptr_t sp)
 		   " r8=%p  r9=%p r10=%p "
 		   "r11=%p r12=%p r13=%p "
 		   "r14=%p r15=%p efl=%08x",
-		   _ReturnAddress(), regs->gp[REG_AX], regs->gp[REG_BX], regs->gp[REG_CX],
+		   __return_addr(), regs->gp[REG_AX], regs->gp[REG_BX], regs->gp[REG_CX],
 		   regs->gp[REG_DX], regs->gp[REG_SI], regs->gp[REG_DI], regs->gp[REG_SP],
 		   regs->gp[REG_BP], regs->gp[REG_R8], regs->gp[REG_R9], regs->gp[REG_R10],
 		   regs->gp[REG_R11], regs->gp[REG_R12], regs->gp[REG_R13], regs->gp[REG_R14],

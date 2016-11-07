@@ -127,7 +127,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		   kentry->DllBase, (uintptr_t)kentry->DllBase + kentry->SizeOfImage,
 		   kentry->SizeOfImage, BYTES_TO_PAGES(kentry->SizeOfImage),
 		   kentry->FullDllName.Buffer);
+#ifndef MINGW
 	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
+#endif
 
 	if (!NT_SUCCESS(status = ksm_init()))
 		goto out;

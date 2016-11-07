@@ -23,7 +23,6 @@ static void power_callback(PDEV_EXT ctx, void *arg0, void *arg1)
 	if (arg0 != (void *)PO_CB_SYSTEM_STATE_LOCK)
 		return;
 
-	VCPU_DEBUG("power: %d\n", arg1);
 	if (!arg1)
 		ksm_exit();
 	else
@@ -43,7 +42,9 @@ NTSTATUS register_power_callback(PDEV_EXT ext)
 	if (!NT_SUCCESS(status))
 		return status;
 
-	ext->CbRegistration = ExRegisterCallback(ext->CbObject, power_callback, ext);
+	ext->CbRegistration = ExRegisterCallback(ext->CbObject,
+						 (PCALLBACK_FUNCTION)power_callback,
+						 ext);
 	if (!ext->CbRegistration) {
 		ObDereferenceObject(ext->CbObject);
 		return STATUS_UNSUCCESSFUL;

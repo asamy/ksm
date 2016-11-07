@@ -68,7 +68,7 @@ typedef sint64_t s64;
 #define bool	_Bool
 #define true	1
 #define false	0
-#define _bool_true_false_arE_defined
+#define _bool_true_false_are_defined
 #endif
 
 #ifndef _UINTPTR_T_DEFINED
@@ -94,11 +94,23 @@ typedef signed long long intptr_t;
 
 #ifdef _MSC_VER
 #define __align(alignment)	__declspec(align(alignment))
+#ifndef __forceinline
+#define __Forceinline		inline
+#endif
 #else
-#define __align(alignemtn)	__attribute__((__aligned__(alignment)))
+#define __align(alignment)	__attribute__((__aligned__(alignment)))
+#ifndef __forceinline
+#define __forceinline		__attribute__((__always_inline__)) inline
+#endif
+#define STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR		((NTSTATUS)0xC035003CL)
+#define STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE		((NTSTATUS)0xC0350071L)
+#define STATUS_HV_FEATURE_UNAVAILABLE				((NTSTATUS)0xC035001EL)
+#define STATUS_HV_ACCESS_DENIED					((NTSTATUS)0xC0350006L)
+#define STATUS_HV_NOT_PRESENT					((NTSTATUS)0xC0351000L)
 #endif
 
 /* Opt-in NX bit  */
 #define POOL_NX_OPTIN 1
 
 #endif
+

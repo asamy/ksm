@@ -86,8 +86,14 @@
 #endif
 
 #ifdef DBG
+#ifdef _MSC_VER
 #define VCPU_DEBUG(fmt, ...)		DbgPrint("CPU %d: " __func__ ": " fmt, cpu_nr(), __VA_ARGS__)
 #define VCPU_DEBUG_RAW(str)		DbgPrint("CPU %d: " __func__ ": " str, cpu_nr())
+#else
+/* avoid warning on empty argument list  */
+#define VCPU_DEBUG(fmt, args...)	DbgPrint("CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
+#define VCPU_DEBUG_RAW(str)		DbgPrint("CPU %d: %s: " str, cpu_nr(), __func__)
+#endif
 #else
 #define VCPU_DEBUG(fmt, ...)
 #define VCPU_DEBUG_RAW(str)
@@ -284,6 +290,7 @@ struct vcpu {
 	struct kidt_entry64 shadow_idt[X86_TRAP_VE + 1];
 };
 
+struct page_hook_info;	/* avoid declared inside parameter list...  */
 struct phi_ops {
 	void(*init_eptp) (struct page_hook_info *phi, struct ept *ept);
 	u16(*select_eptp) (struct page_hook_info *phi, u16 cur, u8 ar, u8 ac);

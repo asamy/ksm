@@ -25,98 +25,80 @@
 
 #include "types.h"
 
-#define __cli()		_disable()
-#define __sti()		_enable()
+#define __cli()			_disable()
+#define __sti()			_enable()
+#ifdef MINGW
+#define __return_addr()		__builtin_return_address(0)
+#else
+#define __return_addr()		_ReturnAddress()
+#endif
 
-typedef struct {
-	u64 vpid : 16;
-	u64 rsvd : 48;
-	u64 gva;
-} invvpid_t;
+#ifdef MINGW
+#define __writedr(dr, val)					\
+	__asm __volatile("movq	%[Val], %%dr" #dr		\
+			 : : [Val] "a" ((val)))
 
-typedef struct {
-	u64 ptr;
-	u64 gpa;
-} invept_t;
+#define __readdr(dr) __extension__ ({			\
+	unsigned long long val;				\
+	__asm __volatile("movq	%%dr" #dr ", %[Val]"	\
+			 : [Val] "=r" (val));		\
+	(val);						\
+})
 
-extern u8 __invvpid(u32 type, invvpid_t *i);
-extern u8 __invept(u32 type, invept_t *i);
-extern void __ept_violation(void);
-
-static inline u8 __invept_all(void)
+static inline void _xsetbv(u32 index, u64 value)
 {
-	return __invept(VMX_EPT_EXTENT_GLOBAL, &(invept_t) { 0, 0 });
+	u32 eax = value;
+	u32 edx = value >> 32;
+
+	__asm __volatile(".byte 0x0f,0x01,0xd1"
+			 :: "a" (eax), "d" (edx), "c" (index));
 }
 
-static inline u8 __invept_gpa(u64 ptr, u64 gpa)
+static inline void __cpuidex(int *ret, int func, int subf)
 {
-	return __invept(VMX_EPT_EXTENT_CONTEXT, &(invept_t) {
-		.ptr = ptr,
-		.gpa = gpa,
-	});
+	u32 eax, ebx, ecx, edx;
+	__asm __volatile("cpuid"
+			 : "=a" (eax), "=D" (ebx), "=c" (ecx), "=d" (edx)
+			 : "a" (func), "c" (subf));
+	ret[0] = eax;
+	ret[1] = ebx;
+	ret[2] = ecx;
+	ret[3] = edx;
 }
 
-static inline u8 __invvpid_all(void)
+#define __halt()	__asm __volatile("hlt")
+
+static inline u16 __sldt(void)
 {
-	return __invvpid(VMX_VPID_EXTENT_ALL_CONTEXT, &(invvpid_t) { 0, 0, 0 });
+	u16 ldt;
+	__asm __volatile("sldt %0" : "=m"(ldt));
+	return ldt;
 }
 
-static inline u8 __invvpid_single(u16 vpid)
+static inline u16 __str(void)
 {
-	return __invvpid(VMX_VPID_EXTENT_SINGLE_CONTEXT, &(invvpid_t) {
-		.vpid = vpid,
-		.rsvd = 0,
-		.gva = 0,
-	});
+	u16 tr;
+	__asm __volatile("str %0" : "=m" (tr));
+	return tr;
 }
 
-static inline u8 __invvpid_no_global(u16 vpid)
+#if 0
+static inline u64 __readmsr(u32 msr)
 {
-	return __invvpid(VMX_VPID_EXTEND_ALL_GLOBAL, &(invvpid_t) {
-		.vpid = vpid,
-		.rsvd = 0,
-		.gva = 0
-	});
+	u32 ecx, edx;
+	__asm __volatile("rdmsr"
+			 : "=a" (ecx), "=d" (edx)
+			 : "a" (msr));
+	return (u64)ecx | (u64)edx << 32;
 }
 
-static inline u8 __invvpid_addr(u16 vpid, u64 gva)
+static inline void __writemsr(u32 msr, u64 val)
 {
-	return __invvpid(VMX_VPID_EXTENT_SINGLE_CONTEXT, &(invvpid_t) {
-		.vpid = vpid,
-		.rsvd = 0,
-		.gva = gva
-	});
+	__asm __volatile("wrmsr"
+			 :: "a" (msr), "c" ((u32)val), "d" ((u32)(val >> 32)));
 }
-
-static inline bool test_bit(u64 bits, u64 bs)
-{
-	return (bits & bs) == bs;
-}
-
-static inline u64 vmcs_read(u64 what)
-{
-	u64 x;
-	__vmx_vmread(what, &x);
-
-	return x;
-}
-
-static inline u32 vmcs_read32(u64 what)
-{
-	return (u32)vmcs_read(what);
-}
-
-static inline u16 vmcs_read16(u64 what)
-{
-	return (u16)vmcs_read32(what);
-}
-
-extern bool __vmx_vminit(struct vcpu *);
-extern void __vmx_entrypoint(void);
-
-extern u8 __vmx_vmcall(uintptr_t, void *);
-extern u8 __vmx_vmfunc(u32, u32);
-
+#endif
+#else
 extern void __lgdt(const void *);
 extern void __sgdt(void *);
 
@@ -125,6 +107,18 @@ extern u16 __sldt(void);
 
 extern void __ltr(u16);
 extern u16 __str(void);
+#endif
+
+static inline bool test_bit(u64 bits, u64 bs)
+{
+	return (bits & bs) == bs;
+}
+
+/* avoid declared inside parameter list  */
+struct vcpu;
+
+extern bool __vmx_vminit(struct vcpu *);
+extern void __vmx_entrypoint(void);
 
 extern void __writees(u16);
 extern u16 __reades(void);

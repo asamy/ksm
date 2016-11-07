@@ -5,7 +5,7 @@
 #include <string.h>
 
 #include "htable.h"
-#include <ntifs.h>
+#include <ntddk.h>
 #include "mm.h"
 
  /* We use 0x1 as deleted marker. */
