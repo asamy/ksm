@@ -27,7 +27,7 @@ technique that I can relay on.
 
 ## Compiling under MinGW
 
-Simply `make` (if cross compiling under Linux) or `mingw32-make` (under MinGW).
+Simply `make C=1` (if cross compiling under Linux) or `mingw32-make` (under MinGW).
 
 ## Unsupported features (hardware, etc.)
 

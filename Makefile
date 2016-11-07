@@ -41,6 +41,9 @@ $(TARGET): $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
 $(OBJ_DIR)/%.o: %.c $(DEP_DIR)/%.d
 	$(CC) -c $(CFLAGS) -o $@ $<
 
+$(OBJ_DIR)/%.o: %.S
+	$(CC) -c $(CFLAGS) -o $@ $<
+
 -include $(DEP)
 $(DEP_DIR)/%.d: ;
 

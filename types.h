@@ -109,8 +109,10 @@ typedef signed long long intptr_t;
 #define STATUS_HV_NOT_PRESENT					((NTSTATUS)0xC0351000L)
 #endif
 
+#ifndef MINGW
 /* Opt-in NX bit  */
 #define POOL_NX_OPTIN 1
+#endif
 
 #endif
 

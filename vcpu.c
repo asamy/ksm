@@ -69,6 +69,15 @@ static inline bool init_vmcs(struct vmcs *vmcs)
 	return __vmx_vmptrld(&pa) == 0;
 }
 
+#ifdef MINGW
+unsigned long __segmentlimit(unsigned long selector)
+{
+	unsigned long limit;
+	__asm __volatile("lsl %1, %0" : "=r" (limit) : "r" (selector));
+	return limit;
+}
+#endif
+
 static inline u32 __accessright(u16 selector)
 {
 	if (selector)
