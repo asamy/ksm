@@ -34,6 +34,7 @@ else
 endif
 
 TARGET = ksm.sys
+SYMBOL = ksm.sym
 CC = $(CROSS_BUILD)gcc
 STRIP = $(CROSS_BUILD)strip
 OBJCOPY = $(CROSS_BUILD)objcopy --only-keep-debug
@@ -70,11 +71,11 @@ OBJ += $(ASM:%.S=$(OBJ_DIR)/%.o)
 
 all: $(TARGET)
 clean:
-	$(RM) $(TARGET) $(TARGET).debug	$(OBJ) $(DEP)
+	$(RM) $(TARGET) $(SYMBOL) $(OBJ) $(DEP)
 
 $(TARGET): $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LIBS)
-	$(OBJCOPY) $@ $@.debug
+	$(OBJCOPY) $@ $(SYMBOL)
 	$(STRIP) $@
 
 $(OBJ_DIR)/%.o: %.c $(DEP_DIR)/%.d

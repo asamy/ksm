@@ -27,8 +27,10 @@ static DEV_EXT g_dev_ext = { NULL, NULL };
  * an error is printed, DebugView can be used to see the error if compiled
  * with debug.
  */
+#ifndef MINGW
 DRIVER_INITIALIZE DriverEntry;
 #pragma alloc_text(INIT, DriverEntry)
+#endif
 
 PLIST_ENTRY PsLoadedModuleList;
 void *g_kernel_base = NULL;
