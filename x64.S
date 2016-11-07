@@ -131,7 +131,39 @@
 	movaps	%xmm5, KFRAME_XMM5(%rbp)
 .endm
 
+.macro irq_entry symbol:req handler:req
+.globl \symbol
+\symbol:
+	subq	$8, %rsp
+	TRAP_ENTER(1f)
+
+1:
+	cld
+	TRAP_SAVE_XMM
+
+	movq	KFRAME_CS(%rbp), %rcx
+	movq	KFRAME_IP(%rbp), %rdx
+	call	\handler
+
+	testb	$1, KFRAME_RPL(%rbp)
+	jz	2f
+
+	TRAP_REST_XMM
+	TRAP_EXIT
+	swapgs
+	iretq
+
+2:
+	TRAP_REST_XMM
+	TRAP_EXIT
+	iretq
+.endm
+
 	.text
+
+/* EPT violations  */
+irq_entry __ept_violation	__ept_handle_violation
+
 .globl __vmx_vminit
 __vmx_vminit:
 	pushfq
@@ -184,30 +216,4 @@ error:
 	movq	%rsp, %rcx
 	call	vcpu_handle_fail
 	ret
-
-.globl __ept_violation
-__ept_violation:
-	subq	$8, %rsp
-	TRAP_ENTER(ept_no_swap)
-
-ept_no_swap:
-	cld
-	TRAP_SAVE_XMM
-
-	movq	KFRAME_CS(%rbp), %rcx
-	movq	KFRAME_IP(%rbp), %rdx
-	call	__ept_handle_violation
-
-	testb	$1, KFRAME_RPL(%rbp)
-	jz	ept_ret_noswap
-
-	TRAP_REST_XMM
-	TRAP_EXIT
-	swapgs
-	iretq
-
-ept_ret_noswap:
-	TRAP_REST_XMM
-	TRAP_EXIT
-	iretq
 
