@@ -394,7 +394,7 @@ void vcpu_free(struct vcpu *vcpu)
 		mm_free_pool((void *)vcpu->idt.base, PAGE_SIZE);
 
 	ept_exit(&vcpu->ept);
-	__stosq(vcpu, 0x00, sizeof(*vcpu) >> 3);
+	__stosq((unsigned long long *)vcpu, 0x00, sizeof(*vcpu) >> 3);
 }
 
 void vcpu_set_mtf(bool enable)

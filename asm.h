@@ -131,7 +131,6 @@ extern void __writegs(u16);
 extern u16 __readgs(void);
 
 extern uintptr_t __lar(uintptr_t);
-extern void __writecr2(uintptr_t);
 extern void __invd(void);
 #endif
 
@@ -146,5 +145,6 @@ struct vcpu;
 extern bool __vmx_vminit(struct vcpu *);
 extern void __vmx_entrypoint(void);
 extern void __ept_violation(void);
+extern void __writecr2(uintptr_t);
 
 #endif

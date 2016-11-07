@@ -45,7 +45,7 @@ static struct phi_ops epage_ops = {
 	.select_eptp = epage_select_eptp,
 };
 
-static inline bool ht_cmp(const void *candidate, const void *cmp)
+static inline bool ht_cmp(const void *candidate, void *cmp)
 {
 	const struct page_hook_info *phi = candidate;
 	return phi->origin == (uintptr_t)cmp;
@@ -129,7 +129,7 @@ NTSTATUS __ksm_unhook_page(struct page_hook_info *phi)
 
 struct page_hook_info *ksm_find_page(void *va)
 {
-	void *align = PAGE_ALIGN(va);
+	const void *align = PAGE_ALIGN(va);
 	return htable_get(&ksm.ht, page_hash((u64)align), ht_cmp, align);
 }
 

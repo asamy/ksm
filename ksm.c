@@ -146,7 +146,7 @@ NTSTATUS ksm_init(void)
 
 	/* Zero out everything (this is allocated by the kernel device driver
 	 * loader)  */
-	__stosq(&ksm, 0, sizeof(ksm) >> 3);
+	__stosq((unsigned long long *)&ksm, 0, sizeof(ksm) >> 3);
 
 	/* Caller cr3 (could be user)  */
 	ksm.origin_cr3 = __readcr3();

@@ -5,6 +5,11 @@
 #include <string.h>
 
 #include "htable.h"
+
+#ifdef MINGW
+/* Annoying warning from ntddk */
+struct _DISK_GEOMETRY_EX;
+#endif
 #include <ntddk.h>
 #include "mm.h"
 
