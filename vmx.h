@@ -511,7 +511,33 @@ static inline u8 __invept(int ext, const invept_t *i)
 
 static inline u8 __invvpid(int ext, const invvpid_t *i)
 {
-	return 0;
+	__asm __volatile(ASM_VMX_INVVPID "; ja 1f ; ud2 ; 1:"
+			 :: "a" (i), "c" (ext) : "cc", "memory");
+}
+#else
+extern u8 __invvpid(u32 type, const invvpid_t *i);
+extern u8 __invept(u32 type, const invept_t *i);
+
+extern u8 __vmx_vmcall(uintptr_t, void *);
+extern u8 __vmx_vmfunc(u32, u32);
+#endif
+
+static inline u64 vmcs_read(u64 what)
+{
+	u64 x;
+	__vmx_vmread(what, &x);
+
+	return x;
+}
+
+static inline u32 vmcs_read32(u64 what)
+{
+	return (u32)vmcs_read(what);
+}
+
+static inline u16 vmcs_read16(u64 what)
+{
+	return (u16)vmcs_read32(what);
 }
 
 static inline u8 __invept_all(void)
@@ -558,35 +584,6 @@ static inline u8 __invvpid_addr(u16 vpid, u64 gva)
 		.gva = gva
 	});
 }
-
-#else
-extern u8 __invvpid(u32 type, const invvpid_t *i);
-extern u8 __invept(u32 type, const invept_t *i);
-
-extern u8 __vmx_vmcall(uintptr_t, void *);
-extern u8 __vmx_vmfunc(u32, u32);
-#endif
-
-static inline u64 vmcs_read(u64 what)
-{
-	u64 x;
-	__vmx_vmread(what, &x);
-
-	return x;
-}
-
-static inline u32 vmcs_read32(u64 what)
-{
-	return (u32)vmcs_read(what);
-}
-
-static inline u16 vmcs_read16(u64 what)
-{
-	return (u16)vmcs_read32(what);
-}
-
-/* #VE handler  */
-extern void __ept_violation(void);
 
 /*
  * Exit Qualifications for entry failure during or after loading guest state
