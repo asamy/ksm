@@ -15,7 +15,7 @@
  * You should have received a copy of the GNU General Public License along
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
-*/
+ */
 #ifndef __ASM_H
 #define __ASM_H
 
@@ -42,7 +42,7 @@
 	unsigned long long val;				\
 	__asm __volatile("movq	%%dr" #dr ", %[Val]"	\
 			 : [Val] "=r" (val));		\
-	(val);						\
+	val;						\
 })
 
 static inline void _xsetbv(u32 index, u64 value)
@@ -69,7 +69,7 @@ static inline void __cpuidex(int *ret, int func, int subf)
 static inline u64 __lar(u64 sel)
 {
 	u64 ar;
-	__asm __volatile("lar %0, %[sel]"
+	__asm __volatile("lar %[sel], %0"
 			 : "=r" (ar)
 			 : [sel] "r" (sel));
 	return ar;
@@ -83,13 +83,13 @@ static inline u64 __lar(u64 sel)
 	u64 rflags;								\
 	__asm __volatile("pushfq\n\tpopq %[rf]" : [rf] "=r" (rflags));		\
 	rflags;									\
-})
+ })
 
 #define DEFINE_SEL_READER(name, instr)				\
 	static inline u16 name(void)				\
 	{							\
 		u16 tmp;					\
-		__asm __volatile(instr : "=m" (tmp));		\
+		__asm __volatile(instr : "=r" (tmp));		\
 		return tmp;					\
 	}
 

@@ -194,24 +194,30 @@ __vmx_entrypoint:
 	call	vcpu_handle_exit
 
 	testb	%al, %al
-	jz	exit
+	jz	1f
 
 	POP_REGS
 	vmresume
-	jmp	error
+	jmp	2f
 
-exit:
+1:
 	POP_REGS
 	vmxoff
-	jz	error
-	jc	error
+	jz	2f
+	jc	2f
+
 	pushq	%rax
 	popfq
+
+	/* Give them their stack pointer  */
 	movq	%rdx, %rsp
+
+	/* rcx contains return address, which is guest's rip + instr_len (aka
+	 * VMCALL length)  */
 	pushq	%rcx
 	ret
 
-error:
+2:
 	pushfq
 	movq	%rsp, %rcx
 	call	vcpu_handle_fail
