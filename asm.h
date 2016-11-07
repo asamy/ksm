@@ -83,7 +83,7 @@ static inline u64 __lar(u64 sel)
 	u64 rflags;								\
 	__asm __volatile("pushfq\n\tpopq %[rf]" : [rf] "=r" (rflags));		\
 	rflags;									\
- })
+})
 
 #define DEFINE_SEL_READER(name, instr)				\
 	static inline u16 name(void)				\

@@ -76,7 +76,7 @@ static inline void __lidt(const struct gdtr *idt)
 
 static inline void __lgdt(const struct gdtr *gdt)
 {
-	__asm __volatile("lgdt %0" : "=m" (gdt));
+	__asm __volatile("lgdt %0" :: "m" (*gdt));
 }
 
 static inline void __sgdt(struct gdtr *gdt)
