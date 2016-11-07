@@ -34,7 +34,7 @@ else
 endif
 
 TARGET = ksm.sys
-SYMBOL = ksm.sym
+SYMBOL = ksm.dbg
 CC = $(CROSS_BUILD)gcc
 STRIP = $(CROSS_BUILD)strip
 OBJCOPY = $(CROSS_BUILD)objcopy --only-keep-debug
