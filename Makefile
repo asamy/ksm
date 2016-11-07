@@ -1,5 +1,6 @@
 CROSS_BUILD = x86_64-w64-mingw32-
 CROSS_INC = /usr/x86_64-w64-mingw32/include/ddk
+CROSS_LIB = /usr/x86_64-w64-mingw32/lib
 
 TARGET = ksm.sys
 CC = $(CROSS_BUILD)gcc
@@ -9,7 +10,7 @@ LDFLAGS = -m64 -shared -Wl,--subsystem,native -Wl,--image-base,0x10000 \
 	  -Wl,--file-alignment,0x1000 -Wl,--section-alignment,0x1000 \
 	  -Wl,--entry,DriverEntry@8 -Wl,--stack,0x6000 -Wl,--dynamicbase -Wl,--nxcompat \
 	  -Wl,--enable-stdcall-fixup -nostartfiles -nostdlib
-LIBS = -lntoskrnl -lhal
+LIBS = -L$(CROSS_LIB) -lntoskrnl -lhal -lmingwex
 
 SRC = acpi.c ept.c exit.c htable.c ksm.c main.c page.c vcpu.c
 OBJ = $(SRC:%.c=%.o)
@@ -23,9 +24,6 @@ clean:
 
 $(TARGET): $(OBJ)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LIBS)
-
-%.o: %.c
-	$(CC) -c $(CFLAGS) -o $@ $<
 
 %.o: %.c
 	$(CC) -c $(CFLAGS) -o $@ $<
