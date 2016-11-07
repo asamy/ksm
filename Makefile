@@ -11,6 +11,7 @@ endif
 TARGET = ksm.sys
 CC = $(CROSS_BUILD)gcc
 STRIP = $(CROSS_BUILD)strip
+OBJCOPY = $(CROSS_BUILD)objcopy --only-keep-debug
 
 # Windows versions:
 # 	0x0601 = Windows 7
@@ -48,6 +49,7 @@ clean:
 
 $(TARGET): $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LIBS)
+	$(OBJCOPY) $@ $@.debug
 	$(STRIP) $@
 
 $(OBJ_DIR)/%.o: %.c $(DEP_DIR)/%.d
