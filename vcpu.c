@@ -347,11 +347,6 @@ static inline void vcpu_launch(void)
 void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 {
 	/*
-	 * zero out vcpu to prevent un-needed behavior,
-	 * note: this is allocated by kernel device driver load
-	 * aka IopLoadDriver or IopInitializeBuiltInDriver if we're a boot driver
-	 * because all vcpus are allocated via the structure ksm, which is a global variable.
-	 *
 	 * Note: that we return to __ksm_init_cpu anyway regardless of failure or
 	 * success, but the difference is, if we fail, vcpu_launch() will give us back control
 	 * instead of directly returning to __ksm_init_cpu.
@@ -364,7 +359,6 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 *	- Setup VMCS
 	 *	- Launch VM
 	 */
-	__stosq(vcpu, 0x00, sizeof(*vcpu) >> 3);
 	if (!ept_init(&vcpu->ept))
 		return;
 

@@ -97,11 +97,13 @@ typedef signed long long intptr_t;
 #ifndef __forceinline
 #define __Forceinline		inline
 #endif
+#define __packed
 #else
 #define __align(alignment)	__attribute__((__aligned__(alignment)))
 #ifndef __forceinline
 #define __forceinline		__attribute__((__always_inline__)) inline
 #endif
+#define __packed		__attribute__((__packed__))
 #define STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR		((NTSTATUS)0xC035003CL)
 #define STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE		((NTSTATUS)0xC0350071L)
 #define STATUS_HV_FEATURE_UNAVAILABLE				((NTSTATUS)0xC035001EL)

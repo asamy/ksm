@@ -26,7 +26,7 @@
 struct gdtr {
 	u16 limit;
 	uintptr_t base;
-};
+} __packed;
 
 struct tss {
 	u32 reserved1;
@@ -40,9 +40,9 @@ struct tss {
 	u16 reserved5;
 	u16 io_bitmap_base;
 	u64 io_bitmap[PAGE_SIZE*2 + 1];
-};
+} __packed;
 
-typedef union {
+typedef union __packed {
 	u64 i;
 	struct {
 		u16 lo;
@@ -60,7 +60,7 @@ struct kidt_entry64 {
 	kidt_entry_t e32;
 	u32 hi;
 	u32 zero;
-};
+} __packed;
 #include <poppack.h>
 
 #ifdef MINGW

@@ -513,6 +513,7 @@ static inline u8 __invvpid(int ext, const invvpid_t *i)
 {
 	__asm __volatile(ASM_VMX_INVVPID "; ja 1f ; ud2 ; 1:"
 			 :: "a" (i), "c" (ext) : "cc", "memory");
+	return 0;
 }
 #else
 extern u8 __invvpid(u32 type, const invvpid_t *i);

@@ -144,6 +144,10 @@ NTSTATUS ksm_init(void)
 	if (!ksm.hotplug_cpu)
 		return status;
 
+	/* Zero out everything (this is allocated by the kernel device driver
+	 * loader)  */
+	__stosq(&ksm, 0, sizeof(ksm) >> 3);
+
 	/* Caller cr3 (could be user)  */
 	ksm.origin_cr3 = __readcr3();
 	htable_init(&ksm.ht, rehash, NULL);
