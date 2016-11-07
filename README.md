@@ -23,7 +23,11 @@ technique that I can relay on.
 ## Requirements
 
 - An Intel processor
-- Microsoft compiler (CL).  VS 2015 prefered, Others are not currently supported.
+- A working C compiler (GCC or CLang or Microsoft compiler (CL)).  You can use VS 2015.
+
+## Compiling under MinGW
+
+Simply `make` (if cross compiling under Linux) or `mingw32-make` (under MinGW).
 
 ## Unsupported features (hardware, etc.)
 
@@ -42,18 +46,10 @@ All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested 
 
 ## Porting to other kernels (e.g. Linux or similar) guidelines
 
-- Port `Makefile` and/or provide some project (e.g. `KDevelop` or similar).  Makefile is prefered
 - Port `mm.h` functions (`mm_alloc_pool, mm_free_pool, __mm_free_pool`).  You'll need `__get_free_page` instead of `ExAllocatePool`.
 - Port `acpi.c` (not really needed) for re-virtualization on S1-3 or S4 state (commenting it out is OK).
 - Port `main.c` for some internal windows stuff, e.g. `DriverEntry`, etc.  Perhaps even rename to something like main_windows.c or similar.
 - Port `page.c` for the hooking example (not required, but it's essential to demonstrate usage).
-- Port `x64.asm` to inline assembly perhaps or some other GAS file, shouldn't be too difficult (MASM -> GAS/NASM, GAS prefered).
-- Port intrinsic functions, should be easy, `__vmx_vmwrite, __vmx_vmread`, etc.  Just defining them should be OK (e.g.
-														  in
-														  vmx.h
-														  or in
-														  pure
-														  assembly).
 
 Hopefully didn't miss something important, but these are definitely the mains.
 
@@ -115,7 +111,7 @@ We use 3 EPT pointers, one for executable pages, one for readwrite pages, and la
 													`VM_FUNCTION_CTL`) and enable
 relevant bits VE and VMFUNC in secondary processor control.
 
-- `x64.asm`: which contains the #VE handler (`__ept_violation`) then does the usual interrupt handling and then calls
+- `x64.asm` (or `x64.S` for GCC): which contains the #VE handler (`__ept_violation`) then does the usual interrupt handling and then calls
 	`__ept_handle_violation` (ept.c) where it actually does what it needs to do.
 - `ept.c`: in `__ept_handle_violation` (#VE handler not VM-exit), usually the processor will do the #VE handler instead of
 	the VM-exit route, but sometimes it won't do so if it's delivering another exception.  This is very rare.
