@@ -1,4 +1,4 @@
-# ksm
+# ksm [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm)
 
 A really simple and lightweight x64 hypervisor written in C for Intel processors.
 
