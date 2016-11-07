@@ -66,38 +66,42 @@ static inline void __cpuidex(int *ret, int func, int subf)
 	ret[3] = edx;
 }
 
+static inline u64 __lar(u64 sel)
+{
+	u64 ar;
+	__asm __volatile("lar %0, %[sel]"
+			 : "=r" (ar)
+			 : [sel] "r" (sel));
+	return ar;
+}
+
+#define __wbinvd()	__asm __volatile("wbinvd")
+#define __invd()	__asm __volatile("invd")
 #define __halt()	__asm __volatile("hlt")
+#define __invlpg(addr)	__asm __volatile("invlpg (%0)" :: "r" (addr) : "memory")
+#define __readeflags()	({							\
+	u64 rflags;								\
+	__asm __volatile("pushfq\n\tpopq %[rf]" : [rf] "=r" (rflags));		\
+	rflags;									\
+})
 
-static inline u16 __sldt(void)
-{
-	u16 ldt;
-	__asm __volatile("sldt %0" : "=m"(ldt));
-	return ldt;
-}
+#define DEFINE_SEL_READER(name, instr)				\
+	static inline u16 name(void)				\
+	{							\
+		u16 tmp;					\
+		__asm __volatile(instr : "=m" (tmp));		\
+		return tmp;					\
+	}
 
-static inline u16 __str(void)
-{
-	u16 tr;
-	__asm __volatile("str %0" : "=m" (tr));
-	return tr;
-}
+DEFINE_SEL_READER(__sldt, "sldt %0")
+DEFINE_SEL_READER(__str, "str %0")
+DEFINE_SEL_READER(__readcs, "movw %%cs, %0")
+DEFINE_SEL_READER(__readds, "movw %%ds, %0")
+DEFINE_SEL_READER(__reades, "movw %%es, %0")
+DEFINE_SEL_READER(__readfs, "movw %%fs, %0")
+DEFINE_SEL_READER(__readgs, "movw %%gs, %0")
+DEFINE_SEL_READER(__readss, "movw %%ss, %0")
 
-#if 0
-static inline u64 __readmsr(u32 msr)
-{
-	u32 ecx, edx;
-	__asm __volatile("rdmsr"
-			 : "=a" (ecx), "=d" (edx)
-			 : "a" (msr));
-	return (u64)ecx | (u64)edx << 32;
-}
-
-static inline void __writemsr(u32 msr, u64 val)
-{
-	__asm __volatile("wrmsr"
-			 :: "a" (msr), "c" ((u32)val), "d" ((u32)(val >> 32)));
-}
-#endif
 #else
 extern void __lgdt(const void *);
 extern void __sgdt(void *);
@@ -107,18 +111,6 @@ extern u16 __sldt(void);
 
 extern void __ltr(u16);
 extern u16 __str(void);
-#endif
-
-static inline bool test_bit(u64 bits, u64 bs)
-{
-	return (bits & bs) == bs;
-}
-
-/* avoid declared inside parameter list  */
-struct vcpu;
-
-extern bool __vmx_vminit(struct vcpu *);
-extern void __vmx_entrypoint(void);
 
 extern void __writees(u16);
 extern u16 __reades(void);
@@ -141,5 +133,17 @@ extern u16 __readgs(void);
 extern uintptr_t __lar(uintptr_t);
 extern void __writecr2(uintptr_t);
 extern void __invd(void);
+#endif
+
+static inline bool test_bit(u64 bits, u64 bs)
+{
+	return (bits & bs) == bs;
+}
+
+/* avoid declared inside parameter list  */
+struct vcpu;
+
+extern bool __vmx_vminit(struct vcpu *);
+extern void __vmx_entrypoint(void);
 
 #endif

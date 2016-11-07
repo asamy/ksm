@@ -198,3 +198,8 @@ ept_ret_noswap:
 	TRAP_EXIT
 	iretq
 
+.globl __segmentlimit
+__segmentlimit:
+	lsl	%rax, %rcx
+	ret
+
