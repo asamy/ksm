@@ -253,7 +253,7 @@ __vmx_vmcall PROC
 	;	rcx = hypercall
 	;	rdx = data
 	vmcall
-	setbe 	al
+	setna 	al
 	ret
 __vmx_vmcall ENDP
 
@@ -265,7 +265,7 @@ __vmx_vmfunc PROC
 	;	edx = function
 	mov	eax, edx
 	db	0fh, 01h, 0d4h
-	setbe 	al
+	setna 	al
 	ret
 __vmx_vmfunc ENDP
 
@@ -376,13 +376,13 @@ __invd ENDP
 
 __invept PROC
 	invept	ecx, oword ptr [rdx]
-	setbe 	al
+	setna 	al
 	ret
 __invept ENDP
 
 __invvpid PROC
 	invvpid	ecx, oword ptr [rdx]
-	setbe 	al
+	setna 	al
 	ret
 __invvpid ENDP
 

@@ -446,15 +446,6 @@ static inline void __vmx_off(void)
 	__asm __volatile(ASM_VMX_VMXOFF ::: "cc");
 }
 
-static inline unsigned char __vmx_vmread(unsigned long long field, unsigned long long *value)
-{
-	unsigned long long tmp;
-	__asm __volatile(ASM_VMX_VMREAD_RDX_RAX
-			 : "=a"(tmp) : "d"(field) : "cc");
-	*value = tmp;
-	return 0;
-}
-
 static inline unsigned char __vmx_vmlaunch(void)
 {
 	__asm __volatile(ASM_VMX_VMLAUNCH);
@@ -479,11 +470,25 @@ static inline unsigned char __vmx_vmptrld(unsigned long long *pa)
 	return error;
 }
 
+static inline unsigned char __vmx_vmread(unsigned long long field, unsigned long long *value)
+{
+	unsigned long long tmp;
+	unsigned char error;
+	__asm __volatile("vmread %[Field], %[Value]; setna %[Err]"
+			 : [Value] "=r" (tmp), [Err] "=r" (error)
+			 : [Field] "r" (field)
+			 : "cc");
+	*value = tmp;
+	return error;
+}
+
 static inline unsigned char __vmx_vmwrite(unsigned long long field, unsigned long long value)
 {
 	unsigned char error;
-	__asm __volatile(ASM_VMX_VMWRITE_RAX_RDX "; setna %0"
-			 : "=q" (error) : "a" (value), "d" (field) : "cc");
+	__asm __volatile("vmwrite %[Value], %[Field]; setna %[Err]"
+			 : [Err] "=r" (error)
+			 : [Value] "r" (value), [Field] "r" (field)
+			 : "cc");
 	return error;
 }
 

@@ -50,7 +50,7 @@ DEPFLAGS = -MT $@ -MMD -MP -MF $(DEP_DIR)/$*.d
 DBGFLAGS = -DDBG -O0 -ggdb
 CFLAGS = -I$(CROSS_INC) -DMINGW $(DBGFLAGS) -D_WIN32_WINNT=$(WINVER) -std=c99 \
 	 -Wno-multichar -municode -fno-stack-protector -fms-extensions -fno-stack-check \
-	 -mno-stack-arg-probe -fno-asynchronous-unwind-tables $(DEPFLAGS)
+	 -mno-stack-arg-probe -fno-asynchronous-unwind-tables -fno-pic $(DEPFLAGS)
 LDFLAGS = -shared -Wl,--subsystem,native -Wl,--dynamicbase -Wl,--stack=0x6000 \
 	  -Wl,--file-alignment,0x1000 -Wl,--section-alignment,0x1000 \
 	  -Wl,--entry,DriverEntry -Wl,--nxcompat -Wl,--exclude-all-symbols \
