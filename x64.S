@@ -181,6 +181,11 @@ __vmx_vminit:
 
 do_resume:
 	/* Succeeded  */
+	movq	%rsp, %rcx
+	movq	%rsp, %rdx
+	addq	%rdx, 8*17
+	call	vcpu_dump_regs
+
 	POP_REGS
 	popfq
 
@@ -203,8 +208,7 @@ __vmx_entrypoint:
 1:
 	POP_REGS
 	vmxoff
-	jz	2f
-	jc	2f
+	ja	2f
 
 	pushq	%rax
 	popfq
@@ -219,7 +223,11 @@ __vmx_entrypoint:
 
 2:
 	pushfq
+	PUSH_REGS
 	movq	%rsp, %rcx
 	call	vcpu_handle_fail
-	ret
+
+3:	/* not reached  */
+	hlt
+	jmp 3b
 

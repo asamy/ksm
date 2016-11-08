@@ -72,13 +72,7 @@ ENDM
 ASM_DUMP_REGISTERS MACRO
 	pushfq
 	PUSHAQ                      ; -8 * 16
-	mov	rcx, rsp
-	mov	rdx, rsp
-	add	rdx, 8*17
-    
-	sub	rsp, 28h
-	call	vcpu_dump_regs
-	add	rsp, 28h
+
     
 	POPAQ
 	popfq
@@ -190,13 +184,16 @@ __vmx_vminit PROC
 	ret
 
 do_resume:
+	mov	rcx, rsp
+	mov	rdx, rsp
+	add	rdx, 8*17
+    
+	sub	rsp, 28h
+	call	vcpu_dump_regs
+	add	rsp, 28h
+
 	POPAQ
 	popfq
-
-	sub	rsp, 8
-	ASM_DUMP_REGISTERS
-	add	rsp, 8
-
 	mov	al, 1
 	ret
 __vmx_vminit ENDP
@@ -228,10 +225,11 @@ exit:
 	;	rcx = return address	(aka RIP prior to this call plus instruction length)
 	POPAQ
 	vmxoff
-	jz	error
-	jc	error
+	ja	2f
+
 	push	rax
 	popfq			; eflags to indicate success
+
 	mov	rsp, rdx	; stack pointer
 	push	rcx		; return address (rip + instr len)
 	ret
@@ -245,7 +243,10 @@ error:
 	sub	rsp, 28h
 	call	vcpu_handle_fail
 	add	rsp, 28h
-	ret						; not reached
+
+do_hlt:
+	hlt						; not reached
+	jmp	do_hlt
 __vmx_entrypoint ENDP
 
 __vmx_vmcall PROC
