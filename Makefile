@@ -51,10 +51,10 @@ DBGFLAGS = -DDBG -O0 -ggdb
 CFLAGS = -I$(CROSS_INC) -DMINGW $(DBGFLAGS) -D_WIN32_WINNT=$(WINVER) -std=c99 \
 	 -Wno-multichar -municode -fno-stack-protector -fms-extensions -fno-stack-check \
 	 -mno-stack-arg-probe -fno-asynchronous-unwind-tables $(DEPFLAGS)
-LDFLAGS = -m64 -shared -Wl,--subsystem,native -Wl,--image-base,0x10000 \
+LDFLAGS = -shared -Wl,--subsystem,native -Wl,--dynamicbase -Wl,--stack=0x6000 \
 	  -Wl,--file-alignment,0x1000 -Wl,--section-alignment,0x1000 \
-	  -Wl,--entry,DriverEntry@8 -Wl,--stack,0x6000 -Wl,--dynamicbase -Wl,--nxcompat \
-	  -Wl,--exclude-all-symbols -Wl,--enable-stdcall-fixup -nostartfiles -nostdlib
+	  -Wl,--entry,DriverEntry -Wl,--nxcompat -Wl,--exclude-all-symbols \
+	  -Wl,--enable-stdcall-fixup -nostartfiles -nostdlib
 LIBS = -L$(CROSS_LIB) -lntoskrnl -lhal -lmingwex
 
 SRC = acpi.c ept.c exit.c htable.c ksm.c main.c page.c vcpu.c
