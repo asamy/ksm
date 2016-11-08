@@ -3,7 +3,6 @@
 EXTERN vcpu_init : PROC
 EXTERN vcpu_handle_exit : PROC
 EXTERN vcpu_handle_fail : PROC
-EXTERN vcpu_dump_regs : PROC
 EXTERN __ept_handle_violation : PROC
 
 KFRAME_RPL  = -56h
@@ -208,7 +207,7 @@ exit:
 	;	rcx = return address	(aka RIP prior to this call plus instruction length)
 	POPAQ
 	vmxoff
-	ja	2f
+	jna	error
 
 	push	rax
 	popfq			; eflags to indicate success
