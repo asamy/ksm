@@ -69,15 +69,6 @@ POPAQ MACRO
 	pop	r15
 ENDM
 
-ASM_DUMP_REGISTERS MACRO
-	pushfq
-	PUSHAQ                      ; -8 * 16
-
-    
-	POPAQ
-	popfq
-ENDM
-
 ; General IDT trap handler (entry)
 ;	assumes:
 ;		1) There is an error code on the stack
