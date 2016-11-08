@@ -181,11 +181,6 @@ __vmx_vminit:
 
 do_resume:
 	/* Succeeded  */
-	movq	%rsp, %rcx
-	movq	%rsp, %rdx
-	addq	%rdx, 8*17
-	call	vcpu_dump_regs
-
 	POP_REGS
 	popfq
 

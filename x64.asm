@@ -175,14 +175,6 @@ __vmx_vminit PROC
 	ret
 
 do_resume:
-	mov	rcx, rsp
-	mov	rdx, rsp
-	add	rdx, 8*17
-    
-	sub	rsp, 28h
-	call	vcpu_dump_regs
-	add	rsp, 28h
-
 	POPAQ
 	popfq
 	mov	al, 1
@@ -410,5 +402,4 @@ __ept_violation ENDP
 
 PURGE PUSHAQ
 PURGE POPAQ
-PURGE ASM_DUMP_REGISTERS
 END

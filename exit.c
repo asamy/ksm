@@ -1096,8 +1096,8 @@ void vcpu_handle_fail(struct regs *regs)
 {
 	/*
 	 * Handle failure due to either:
-	 *	1) VM entry failure
-	 *	2) vmxoff failure
+	 *	1) VM entry
+	 *	2) vmxoff
 	 */
 	size_t err = 0;
 	if (regs->eflags & X86_EFLAGS_ZF)
@@ -1106,18 +1106,3 @@ void vcpu_handle_fail(struct regs *regs)
 	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, err, curr_handler, prev_handler);
 }
 
-void vcpu_dump_regs(const struct regs *regs, uintptr_t sp)
-{
-	VCPU_DEBUG("Context at %p: "
-		   "rax=%p rbx=%p rcx=%p "
-		   "rdx=%p rsi=%p rdi=%p "
-		   "rsp=%p rbp=%p "
-		   " r8=%p  r9=%p r10=%p "
-		   "r11=%p r12=%p r13=%p "
-		   "r14=%p r15=%p efl=%08x",
-		   __return_addr(), regs->gp[REG_AX], regs->gp[REG_BX], regs->gp[REG_CX],
-		   regs->gp[REG_DX], regs->gp[REG_SI], regs->gp[REG_DI], regs->gp[REG_SP],
-		   regs->gp[REG_BP], regs->gp[REG_R8], regs->gp[REG_R9], regs->gp[REG_R10],
-		   regs->gp[REG_R11], regs->gp[REG_R12], regs->gp[REG_R13], regs->gp[REG_R14],
-		   regs->gp[REG_R15], regs->eflags);
-}
