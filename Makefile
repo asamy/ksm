@@ -33,8 +33,6 @@ else
 	CROSS_LIB ?=
 endif
 
-TARGET = ksm.sys
-SYMBOL = ksm.dbg
 CC = $(CROSS_BUILD)gcc
 STRIP = $(CROSS_BUILD)strip
 OBJCOPY = $(CROSS_BUILD)objcopy --only-keep-debug
@@ -50,7 +48,7 @@ DEPFLAGS = -MT $@ -MMD -MP -MF $(DEP_DIR)/$*.d
 DBGFLAGS = -DDBG -O0 -ggdb
 CFLAGS = -I$(CROSS_INC) -DMINGW $(DBGFLAGS) -D_WIN32_WINNT=$(WINVER) -std=c99 \
 	 -Wno-multichar -municode -fno-stack-protector -fms-extensions -fno-stack-check \
-	 -mno-stack-arg-probe -fno-asynchronous-unwind-tables -fno-pic $(DEPFLAGS)
+	 -mno-stack-arg-probe -fno-asynchronous-unwind-tables -fno-pic
 LDFLAGS = -shared -Wl,--subsystem,native -Wl,--dynamicbase -Wl,--stack=0x6000 \
 	  -Wl,--file-alignment,0x1000 -Wl,--section-alignment,0x1000 \
 	  -Wl,--entry,DriverEntry -Wl,--nxcompat -Wl,--exclude-all-symbols \
@@ -60,11 +58,15 @@ LIBS = -L$(CROSS_LIB) -lntoskrnl -lhal -lmingwex
 SRC = acpi.c ept.c exit.c htable.c ksm.c main.c page.c vcpu.c
 ASM = x64.S
 
+BIN_DIR = bin
 OBJ_DIR = obj
 DEP_DIR = dep
 DEP  = $(SRC:%.c=$(DEP_DIR)/%.d)
 OBJ  = $(SRC:%.c=$(OBJ_DIR)/%.o)
 OBJ += $(ASM:%.S=$(OBJ_DIR)/%.o)
+
+TARGET = $(BIN_DIR)/ksm.sys
+SYMBOL = $(BIN_DIR)/ksm.dbg
 
 .PHONY: all clean
 .PRECIOUS: $(DEP_DIR)/%.d
@@ -73,13 +75,13 @@ all: $(TARGET)
 clean:
 	$(RM) $(TARGET) $(SYMBOL) $(OBJ) $(DEP)
 
-$(TARGET): $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
+$(TARGET): $(BIN_DIR) $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LIBS)
 	$(OBJCOPY) $@ $(SYMBOL)
 	$(STRIP) $@
 
 $(OBJ_DIR)/%.o: %.c $(DEP_DIR)/%.d
-	$(CC) -c $(CFLAGS) -o $@ $<
+	$(CC) -c $(CFLAGS) $(DEPFLAGS) -o $@ $<
 
 $(OBJ_DIR)/%.o: %.S
 	$(CC) -c $(CFLAGS) -o $@ $<
@@ -92,4 +94,7 @@ $(DEP_DIR):
 
 $(OBJ_DIR):
 	@mkdir -p $(OBJ_DIR)
+
+$(BIN_DIR):
+	@mkdir -p $(BIN_DIR)
 
