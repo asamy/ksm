@@ -435,21 +435,28 @@ typedef struct {
 
 static inline unsigned char __vmx_on(unsigned long long *pa)
 {
-	__asm __volatile(ASM_VMX_VMXON_RAX
-			 : : "a"(pa), "m"(*pa)
+	unsigned char error;
+	__asm __volatile(ASM_VMX_VMXON_RAX "; setna %0"
+			 : "=q" (error)
+			 : "a"(pa), "m"(*pa)
 			 : "memory", "cc");
-	return 0;
+	return error;
 }
 
-static inline void __vmx_off(void)
+static inline unsigned char __vmx_off(void)
 {
-	__asm __volatile(ASM_VMX_VMXOFF ::: "cc");
+	unsigned char error;
+	__asm __volatile(ASM_VMX_VMXOFF "; setna %0"
+			 : "=q" (error) :: "cc");
+	return error;
 }
 
 static inline unsigned char __vmx_vmlaunch(void)
 {
-	__asm __volatile(ASM_VMX_VMLAUNCH);
-	return 0;
+	unsigned char error;
+	__asm __volatile(ASM_VMX_VMLAUNCH "; setna %0"
+			 : "=q" (error) :: "cc");
+	return error;
 }
 
 static inline unsigned char __vmx_vmclear(unsigned long long *pa)
@@ -475,7 +482,7 @@ static inline unsigned char __vmx_vmread(unsigned long long field, unsigned long
 	unsigned long long tmp;
 	unsigned char error;
 	__asm __volatile("vmread %[Field], %[Value]; setna %[Err]"
-			 : [Value] "=r" (tmp), [Err] "=r" (error)
+			 : [Value] "=r" (tmp), [Err] "=qm" (error)
 			 : [Field] "r" (field)
 			 : "cc");
 	*value = tmp;
@@ -486,7 +493,7 @@ static inline unsigned char __vmx_vmwrite(unsigned long long field, unsigned lon
 {
 	unsigned char error;
 	__asm __volatile("vmwrite %[Value], %[Field]; setna %[Err]"
-			 : [Err] "=r" (error)
+			 : [Err] "=qm" (error)
 			 : [Value] "r" (value), [Field] "r" (field)
 			 : "cc");
 	return error;
