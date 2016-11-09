@@ -203,7 +203,7 @@ __vmx_entrypoint:
 1:
 	POP_REGS
 	vmxoff
-	ja	2f
+	jna	2f
 
 	pushq	%rax
 	popfq
