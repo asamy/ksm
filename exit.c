@@ -1689,6 +1689,7 @@ static bool (*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_RDPMC] = vcpu_nop,
 	[EXIT_REASON_RDTSC] = vcpu_handle_rdtsc,
 	[EXIT_REASON_RSM] = vcpu_nop,
+	[EXIT_REASON_VMCALL] = vcpu_handle_vmcall,
 	[EXIT_REASON_VMCLEAR] = vcpu_handle_vmx,
 	[EXIT_REASON_VMLAUNCH] = vcpu_handle_vmx,
 	[EXIT_REASON_VMPTRLD] = vcpu_handle_vmx,
