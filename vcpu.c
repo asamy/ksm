@@ -355,8 +355,8 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 *	- Setup EPT
 	 *	- Setup the shadow IDT (later initialized)
 	 *	- Enter VMX root mode
-	 *	- Initialize VMCS (shadow IDT initialized here)
-	 *	- Setup VMCS
+	 *	- Initialize VMCS
+	 *	- Setup VMCS (shadow IDT initialized here)
 	 *	- Launch VM
 	 */
 	if (!ept_init(&vcpu->ept))
@@ -399,6 +399,7 @@ void vcpu_free(struct vcpu *vcpu)
 
 void vcpu_set_mtf(bool enable)
 {
+	/* BAD BAD BAD!  Do not use.  */
 	u64 vm_cpuctl;
 	__vmx_vmread(CPU_BASED_VM_EXEC_CONTROL, &vm_cpuctl);
 

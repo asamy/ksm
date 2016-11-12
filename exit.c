@@ -35,19 +35,285 @@ struct _DISK_GEOMETRY_EX;
 #include <intrin.h>
 
 #include "ksm.h"
+#include "lchar.h"
 
-/* For debugging...  */
+#if defined(NESTED_VMX) || defined(DBG)
 static u16 curr_handler = 0;
+#ifdef DBG
 static u16 prev_handler = 0;
+#endif
+#endif
 
-static inline bool vcpu_check_addr(u64 gva, u64 mask)
+#ifdef NESTED_VMX
+static const u32 nested_unsupported_secondary = SECONDARY_EXEC_ENABLE_VE | SECONDARY_EXEC_ENABLE_EPT |
+						SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_APIC_REGISTER_VIRT |
+						SECONDARY_EXEC_ENABLE_ENCLS_EXITING | SECONDARY_EXEC_ENABLE_PML |
+						SECONDARY_EXEC_ENABLE_VPID | SECONDARY_EXEC_ENABLE_VMFUNC;
+
+#define F(f)		[f] = offsetof(struct nested_vmcs, LOCASE(f))
+
+static const u16 field_to_offset[] = {
+	F(VIRTUAL_PROCESSOR_ID),
+	F(POSTED_INTR_NV),
+	F(EPTP_INDEX),
+	F(GUEST_ES_SELECTOR),
+	F(GUEST_CS_SELECTOR),
+	F(GUEST_SS_SELECTOR),
+	F(GUEST_DS_SELECTOR),
+	F(GUEST_FS_SELECTOR),
+	F(GUEST_GS_SELECTOR),
+	F(GUEST_LDTR_SELECTOR),
+	F(GUEST_TR_SELECTOR),
+	F(GUEST_INTR_STATUS),
+	F(GUEST_PML_INDEX),
+	F(HOST_ES_SELECTOR),
+	F(HOST_CS_SELECTOR),
+	F(HOST_SS_SELECTOR),
+	F(HOST_DS_SELECTOR),
+	F(HOST_FS_SELECTOR),
+	F(HOST_GS_SELECTOR),
+	F(HOST_TR_SELECTOR),
+	F(IO_BITMAP_A),
+	F(IO_BITMAP_A_HIGH),
+	F(IO_BITMAP_B),
+	F(IO_BITMAP_B_HIGH),
+	F(MSR_BITMAP),
+	F(MSR_BITMAP_HIGH),
+	F(VM_EXIT_MSR_STORE_ADDR),
+	F(VM_EXIT_MSR_STORE_ADDR_HIGH),
+	F(VM_EXIT_MSR_LOAD_ADDR),
+	F(VM_EXIT_MSR_LOAD_ADDR_HIGH),
+	F(VM_ENTRY_MSR_LOAD_ADDR),
+	F(VM_ENTRY_MSR_LOAD_ADDR_HIGH),
+	F(PML_ADDRESS),
+	F(PML_ADDRESS_HIGH),
+	F(TSC_OFFSET),
+	F(TSC_OFFSET_HIGH),
+	F(VIRTUAL_APIC_PAGE_ADDR),
+	F(VIRTUAL_APIC_PAGE_ADDR_HIGH),
+	F(APIC_ACCESS_ADDR),
+	F(APIC_ACCESS_ADDR_HIGH),
+	F(POSTED_INTR_DESC_ADDR),
+	F(POSTED_INTR_DESC_ADDR_HIGH),
+	F(VM_FUNCTION_CTRL),
+	F(VM_FUNCTION_CTRL_HIGH),
+	F(EPT_POINTER),
+	F(EPT_POINTER_HIGH),
+	F(EOI_EXIT_BITMAP0),
+	F(EOI_EXIT_BITMAP0_HIGH),
+	F(EOI_EXIT_BITMAP1),
+	F(EOI_EXIT_BITMAP1_HIGH),
+	F(EOI_EXIT_BITMAP2),
+	F(EOI_EXIT_BITMAP2_HIGH),
+	F(EOI_EXIT_BITMAP3),
+	F(EOI_EXIT_BITMAP3_HIGH),
+	F(EPTP_LIST_ADDRESS),
+	F(EPTP_LIST_ADDRESS_HIGH),
+	F(VMREAD_BITMAP),
+	F(VMREAD_BITMAP_HIGH),
+	F(VMWRITE_BITMAP),
+	F(VMWRITE_BITMAP_HIGH),
+	F(VE_INFO_ADDRESS),
+	F(VE_INFO_ADDRESS_HIGH),
+	F(XSS_EXIT_BITMAP),
+	F(XSS_EXIT_BITMAP_HIGH),
+	F(TSC_MULTIPLIER),
+	F(TSC_MULTIPLIER_HIGH),
+	F(GUEST_PHYSICAL_ADDRESS),
+	F(GUEST_PHYSICAL_ADDRESS_HIGH),
+	F(VMCS_LINK_POINTER),
+	F(VMCS_LINK_POINTER_HIGH),
+	F(GUEST_IA32_DEBUGCTL),
+	F(GUEST_IA32_DEBUGCTL_HIGH),
+	F(GUEST_IA32_PAT),
+	F(GUEST_IA32_PAT_HIGH),
+	F(GUEST_IA32_EFER),
+	F(GUEST_IA32_EFER_HIGH),
+	F(GUEST_IA32_PERF_GLOBAL_CTRL),
+	F(GUEST_IA32_PERF_GLOBAL_CTRL_HIGH),
+	F(GUEST_PDPTR0),
+	F(GUEST_PDPTR0_HIGH),
+	F(GUEST_PDPTR1),
+	F(GUEST_PDPTR1_HIGH),
+	F(GUEST_PDPTR2),
+	F(GUEST_PDPTR2_HIGH),
+	F(GUEST_PDPTR3),
+	F(GUEST_PDPTR3_HIGH),
+	F(GUEST_BNDCFGS),
+	F(GUEST_BNDCFGS_HIGH),
+	F(HOST_IA32_PAT),
+	F(HOST_IA32_PAT_HIGH),
+	F(HOST_IA32_EFER),
+	F(HOST_IA32_EFER_HIGH),
+	F(HOST_IA32_PERF_GLOBAL_CTRL),
+	F(HOST_IA32_PERF_GLOBAL_CTRL_HIGH),
+	F(PIN_BASED_VM_EXEC_CONTROL),
+	F(CPU_BASED_VM_EXEC_CONTROL),
+	F(EXCEPTION_BITMAP),
+	F(PAGE_FAULT_ERROR_CODE_MASK),
+	F(PAGE_FAULT_ERROR_CODE_MATCH),
+	F(CR3_TARGET_COUNT),
+	F(VM_EXIT_CONTROLS),
+	F(VM_EXIT_MSR_STORE_COUNT),
+	F(VM_EXIT_MSR_LOAD_COUNT),
+	F(VM_ENTRY_CONTROLS),
+	F(VM_ENTRY_MSR_LOAD_COUNT),
+	F(VM_ENTRY_INTR_INFO_FIELD),
+	F(VM_ENTRY_EXCEPTION_ERROR_CODE),
+	F(VM_ENTRY_INSTRUCTION_LEN),
+	F(TPR_THRESHOLD),
+	F(SECONDARY_VM_EXEC_CONTROL),
+	F(PLE_GAP),
+	F(PLE_WINDOW),
+	F(VM_INSTRUCTION_ERROR),
+	F(VM_EXIT_REASON),
+	F(VM_EXIT_INTR_INFO),
+	F(VM_EXIT_INTR_ERROR_CODE),
+	F(IDT_VECTORING_INFO_FIELD),
+	F(IDT_VECTORING_ERROR_CODE),
+	F(VM_EXIT_INSTRUCTION_LEN),
+	F(VMX_INSTRUCTION_INFO),
+	F(GUEST_ES_LIMIT),
+	F(GUEST_CS_LIMIT),
+	F(GUEST_SS_LIMIT),
+	F(GUEST_DS_LIMIT),
+	F(GUEST_FS_LIMIT),
+	F(GUEST_GS_LIMIT),
+	F(GUEST_LDTR_LIMIT),
+	F(GUEST_TR_LIMIT),
+	F(GUEST_GDTR_LIMIT),
+	F(GUEST_IDTR_LIMIT),
+	F(GUEST_ES_AR_BYTES),
+	F(GUEST_CS_AR_BYTES),
+	F(GUEST_SS_AR_BYTES),
+	F(GUEST_DS_AR_BYTES),
+	F(GUEST_FS_AR_BYTES),
+	F(GUEST_GS_AR_BYTES),
+	F(GUEST_LDTR_AR_BYTES),
+	F(GUEST_TR_AR_BYTES),
+	F(GUEST_INTERRUPTIBILITY_INFO),
+	F(GUEST_ACTIVITY_STATE),
+	F(GUEST_SYSENTER_CS),
+	F(VMX_PREEMPTION_TIMER_VALUE),
+	F(HOST_IA32_SYSENTER_CS),
+	F(CR0_GUEST_HOST_MASK),
+	F(CR4_GUEST_HOST_MASK),
+	F(CR0_READ_SHADOW),
+	F(CR4_READ_SHADOW),
+	F(CR3_TARGET_VALUE0),
+	F(CR3_TARGET_VALUE1),
+	F(CR3_TARGET_VALUE2),
+	F(CR3_TARGET_VALUE3),
+	F(EXIT_QUALIFICATION),
+	F(GUEST_LINEAR_ADDRESS),
+	F(GUEST_CR0),
+	F(GUEST_CR3),
+	F(GUEST_CR4),
+	F(GUEST_ES_BASE),
+	F(GUEST_CS_BASE),
+	F(GUEST_SS_BASE),
+	F(GUEST_DS_BASE),
+	F(GUEST_FS_BASE),
+	F(GUEST_GS_BASE),
+	F(GUEST_LDTR_BASE),
+	F(GUEST_TR_BASE),
+	F(GUEST_GDTR_BASE),
+	F(GUEST_IDTR_BASE),
+	F(GUEST_DR7),
+	F(GUEST_RSP),
+	F(GUEST_RIP),
+	F(GUEST_RFLAGS),
+	F(GUEST_PENDING_DBG_EXCEPTIONS),
+	F(GUEST_SYSENTER_ESP),
+	F(GUEST_SYSENTER_EIP),
+	F(HOST_CR0),
+	F(HOST_CR3),
+	F(HOST_CR4),
+	F(HOST_FS_BASE),
+	F(HOST_GS_BASE),
+	F(HOST_TR_BASE),
+	F(HOST_GDTR_BASE),
+	F(HOST_IDTR_BASE),
+	F(HOST_IA32_SYSENTER_ESP),
+	F(HOST_IA32_SYSENTER_EIP),
+	F(HOST_RSP),
+	F(HOST_RIP),
+};
+
+static inline u16 field_offset(u64 field)
 {
-	u64 *pte = __cr3_resolve_va(gva);
-	if (!pte || !pte_present(pte))
+	if (field > sizeof(field_to_offset) / sizeof(field_to_offset[0]))
+		return -1;
+
+	return field_to_offset[field];
+}
+
+typedef enum {
+	FIELD_U16 = 0,
+	FIELD_U64 = 1,
+	FIELD_U32 = 2,
+	FIELD_NATURAL = 3,
+} ftype_t;
+
+static inline ftype_t field_type(u64 field)
+{
+	if (field & 1)
+		return FIELD_U32;
+
+	return (field >> 13) & 3;
+}
+
+static inline bool field_ro(u64 field)
+{
+	return ((field >> 10) & 3) == 1;
+}
+
+static inline bool nested_vmcs_write(struct nested_vmcs *vmcs, u64 field, u64 value)
+{
+	u16 offset = field_offset(field);
+	if (offset == -1)
 		return false;
 
-	return (*pte & mask) == mask;
+	uintptr_t f = (uintptr_t)vmcs + offset;
+	switch (field_type(field)) {
+	case FIELD_U16:
+		*(u16 *)f = value;
+		break;
+	case FIELD_U32:
+		*(u32 *)f = value;
+		break;
+	case FIELD_U64:
+	case FIELD_NATURAL:
+		*(u64 *)f = value;
+		break;
+	}
+
+	return true;
 }
+
+static inline bool nested_vmcs_read(struct nested_vmcs *vmcs, u64 field, u64 *value)
+{
+	u16 offset = field_offset(field);
+	if (offset == -1)
+		return false;
+
+	uintptr_t f = (uintptr_t)vmcs + offset;
+	switch (field_type(field)) {
+	case FIELD_U16:
+		*value = *(u16 *)f;
+		break;
+	case FIELD_U32:
+		*value = *(u32 *)f;
+		break;
+	case FIELD_U64:
+	case FIELD_NATURAL:
+		*value = *(u64 *)f;
+		break;
+	}
+
+	return true;
+}
+#endif
 
 static inline int vcpu_read_cpl(void)
 {
@@ -80,9 +346,9 @@ static inline bool vcpu_inject_hardirq_noerr(u8 vector)
 			       vector, false, 0);
 }
 
-static inline void vcpu_advance_rip(struct guest_context *gc)
+static inline void vcpu_advance_rip(struct vcpu *vcpu)
 {
-	if (gc->eflags & X86_EFLAGS_TF) {
+	if (vcpu->eflags & X86_EFLAGS_TF) {
 		vcpu_inject_hardirq_noerr(X86_TRAP_DB);
 		if (vcpu_check_cpl(0)) {
 			__writedr(6, __readdr(6) | DR6_BS | DR6_RTM);
@@ -96,7 +362,7 @@ static inline void vcpu_advance_rip(struct guest_context *gc)
 
 	size_t instr_len;
 	__vmx_vmread(VM_EXIT_INSTRUCTION_LEN, &instr_len);
-	__vmx_vmwrite(GUEST_RIP, gc->ip + instr_len);
+	__vmx_vmwrite(GUEST_RIP, vcpu->ip + instr_len);
 
 	size_t interruptibility;
 	__vmx_vmread(GUEST_INTERRUPTIBILITY_INFO, &interruptibility);
@@ -137,7 +403,17 @@ static inline bool vcpu_inject_ve(struct vcpu *vcpu)
 	return vcpu_inject_hardirq_noerr(X86_TRAP_VE);
 }
 
-static bool vcpu_nop(struct guest_context *gc)
+static inline bool vcpu_inject_pf(struct vcpu *vcpu, u64 gla, u32 ec)
+{
+	__writecr2(gla);	/* XXX  */
+	return vcpu_inject_irq(vmcs_read(VM_EXIT_INSTRUCTION_LEN),
+			       INTR_TYPE_HARD_EXCEPTION,
+			       X86_TRAP_PF,
+			       true,
+			       ec);
+}
+
+static bool vcpu_nop(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 	VCPU_DEBUG_RAW("you need to handle the corresponding VM-exit for the handler you set.\n");
@@ -145,7 +421,7 @@ static bool vcpu_nop(struct guest_context *gc)
 	return false;
 }
 
-static bool vcpu_handle_except_nmi(struct guest_context *gc)
+static bool vcpu_handle_except_nmi(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
@@ -164,13 +440,13 @@ static bool vcpu_handle_except_nmi(struct guest_context *gc)
 	bool has_err = intr_info & INTR_INFO_DELIVER_CODE_MASK;
 	u32 err = vmcs_read32(IDT_VECTORING_ERROR_CODE);
 	if (!vcpu_inject_irq(instr_len, intr_type, vector, has_err, err))
-		VCPU_BUGCHECK(VCPU_IRQ_NOT_HANDLED, gc->ip, intr_type, vector);
+		VCPU_BUGCHECK(VCPU_IRQ_NOT_HANDLED, vcpu->ip, intr_type, vector);
 
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_triplefault(struct guest_context *gc)
+static bool vcpu_handle_triplefault(struct vcpu *vcpu)
 {
 	/* A triple fault occured during handling of a double fault in guest, bug check.  */
 	VCPU_TRACER_START();
@@ -179,7 +455,7 @@ static bool vcpu_handle_triplefault(struct guest_context *gc)
 	return false;
 }
 
-static bool vcpu_handle_taskswitch(struct guest_context *gc)
+static bool vcpu_handle_taskswitch(struct vcpu *vcpu)
 {
 	/* Not really called  */
 	VCPU_TRACER_START();
@@ -216,48 +492,49 @@ static bool vcpu_handle_taskswitch(struct guest_context *gc)
 	return true;
 }
 
-static bool vcpu_handle_cpuid(struct guest_context *gc)
+static bool vcpu_handle_cpuid(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
 	int cpuid[4];
-	int func = ksm_read_reg32(gc, REG_AX);
-	int subf = ksm_read_reg32(gc, REG_CX);
+	int func = ksm_read_reg32(vcpu, REG_AX);
+	int subf = ksm_read_reg32(vcpu, REG_CX);
 	__cpuidex(cpuid, func, subf);
 
-	/* We do not support nesting, so take out the VMX bit.  */
+#ifndef NESTED_VMX
 	if (func == 1)
 		cpuid[2] &= ~(1 << (X86_FEATURE_VMX & 31));
+#endif
 
-	ksm_write_reg32(gc, REG_AX, cpuid[0]);
-	ksm_write_reg32(gc, REG_BX, cpuid[1]);
-	ksm_write_reg32(gc, REG_CX, cpuid[2]);
-	ksm_write_reg32(gc, REG_DX, cpuid[3]);
-	vcpu_advance_rip(gc);
+	ksm_write_reg32(vcpu, REG_AX, cpuid[0]);
+	ksm_write_reg32(vcpu, REG_BX, cpuid[1]);
+	ksm_write_reg32(vcpu, REG_CX, cpuid[2]);
+	ksm_write_reg32(vcpu, REG_DX, cpuid[3]);
+	vcpu_advance_rip(vcpu);
 
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_hlt(struct guest_context *gc)
+static bool vcpu_handle_hlt(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 	__halt();
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_invd(struct guest_context *gc)
+static bool vcpu_handle_invd(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 	__invd();
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_invlpg(struct guest_context *gc)
+static bool vcpu_handle_invlpg(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
@@ -265,26 +542,26 @@ static bool vcpu_handle_invlpg(struct guest_context *gc)
 	__vmx_vmread(EXIT_QUALIFICATION, &addr);
 	__invlpg((void *)addr);
 	__invvpid_addr(vpid_nr(), addr);
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_rdtsc(struct guest_context *gc)
+static bool vcpu_handle_rdtsc(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
 	u64 tsc = __rdtsc();
-	ksm_write_reg32(gc, REG_AX, tsc);
-	ksm_write_reg32(gc, REG_DX, tsc >> 32);
-	vcpu_advance_rip(gc);
+	ksm_write_reg32(vcpu, REG_AX, tsc);
+	ksm_write_reg32(vcpu, REG_DX, tsc >> 32);
+	vcpu_advance_rip(vcpu);
 
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_vmfunc(struct guest_context *gc)
+static bool vcpu_handle_vmfunc(struct vcpu *vcpu)
 {
 	/* VM functions do not cause VM exit unless:
 	 *	1) funciton is not supported
@@ -292,15 +569,15 @@ static bool vcpu_handle_vmfunc(struct guest_context *gc)
 	 */
 	VCPU_TRACER_START();
 	VCPU_DEBUG("vmfunc caused VM-exit!  func is %d eptp index is %d\n",
-		   ksm_read_reg32(gc, REG_AX), ksm_read_reg32(gc, REG_CX));
+		   ksm_read_reg32(vcpu, REG_AX), ksm_read_reg32(vcpu, REG_CX));
 	vcpu_inject_hardirq_noerr(X86_TRAP_UD);
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END()
 	return true;
 }
 
 #ifdef ENABLE_PML
-static bool vcpu_dump_pml(struct guest_context *gc)
+static bool vcpu_dump_pml(struct vcpu *vcpu)
 {
 	u64 pml_index;
 	__vmx_vmread(GUEST_PML_INDEX, &pml_index);
@@ -317,7 +594,6 @@ static bool vcpu_dump_pml(struct guest_context *gc)
 		pml_index++;
 
 	/* Dump it...  */
-	struct vcpu *vcpu = to_vcpu(gc);
 	struct ept *ept = &vcpu->ept;
 
 	u16 eptp = vcpu_eptp_idx(vcpu);
@@ -342,65 +618,67 @@ static bool vcpu_dump_pml(struct guest_context *gc)
 }
 #endif
 
-static bool vcpu_handle_pml_full(struct guest_context *gc)
+static bool vcpu_handle_pml_full(struct vcpu *vcpu)
 {
 #ifdef ENABLE_PML
 	/* Page Modification Log is now full, dump it.  */
 	VCPU_DEBUG_RAW("PML full\n");
-	return vcpu_dump_pml(gc);
+	return vcpu_dump_pml(vcpu);
 #else
 	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, VCPU_BUG_UNHANDLED, 0xDEAFDEAF, 0xBAADF00D);
 	return false;
 #endif
 }
 
-static inline void vcpu_vm_succeed(struct guest_context *gc)
+static inline void vcpu_vm_succeed(struct vcpu *vcpu)
 {
-	gc->eflags &= ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF |
+	vcpu->eflags &= ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF |
 			X86_EFLAGS_ZF | X86_EFLAGS_SF | X86_EFLAGS_OF);
 }
 
-static inline void vcpu_vm_fail_invalid(struct guest_context *gc)
+static inline void vcpu_vm_fail_invalid(struct vcpu *vcpu)
 {
-	gc->eflags |= X86_EFLAGS_CF;
-	gc->eflags &= ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF | X86_EFLAGS_SF | X86_EFLAGS_OF);
+	vcpu->eflags |= X86_EFLAGS_CF;
+	vcpu->eflags &= ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF | X86_EFLAGS_SF | X86_EFLAGS_OF);
 }
 
-static inline void vcpu_vm_fail_valid(struct guest_context *gc, size_t err)
+static inline void vcpu_vm_fail_valid(struct vcpu *vcpu, size_t err)
 {
-	gc->eflags |= X86_EFLAGS_ZF;
-	gc->eflags &= ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_SF | X86_EFLAGS_OF);
+	vcpu->eflags |= X86_EFLAGS_ZF;
+	vcpu->eflags &= ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_SF | X86_EFLAGS_OF);
 	__vmx_vmwrite(VM_INSTRUCTION_ERROR, err);
 }
 
-static inline void vcpu_adjust_rflags(struct guest_context *gc, bool success)
+static inline void vcpu_adjust_rflags(struct vcpu *vcpu, bool success)
 {
 	if (success)
-		return vcpu_vm_succeed(gc);
+		return vcpu_vm_succeed(vcpu);
 
-	return vcpu_vm_fail_invalid(gc);
+	return vcpu_vm_fail_invalid(vcpu);
 }
 
-static inline void vcpu_do_exit(struct guest_context *gc)
+static inline void vcpu_do_exit(struct vcpu *vcpu)
 {
+	/* Fix GDT  */
 	struct gdtr gdt;
 	gdt.limit = vmcs_read16(GUEST_GDTR_LIMIT);
 	gdt.base = vmcs_read(GUEST_GDTR_BASE);
 	__lgdt(&gdt);
 
-	struct vcpu *vcpu = to_vcpu(gc);
+	/* Fix IDT (restore whatever guest last loaded...)  */
 	__lidt(&vcpu->g_idt);
 
-	size_t ret = gc->ip + vmcs_read(VM_EXIT_INSTRUCTION_LEN);
-	vcpu_vm_succeed(gc);
+	size_t ret = vcpu->ip + vmcs_read(VM_EXIT_INSTRUCTION_LEN);
+	vcpu_vm_succeed(vcpu);
 
 	u64 cr3;
 	__vmx_vmread(GUEST_CR3, &cr3);
 	__writecr3(cr3);
 
-	ksm_write_reg(gc, REG_CX, ret);
-	ksm_write_reg(gc, REG_DX, ksm_read_reg(gc, REG_SP));
-	ksm_write_reg(gc, REG_AX, gc->eflags);
+	/* See __vmx_entrypoint in assembly on how this is used.  */
+	ksm_write_reg(vcpu, REG_CX, ret);
+	ksm_write_reg(vcpu, REG_DX, ksm_read_reg(vcpu, REG_SP));
+	ksm_write_reg(vcpu, REG_AX, vcpu->eflags);
 }
 
 static bool vcpu_handle_hook(struct vcpu *vcpu, struct page_hook_info *h)
@@ -417,7 +695,6 @@ static inline bool vcpu_handle_unhook(struct vcpu *vcpu, uintptr_t dpa)
 	for_each_eptp(i)
 		ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, dpa);
 	__invept_all();
-	__invvpid_all();
 	return true;
 }
 
@@ -460,7 +737,7 @@ static inline bool vcpu_emulate_vmfunc(struct vcpu *vcpu, struct h_vmfunc *vmfun
 	return true;
 }
 
-static bool vcpu_handle_vmcall(struct guest_context *gc)
+static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
@@ -469,28 +746,27 @@ static bool vcpu_handle_vmcall(struct guest_context *gc)
 		goto out;
 	}
 
-	uint8_t nr = ksm_read_reg32(gc, REG_CX);
-	uintptr_t arg = ksm_read_reg(gc, REG_DX);
-	struct vcpu *vcpu = to_vcpu(gc);
+	uint8_t nr = ksm_read_reg32(vcpu, REG_CX);
+	uintptr_t arg = ksm_read_reg(vcpu, REG_DX);
 	switch (nr) {
 	case HYPERCALL_STOP:
-		vcpu_do_exit(gc);
+		vcpu_do_exit(vcpu);
 		VCPU_TRACER_END();
 		return false;
 	case HYPERCALL_IDT:
-		vcpu_adjust_rflags(gc, vcpu_hook_idte(vcpu, (struct shadow_idt_entry *)arg));
+		vcpu_adjust_rflags(vcpu, vcpu_hook_idte(vcpu, (struct shadow_idt_entry *)arg));
 		break;
 	case HYPERCALL_UIDT:
-		vcpu_adjust_rflags(gc, vcpu_unhook_idte(vcpu, (struct shadow_idt_entry *)arg));
+		vcpu_adjust_rflags(vcpu, vcpu_unhook_idte(vcpu, (struct shadow_idt_entry *)arg));
 		break;
 	case HYPERCALL_HOOK:
-		vcpu_adjust_rflags(gc, vcpu_handle_hook(vcpu, (struct page_hook_info *)arg));
+		vcpu_adjust_rflags(vcpu, vcpu_handle_hook(vcpu, (struct page_hook_info *)arg));
 		break;
 	case HYPERCALL_UNHOOK:
-		vcpu_adjust_rflags(gc, vcpu_handle_unhook(vcpu, arg));
+		vcpu_adjust_rflags(vcpu, vcpu_handle_unhook(vcpu, arg));
 		break;
 	case HYPERCALL_VMFUNC:
-		vcpu_adjust_rflags(gc, vcpu_emulate_vmfunc(vcpu, (struct h_vmfunc *)arg));
+		vcpu_adjust_rflags(vcpu, vcpu_emulate_vmfunc(vcpu, (struct h_vmfunc *)arg));
 		break;
 	default:
 		VCPU_DEBUG("unsupported hypercall: %d\n", nr);
@@ -499,22 +775,421 @@ static bool vcpu_handle_vmcall(struct guest_context *gc)
 	}
 
 out:
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_vmx(struct guest_context *gc)
+#ifdef NESTED_VMX
+static inline uintptr_t vcpu_read_vmx_addr(struct vcpu *vcpu, u64 exit, u64 inst)
 {
-	/* No nesting is currently supported  */
+	if (inst & (1 << 10)) {
+		/* register not allowed  */
+		vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+		return 0;
+	}
+
+	uintptr_t base = 0;
+	if (!((inst >> 27) & 1))
+		base = ksm_read_reg(vcpu, (inst >> 23) & 15);
+
+	uintptr_t index = 0;
+	if (!((inst >> 22) & 1))
+		index = ksm_read_reg(vcpu, (inst >> 18) & 15);
+
+	/* exit is displacement.  */
+	uintptr_t gva = base + index + exit;
+	if ((inst >> 7) & 7 == 1)
+		gva &= 0xFFFFFFFF;
+
+	/* Add segment base  */
+	u32 seg_offset = (inst >> 15) & 7;
+	if (seg_offset < 5)
+		gva += vmcs_read(GUEST_ES_BASE + seg_offset << 1);
+
+	if (gva & (PAGE_SIZE - 1) != 0 || (gva >> 48) != 0) {
+		vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+		return 0;	
+	}
+
+	return gva;
+}
+
+static inline bool vcpu_nested_root_checks(struct vcpu *vcpu)
+{
+	/* Typical VMX checks, make sure we're inside the nested hypervisor's "root".  */
+	if (!vcpu->nested_vcpu.current_vmxon) {
+		vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+		return false;
+	}
+
+	return true;
+}
+
+static inline u64 nested_translate_gva(struct vcpu *vcpu, u64 gva, u64 mask)
+{
+	u32 ec = PGF_PRESENT;
+	if (mask & PAGE_WRITE)
+		ec |= PGF_WRITE;
+
+	uintptr_t *pte = va_to_pxe(gva);
+	if (!pte || !pte_present(pte))
+		goto fault;
+
+	pte = va_to_ppe(gva);
+	if (!pte || !pte_present(pte))
+		goto fault;
+
+	pte = va_to_pde(gva);
+	if (!pte_present(pte))
+		goto fault;
+
+	if (!pte_large(pte) && !(pte = va_to_pte(gva)))
+		goto fault;
+
+	if ((*pte & mask) == mask)
+		return PAGE_PA(*pte);	/* Check EPT?  */
+
+fault:
+	vcpu_inject_pf(vcpu, gva, ec);
+	return -1;
+}
+
+static void prepare_nested_vmcs(struct vcpu *vcpu, struct nested_vmcs *vmcs)
+{
+	/*
+	 * Here, we are called from the nested hypervisor which called us via either:
+	 *	1) vmresume
+	 *	2) vmlaunch
+	 *
+	 * In that case, the nested hypervisor is our guest, and we called it to run in
+	 * emulated root mode (or it's about to start it's execution), so it processed
+	 * whatever event has happened and wants us to resume control back to it's guest.
+	 *
+	 * Do so by setting the appropriate guest field's for that hypervisor's guest and
+	 * retaining the host fields so that it can exit to us instead of the nested one.
+	 */
+	__vmx_vmwrite(CR0_GUEST_HOST_MASK, vmcs->cr0_guest_host_mask);
+	__vmx_vmwrite(CR4_GUEST_HOST_MASK, vmcs->cr4_guest_host_mask);
+	__vmx_vmwrite(CR0_READ_SHADOW, vmcs->cr0_read_shadow);
+	__vmx_vmwrite(CR4_READ_SHADOW, vmcs->cr4_read_shadow);
+	__vmx_vmwrite(GUEST_CR0, vmcs->guest_cr0);
+	__vmx_vmwrite(GUEST_CR3, vmcs->guest_cr3);
+	__vmx_vmwrite(GUEST_CR4, vmcs->guest_cr4);
+
+	__vmx_vmwrite(GUEST_ES_BASE, vmcs->guest_es_base);
+	__vmx_vmwrite(GUEST_FS_BASE, vmcs->guest_fs_base);
+	__vmx_vmwrite(GUEST_GS_BASE, vmcs->guest_gs_base);
+	__vmx_vmwrite(GUEST_SS_BASE, vmcs->guest_ss_base);
+	__vmx_vmwrite(GUEST_CS_BASE, vmcs->guest_cs_base);
+	__vmx_vmwrite(GUEST_DS_BASE, vmcs->guest_ds_base);
+	__vmx_vmwrite(GUEST_LDTR_BASE, vmcs->guest_ldtr_base);
+	__vmx_vmwrite(GUEST_TR_BASE, vmcs->guest_tr_base);
+	__vmx_vmwrite(GUEST_IDTR_BASE, vmcs->guest_idtr_base);
+	__vmx_vmwrite(GUEST_GDTR_BASE, vmcs->guest_gdtr_base);
+
+	__vmx_vmwrite(GUEST_ES_LIMIT, vmcs->guest_es_limit);
+	__vmx_vmwrite(GUEST_FS_LIMIT, vmcs->guest_fs_limit);
+	__vmx_vmwrite(GUEST_GS_LIMIT, vmcs->guest_gs_limit);
+	__vmx_vmwrite(GUEST_SS_LIMIT, vmcs->guest_ss_limit);
+	__vmx_vmwrite(GUEST_CS_LIMIT, vmcs->guest_cs_limit);
+	__vmx_vmwrite(GUEST_DS_LIMIT, vmcs->guest_ds_limit);
+	__vmx_vmwrite(GUEST_LDTR_LIMIT, vmcs->guest_ldtr_limit);
+	__vmx_vmwrite(GUEST_IDTR_LIMIT, vmcs->guest_idtr_limit);
+	__vmx_vmwrite(GUEST_GDTR_LIMIT, vmcs->guest_gdtr_limit);
+
+	__vmx_vmwrite(GUEST_ES_AR_BYTES, vmcs->guest_es_ar_bytes);
+	__vmx_vmwrite(GUEST_FS_AR_BYTES, vmcs->guest_fs_ar_bytes);
+	__vmx_vmwrite(GUEST_GS_AR_BYTES, vmcs->guest_gs_ar_bytes);
+	__vmx_vmwrite(GUEST_SS_AR_BYTES, vmcs->guest_ss_ar_bytes);
+	__vmx_vmwrite(GUEST_CS_AR_BYTES, vmcs->guest_cs_ar_bytes);
+	__vmx_vmwrite(GUEST_DS_AR_BYTES, vmcs->guest_ds_ar_bytes);
+	__vmx_vmwrite(GUEST_LDTR_AR_BYTES, vmcs->guest_ldtr_ar_bytes);
+	__vmx_vmwrite(GUEST_TR_AR_BYTES, vmcs->guest_tr_ar_bytes);
+
+	if (vmcs->vm_entry_controls & VM_ENTRY_LOAD_DEBUG_CONTROLS) {
+		__writedr(7, vmcs->guest_dr7);
+		__vmx_vmwrite(GUEST_DR7, vmcs->guest_dr7);
+		__vmx_vmwrite(GUEST_IA32_DEBUGCTL, vmcs->guest_ia32_debugctl);
+	}
+
+	if (vmcs->cpu_based_vm_exec_control & CPU_BASED_USE_MSR_BITMAPS)
+		__vmx_vmwrite(MSR_BITMAP, vmcs->msr_bitmap);
+
+	bool has_secondary = vmcs->cpu_based_vm_exec_control & CPU_BASED_ACTIVATE_SECONDARY_CONTROLS;
+	if (has_secondary) {
+		vmcs->secondary_vm_exec_control &= ~(nested_unsupported_secondary | ~vcpu->secondary_ctl);
+		if (vmcs->secondary_vm_exec_control & SECONDARY_EXEC_ENABLE_EPT)
+			__vmx_vmwrite(EPT_POINTER, vmcs->ept_pointer);
+	}
+
+	__vmx_vmwrite(GUEST_LINEAR_ADDRESS, vmcs->guest_linear_address);
+	__vmx_vmwrite(GUEST_PHYSICAL_ADDRESS, vmcs->guest_physical_address);
+	__vmx_vmwrite(VMCS_LINK_POINTER, vmcs->vmcs_link_pointer);
+	__vmx_vmwrite(EXIT_QUALIFICATION, vmcs->exit_qualification);
+
+	__vmx_vmwrite(GUEST_RIP, vmcs->guest_rip);
+	__vmx_vmwrite(GUEST_RFLAGS, vmcs->guest_rflags);
+	__vmx_vmwrite(GUEST_SYSENTER_CS, vmcs->guest_sysenter_cs);
+	__vmx_vmwrite(GUEST_SYSENTER_ESP, vmcs->guest_sysenter_esp);
+	__vmx_vmwrite(GUEST_SYSENTER_EIP, vmcs->guest_sysenter_eip);
+
+	__vmx_vmwrite(VM_ENTRY_CONTROLS, vmcs->vm_entry_controls);
+	__vmx_vmwrite(VM_EXIT_CONTROLS, vmcs->vm_exit_controls);
+	__vmx_vmwrite(PIN_BASED_VM_EXEC_CONTROL, vmcs->pin_based_vm_exec_control);
+	__vmx_vmwrite(CPU_BASED_VM_EXEC_CONTROL, vmcs->cpu_based_vm_exec_control);
+	__vmx_vmwrite(SECONDARY_VM_EXEC_CONTROL, vmcs->secondary_vm_exec_control);
+}
+
+static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
+{
+	/*
+	 * We're called from the nested hypervisor to run it's nested guest here.
+	 * Do the appropriate checks then prepare the VMCS fields with the appropriate
+	 * nested guest fields.
+	 */
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	struct nested_vmcs *vmcs = &nested->vmcs;
+
+	if (vmcs->vmcs_link_pointer != -1ULL) {
+		/* TODO: VM entry fail  */
+		return false;
+	}
+
+	/* FIXME  */
+	prepare_nested_vmcs(vcpu, vmcs);
+	return true;
+}
+#endif
+
+static bool vcpu_handle_vmx(struct vcpu *vcpu)
+{
 	VCPU_TRACER_START();
+	if (!vcpu_check_cpl(0)) {
+		/* all of these instructions require CPL 0  */
+		vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+		goto out;
+	}
+
+#ifdef NESTED_VMX
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	struct nested_vmcs *vmcs = &nested->vmcs;
+	switch (curr_handler) {
+	case EXIT_REASON_VMCLEAR:
+		if (!vcpu_nested_root_checks(vcpu))
+			goto out;
+
+		u64 gva = vcpu_read_vmx_addr(vcpu,
+					vmcs_read(EXIT_QUALIFICATION),
+					vmcs_read(VMX_INSTRUCTION_INFO));
+		if (!gva)
+			goto out;
+
+		u64 gpa = nested_translate_gva(vcpu, gva, PAGE_PRESENT | PAGE_WRITE);
+		if (gpa == -1)
+			goto out;
+
+		if (gpa == nested->vmxon_region) {
+			vcpu_vm_fail_valid(vcpu, VMXERR_VMCLEAR_VMXON_POINTER);
+			goto out;
+		}
+
+		/* clear VMCS launch state  */
+		vmcs->launch_state = VMCS_LAUNCH_STATE_CLEAR;
+		break;
+	case EXIT_REASON_VMLAUNCH:
+		if (!vcpu_nested_root_checks(vcpu))
+			goto out;
+
+		if (vmcs->launch_state != VMCS_LAUNCH_STATE_CLEAR) {
+			/* must be clear prior to call to vmlaunch  */
+			vcpu_vm_fail_valid(vcpu, VMXERR_VMLAUNCH_NONCLEAR_VMCS);
+			goto out;
+		}
+
+		vcpu_enter_nested_guest(vcpu);
+		break;
+	case EXIT_REASON_VMPTRLD:
+	{
+		if (!vcpu_nested_root_checks(vcpu))
+			goto out;
+
+		u64 gva = vcpu_read_vmx_addr(vcpu,
+					vmcs_read(EXIT_QUALIFICATION),
+					vmcs_read(VMX_INSTRUCTION_INFO));
+		if (!gva)
+			goto out;
+
+		u64 gpa = nested_translate_gva(vcpu, gva, PAGE_PRESENT | PAGE_WRITE);
+		if (gpa == -1)
+			goto out;
+
+		if (gpa == nested->vmxon_region) {
+			vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_VMXON_POINTER);
+			goto out;
+		}
+
+		struct nested_vmcs *tmp = (struct nested_vmcs *)gva;
+		if (tmp->revision_id != vcpu->vmcs.revision_id) {
+			vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_INCORRECT_VMCS_REVISION_ID);
+			goto out;
+		}
+
+		/* Clear out "Shadow" VMCS  */
+		memset(vmcs, 0, sizeof(struct nested_vmcs));
+
+		nested->vmcs_region = gpa;
+		break;
+	}
+	case EXIT_REASON_VMREAD:
+	{
+		if (!vcpu_nested_root_checks(vcpu))
+			goto out;
+
+		u64 exit = vmcs_read(EXIT_QUALIFICATION);
+		u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
+
+		u64 field = ksm_read_reg(vcpu, (inst >> 28) & 15);
+		u64 value = 0;
+		if (!nested_vmcs_read(vmcs, field, &value)) {
+			vcpu_vm_fail_valid(vcpu, VMXERR_UNSUPPORTED_VMCS_COMPONENT);
+			goto out;
+		}
+
+		if ((inst >> 10) & 1) {
+			ksm_write_reg(vcpu, (inst >> 3) & 15, value);
+			goto out;
+		}
+
+		u64 gva = vcpu_read_vmx_addr(vcpu, exit, inst);
+		if (gva == 0)
+			goto out;
+
+		if (nested_translate_gva(vcpu, gva, PAGE_PRESENT | PAGE_WRITE) == -1)
+			goto out;
+
+		VCPU_ENTER_GUEST();
+		*(u64 *)gva = value;
+		VCPU_EXIT_GUEST();
+		break;
+	}
+	case EXIT_REASON_VMRESUME:
+		if (!vcpu_nested_root_checks(vcpu))
+			goto out;
+
+		/* Must be launched prior to vmresume...  */
+		if (vmcs->launch_state != VMCS_LAUNCH_STATE_LAUNCHED) {
+			vcpu_vm_fail_valid(vcpu, VMXERR_VMRESUME_NONLAUNCHED_VMCS);
+			goto out;
+		}
+
+		vcpu_enter_nested_guest(vcpu);
+		break;
+	case EXIT_REASON_VMWRITE:
+	{
+		if (!vcpu_nested_root_checks(vcpu))
+			goto out;
+
+		u64 exit = vmcs_read(EXIT_QUALIFICATION);
+		u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
+
+		u64 field = ksm_read_reg(vcpu, (inst >> 28) & 15);
+		if (field_ro(field)) {
+			vcpu_vm_fail_valid(vcpu, VMXERR_VMWRITE_READ_ONLY_VMCS_COMPONENT);
+			goto out;
+		}
+
+		u64 value;
+		if ((inst >> 10) & 1) {
+			/* register  */
+			value = ksm_read_reg(vcpu, (inst >> 3) & 15);
+		} else {
+			/* memory address  */
+			u64 gva = vcpu_read_vmx_addr(vcpu, exit, inst);
+			if (gva == 0)
+				goto out;
+
+			if (nested_translate_gva(vcpu, gva, PAGE_PRESENT) == -1)
+				goto out;
+
+			VCPU_ENTER_GUEST();
+			value = *(u64 *)gva;
+			VCPU_EXIT_GUEST();
+		}
+
+		if (!nested_vmcs_write(vmcs, field, value)) {
+			vcpu_vm_fail_invalid(vcpu, VMXERR_UNSUPPORTED_VMCS_COMPONENT);
+			goto out;
+		}
+
+		break;
+	}
+	case EXIT_REASON_VMOFF:	
+		/* can only be executed from root  */
+		if (!vcpu_nested_root_checks(vcpu))
+			goto out;
+
+		break;
+	case EXIT_REASON_VMON:
+	{
+		if (!(vmcs_read(GUEST_CR4) & X86_CR4_VMXE)) {
+			vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+			goto out;
+		}
+
+		const u64 required_feat = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
+		if ((nested->feat_ctl & required_feat) != required_feat) {
+			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+			goto out;
+		}
+
+		if (nested->current_vmxon) {
+			/* In root  */
+			vcpu_vm_fail_valid(vcpu, VMXERR_VMXON_IN_VMX_ROOT_OPERATION);
+			goto out;
+		}
+
+		u64 gva = vcpu_read_vmx_addr(vcpu,
+					vmcs_read(EXIT_QUALIFICATION),
+					vmcs_read(VMX_INSTRUCTION_INFO));
+		if (!gva)
+			goto out;
+
+		u64 gpa = nested_translate_gva(vcpu, gva, PAGE_PRESENT);
+		if (gpa == -1)
+			goto out;
+
+		struct vmcs *vmxon = (struct vmcs *)gva;
+		struct vmcs *ours = &vcpu->vmxon;
+		if (vmxon->revision_id != ours->revision_id) {
+			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+			goto out;
+		}
+
+		/* Mark them as inside root now  */
+		nested->vmxon_region = gpa;
+		nested->current_vmxon = gpa;
+		nested->vmxon = true;
+		break;
+	}
+	default:
+		/* FIXME: invept/invvpid  */
+		break;
+	}
+
+	/* succeeded  */
+	VCPU_DEBUG("VMX instruction succeeded\n");
+	vcpu_vm_succeed(vcpu);
+#else
 	vcpu_inject_hardirq_noerr(X86_TRAP_UD);
-	vcpu_advance_rip(gc);
+#endif
+out:
+	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_cr_access(struct guest_context *gc)
+static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
@@ -526,7 +1201,7 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 	u64 *val;
 	switch ((exit >> 4) & 3) {
 	case 0:		/* mov to cr  */
-		val = ksm_reg(gc, reg);
+		val = ksm_reg(vcpu, reg);
 		switch (cr) {
 		case 0:
 			if (*val & __CR0_GUEST_HOST_MASK) {
@@ -544,26 +1219,30 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 		case 4:
 			__invvpid_single(vpid_nr());
 			if (*val & __CR4_GUEST_HOST_MASK) {
-				/* No nesting  */
-				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
-			} else {
-				__vmx_vmwrite(GUEST_CR4, *val);
-				__vmx_vmwrite(CR4_READ_SHADOW, *val);
-			}			
+#ifndef NESTED_VMX
+				if (*val & X86_CR4_VMXE) {
+					vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+					break;
+				}
+#endif
+			}
+
+			__vmx_vmwrite(GUEST_CR4, *val);
+			__vmx_vmwrite(CR4_READ_SHADOW, *val);
 			break;
 		case 8:
-			gc->cr8 = *val;
+			vcpu->cr8 = *val;
 			break;
 		}
 		break;
 	case 1:		/* mov from cr  */
-		val = ksm_reg(gc, reg);
+		val = ksm_reg(vcpu, reg);
 		switch (cr) {
 		case 3:
 			__vmx_vmread(GUEST_CR3, val);
 			break;
 		case 8:
-			*val = gc->cr8;
+			*val = vcpu->cr8;
 			break;
 		}
 		break;
@@ -591,12 +1270,12 @@ static bool vcpu_handle_cr_access(struct guest_context *gc)
 		break;
 	}
 
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_dr_access(struct guest_context *gc)
+static bool vcpu_handle_dr_access(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
@@ -618,7 +1297,7 @@ static bool vcpu_handle_dr_access(struct guest_context *gc)
 		goto out;
 	}
 
-	u64 *reg = ksm_reg(gc, DEBUG_REG_ACCESS_REG(exit));
+	u64 *reg = ksm_reg(vcpu, DEBUG_REG_ACCESS_REG(exit));
 	if (exit & TYPE_MOV_FROM_DR) {
 		switch (dr) {
 		case 0:	*reg = __readdr(0); break;
@@ -654,7 +1333,7 @@ static bool vcpu_handle_dr_access(struct guest_context *gc)
 	}
 
 out:
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;
 }
@@ -675,14 +1354,13 @@ static inline u64 read_tsc_msr(void)
 #endif
 }
 
-static bool vcpu_handle_msr_read(struct guest_context *gc)
+static bool vcpu_handle_msr_read(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
-	u32 msr = ksm_read_reg32(gc, REG_CX);
+	u32 msr = ksm_read_reg32(vcpu, REG_CX);
 	u64 val = 0;
 
-	struct vcpu *vcpu = to_vcpu(gc);
 	switch (msr) {
 	case MSR_IA32_SYSENTER_CS:
 		__vmx_vmread(GUEST_SYSENTER_CS, &val);
@@ -700,35 +1378,44 @@ static bool vcpu_handle_msr_read(struct guest_context *gc)
 		__vmx_vmread(GUEST_IA32_DEBUGCTL, &val);
 		break;
 	case MSR_IA32_FEATURE_CONTROL:
+#ifdef NESTED_VMX
+		val = vcpu->nested_vcpu.feat_ctl;
+#else
 		val = __readmsr(msr) & ~(FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX);
+#endif
 		break;
 	case MSR_IA32_TSC:
 		val = read_tsc_msr();
 		break;
 	default:
-		/* No nesting support  */
-		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC)
+		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC) {
+#ifndef NESTED_VMX
 			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
-		else
+#else
 			val = __readmsr(msr);
+			if (msr == MSR_IA32_VMX_PROCBASED_CTLS2)
+				val &= ~(nested_unsupported_secondary | vcpu->secondary_ctl);
+#endif
+		}
+
+		val = __readmsr(msr);
 		break;
 	}
 
-	ksm_write_reg32(gc, REG_AX, val);
-	ksm_write_reg32(gc, REG_CX, val >> 32);
-	vcpu_advance_rip(gc);
+	ksm_write_reg32(vcpu, REG_AX, val);
+	ksm_write_reg32(vcpu, REG_CX, val >> 32);
+	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_msr_write(struct guest_context *gc)
+static bool vcpu_handle_msr_write(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
-	u32 msr = ksm_read_reg(gc, REG_CX);
-	u64 val = ksm_combine_reg64(gc, REG_AX, REG_DX);
+	u32 msr = ksm_read_reg(vcpu, REG_CX);
+	u64 val = ksm_combine_reg64(vcpu, REG_AX, REG_DX);
 
-	struct vcpu *vcpu = to_vcpu(gc);
 	switch (msr) {
 	case MSR_IA32_SYSENTER_CS:
 		__vmx_vmwrite(GUEST_SYSENTER_CS, val);
@@ -749,7 +1436,16 @@ static bool vcpu_handle_msr_write(struct guest_context *gc)
 			__vmx_vmwrite(GUEST_IA32_DEBUGCTL, val);
 		break;
 	case MSR_IA32_FEATURE_CONTROL:
-		/* No nesting!  */
+#ifdef NESTED_VMX
+		if (val & ~(FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_LMCE |
+			    FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
+			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+		else
+			vcpu->nested_vcpu.feat_ctl = val;
+#else
+		if (val & (FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
+			vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+#endif
 		break;
 	default:
 		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC)
@@ -759,25 +1455,25 @@ static bool vcpu_handle_msr_write(struct guest_context *gc)
 		break;
 	}
 
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_invalid_state(struct guest_context *gc)
+static bool vcpu_handle_invalid_state(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
-	VCPU_BUGCHECK(VCPU_BUGCHECK_GUEST_STATE, gc->ip, gc->eflags, prev_handler);
+	VCPU_BUGCHECK(VCPU_BUGCHECK_GUEST_STATE, vcpu->ip, vcpu->eflags, prev_handler);
 	VCPU_TRACER_END();
 	return false;
 }
 
-static bool vcpu_handle_mtf(struct guest_context *gc)
+static bool vcpu_handle_mtf(struct vcpu *vcpu)
 {
 	/* Monitor Trap Flag, it's not recommended to use this at all.  */
 	VCPU_TRACER_START();
 	vcpu_set_mtf(false);
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;
 }
@@ -802,7 +1498,7 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 	vcpu_flush_idt(vcpu);
 }
 
-static bool vcpu_handle_gdt_idt_access(struct guest_context *gc)
+static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 {
 	u64 exit;
 	__vmx_vmread(VMX_INSTRUCTION_INFO, &exit);
@@ -812,17 +1508,16 @@ static bool vcpu_handle_gdt_idt_access(struct guest_context *gc)
 
 	uintptr_t base = 0;
 	if (!((exit >> 27) & 1))
-		base = ksm_read_reg(gc, (exit >> 23) & 15);
+		base = ksm_read_reg(vcpu, (exit >> 23) & 15);
 
 	uintptr_t index = 0;
 	if (!((exit >> 22) & 1))
-		index = ksm_read_reg(gc, (exit >> 18) & 15) << (exit & 3);
+		index = ksm_read_reg(vcpu, (exit >> 18) & 15) << (exit & 3);
 
 	uintptr_t addr = base + index + displacement;
 	if (((exit >> 7) & 7) == 1)
 		addr &= 0xFFFFFFFF;
 
-	struct vcpu *vcpu = to_vcpu(gc);
 	VCPU_DEBUG("GDT/IDT access, addr [%p] (%p, %d, %d)\n", addr, base, index, displacement);
 
 	VCPU_ENTER_GUEST();
@@ -848,11 +1543,11 @@ static bool vcpu_handle_gdt_idt_access(struct guest_context *gc)
 	}
 	VCPU_EXIT_GUEST();
 
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 	return true;
 }
 
-static bool vcpu_handle_ldt_tr_access(struct guest_context *gc)
+static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 {
 	u64 exit;
 	__vmx_vmread(VMX_INSTRUCTION_INFO, &exit);
@@ -863,17 +1558,17 @@ static bool vcpu_handle_ldt_tr_access(struct guest_context *gc)
 	uintptr_t addr;
 	if ((exit >> 10) & 1) {
 		// register
-		addr = (uintptr_t)ksm_reg(gc, (exit >> 3) & 15);
+		addr = (uintptr_t)ksm_reg(vcpu, (exit >> 3) & 15);
 		VCPU_DEBUG("LDT/TR access, addr %p\n", addr);
 	} else {
 		// base
 		uintptr_t base = 0;
 		if (!((exit >> 27) & 1))
-			base = ksm_read_reg(gc, (exit >> 23) & 15);
+			base = ksm_read_reg(vcpu, (exit >> 23) & 15);
 
 		uintptr_t index = 0;
 		if (!((exit >> 22) & 1))
-			index = ksm_read_reg(gc, (exit >> 18) & 15) << (exit & 3);
+			index = ksm_read_reg(vcpu, (exit >> 18) & 15) << (exit & 3);
 
 		addr = base + index + displacement;
 		if (((exit >> 7) & 7) == 1)
@@ -899,15 +1594,14 @@ static bool vcpu_handle_ldt_tr_access(struct guest_context *gc)
 	}
 	VCPU_EXIT_GUEST();
 
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 	return true;
 }
 
-static bool vcpu_handle_ept_violation(struct guest_context *gc)
+static bool vcpu_handle_ept_violation(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
-	struct vcpu *vcpu = to_vcpu(gc);
 	if (!ept_handle_violation(vcpu)) {
 #ifndef DBG
 		if (vcpu_inject_ve(vcpu))
@@ -916,7 +1610,7 @@ static bool vcpu_handle_ept_violation(struct guest_context *gc)
 
 		VCPU_BUGCHECK(EPT_BUGCHECK_CODE,
 			      EPT_UNHANDLED_VIOLATION,
-			      gc->ip,
+			      vcpu->ip,
 			      vmcs_read(GUEST_PHYSICAL_ADDRESS));
 	}
 
@@ -924,11 +1618,10 @@ static bool vcpu_handle_ept_violation(struct guest_context *gc)
 	return true;
 }
 
-static bool vcpu_handle_ept_misconfig(struct guest_context *gc)
+static bool vcpu_handle_ept_misconfig(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
-	struct vcpu *vcpu = to_vcpu(gc);
 	struct ept *ept = &vcpu->ept;
 	u64 gpa = vmcs_read(GUEST_PHYSICAL_ADDRESS);
 	u16 eptp = vcpu_eptp_idx(vcpu);
@@ -938,46 +1631,46 @@ static bool vcpu_handle_ept_misconfig(struct guest_context *gc)
 	return false;
 }
 
-static bool vcpu_handle_rdtscp(struct guest_context *gc)
+static bool vcpu_handle_rdtscp(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
 	u32 tsc_aux;
 	u64 tsc = __rdtscp(&tsc_aux);
 
-	ksm_write_reg32(gc, REG_AX, tsc);
-	ksm_write_reg32(gc, REG_DX, tsc >> 32);
-	ksm_write_reg32(gc, REG_CX, tsc_aux);
-	vcpu_advance_rip(gc);
+	ksm_write_reg32(vcpu, REG_AX, tsc);
+	ksm_write_reg32(vcpu, REG_DX, tsc >> 32);
+	ksm_write_reg32(vcpu, REG_CX, tsc_aux);
+	vcpu_advance_rip(vcpu);
 
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_wbinvd(struct guest_context *gc)
+static bool vcpu_handle_wbinvd(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 	__wbinvd();
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;
 }
 
-static bool vcpu_handle_xsetbv(struct guest_context *gc)
+static bool vcpu_handle_xsetbv(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
-	u32 ext = ksm_read_reg32(gc, REG_CX);
-	u64 val = ksm_combine_reg64(gc, REG_AX, REG_DX);
+	u32 ext = ksm_read_reg32(vcpu, REG_CX);
+	u64 val = ksm_combine_reg64(vcpu, REG_AX, REG_DX);
 	_xsetbv(ext, val);
-	vcpu_advance_rip(gc);
+	vcpu_advance_rip(vcpu);
 
 	VCPU_TRACER_END();
 	return true;
 }
 
 /* VM-exit handlers.  */
-static bool (*g_handlers[]) (struct guest_context *) = {
+static bool (*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_EXCEPTION_NMI] = vcpu_handle_except_nmi,
 	[EXIT_REASON_EXTERNAL_INTERRUPT] = vcpu_nop,
 	[EXIT_REASON_TRIPLE_FAULT] = vcpu_handle_triplefault,
@@ -996,7 +1689,6 @@ static bool (*g_handlers[]) (struct guest_context *) = {
 	[EXIT_REASON_RDPMC] = vcpu_nop,
 	[EXIT_REASON_RDTSC] = vcpu_handle_rdtsc,
 	[EXIT_REASON_RSM] = vcpu_nop,
-	[EXIT_REASON_VMCALL] = vcpu_handle_vmcall,
 	[EXIT_REASON_VMCLEAR] = vcpu_handle_vmx,
 	[EXIT_REASON_VMLAUNCH] = vcpu_handle_vmx,
 	[EXIT_REASON_VMPTRLD] = vcpu_handle_vmx,
@@ -1048,33 +1740,34 @@ static bool (*g_handlers[]) (struct guest_context *) = {
 
 bool vcpu_handle_exit(u64 *regs)
 {
+	struct vcpu *vcpu = ksm_current_cpu();
 	u64 cr8 = __readcr8();
-	struct guest_context gc = {
-		.vcpu = ksm_current_cpu(),
-		.gp = regs,
-		.cr8 = cr8,
-	};
-	__vmx_vmread(GUEST_RFLAGS, &gc.eflags);
-	__vmx_vmread(GUEST_RIP, &gc.ip);
-	__vmx_vmread(GUEST_RSP, &gc.gp[REG_SP]);
+
+	vcpu->gp = regs;
+	vcpu->cr8 = cr8;
+	__vmx_vmread(GUEST_RFLAGS, &vcpu->eflags);
+	__vmx_vmread(GUEST_RIP, &vcpu->ip);
+	__vmx_vmread(GUEST_RSP, &vcpu->gp[REG_SP]);
 
 	u32 exit_reason = vmcs_read32(VM_EXIT_REASON);
+#ifdef DBG
 	prev_handler = curr_handler;
+#endif
 	curr_handler = (u16)exit_reason;
 
 	bool ret = false;
-	u64 eflags = gc.eflags;
+	u64 eflags = vcpu->eflags;
 	if (curr_handler < sizeof(g_handlers) / sizeof(g_handlers[0]) &&
-	    (ret = g_handlers[curr_handler](&gc)) &&
-	    (gc.eflags ^ eflags) != 0)
-		__vmx_vmwrite(GUEST_RFLAGS, gc.eflags);
+	    (ret = g_handlers[curr_handler](vcpu)) &&
+	    (vcpu->eflags ^ eflags) != 0)
+		__vmx_vmwrite(GUEST_RFLAGS, vcpu->eflags);
 
 	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY) {
 		/*
 		 * Mostly comes via invalid guest state, and is due to a cruical
 		 * thing that happened past VM-exit, let the handler see what it does first
 		 */
-		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, gc.ip,
+		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, vcpu->ip,
 			      vmcs_read(EXIT_QUALIFICATION), curr_handler);
 	}
 
@@ -1087,8 +1780,8 @@ bool vcpu_handle_exit(u64 *regs)
 		__invvpid_all();
 	}
 
-	if ((cr8 ^ gc.cr8) != 0)
-		__writecr8(gc.cr8);
+	if ((cr8 ^ vcpu->cr8) != 0)
+		__writecr8(vcpu->cr8);
 	return ret;
 }
 

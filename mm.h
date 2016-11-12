@@ -20,43 +20,43 @@
 #define __MM_H
 
 #ifndef PXI_SHIFT
-#define PXI_SHIFT			39
+#define PXI_SHIFT		39
 #endif
 
 #ifndef PPI_SHIFT
-#define PPI_SHIFT			30
+#define PPI_SHIFT		30
 #endif
 
 #ifndef PDI_SHIFT
-#define PDI_SHIFT			21
+#define PDI_SHIFT		21
 #endif
 
 #ifndef PTI_SHIFT
-#define PTI_SHIFT			12
+#define PTI_SHIFT		12
 #endif
 
 #ifndef PTE_SHIFT
-#define PTE_SHIFT			3
+#define PTE_SHIFT		3
 #endif
 
-#define VA_BITS				48
-#define VA_MASK				((1ULL << VA_BITS) - 1)
-#define VA_SHIFT			16
+#define VA_BITS			48
+#define VA_MASK			((1ULL << VA_BITS) - 1)
+#define VA_SHIFT		16
 
 #ifndef PTX_MASK
-#define PTX_MASK			0x1FF
+#define PTX_MASK		0x1FF
 #endif
 
 #ifndef PPI_MASK
-#define PPI_MASK			0x3FFFF
+#define PPI_MASK		0x3FFFF
 #endif
 
 #ifndef PDI_MASK
-#define PDI_MASK			0x7FFFFFF
+#define PDI_MASK		0x7FFFFFF
 #endif
 
 #ifndef PTI_MASK
-#define PTI_MASK			0xFFFFFFFFF
+#define PTI_MASK		0xFFFFFFFFF
 #endif
 
 extern uintptr_t pxe_base;
@@ -69,33 +69,41 @@ static uintptr_t ppe_top = 0xFFFFF6FB7DBFFFFFULL;
 static uintptr_t pde_top = 0xFFFFF6FB7FFFFFFFULL;
 static uintptr_t pte_top = 0xFFFFF6FFFFFFFFFFULL;
 
-#define PAGE_PRESENT			0x1
-#define PAGE_WRITE			0x2
-#define PAGE_USER			0x4
-#define PAGE_WRITETHRU			0x8
-#define PAGE_CACHEDISABLE		0x10
-#define PAGE_ACCESSED			0x20
-#define PAGE_DIRTY			0x40
-#define PAGE_LARGE			0x80
-#define PAGE_GLOBAL			0x100
-#define PAGE_COPYONWRITE		0x200
-#define PAGE_PROTOTYPE			0x400
-#define PAGE_TRANSIT			0x800
-#define PAGE_MASK			(0xFFFFFFFFFULL << PAGE_SHIFT)
-#define PAGE_PA(page)			((page) & PAGE_MASK)
-#define PAGE_FN(page)			(((page) >> PTI_SHIFT) & PTI_MASK)
-#define PAGE_SOFT_WS_IDX_SHIFT		52
-#define PAGE_SOFT_WS_IDX_MASK		0xFFF
-#define PAGE_NX				0x8000000000000000
-#define PAGE_LPRESENT			(PAGE_PRESENT | PAGE_LARGE)
+#define PAGE_PRESENT		0x1
+#define PAGE_WRITE		0x2
+#define PAGE_USER		0x4
+#define PAGE_WRITETHRU		0x8
+#define PAGE_CACHEDISABLE	0x10
+#define PAGE_ACCESSED		0x20
+#define PAGE_DIRTY		0x40
+#define PAGE_LARGE		0x80
+#define PAGE_GLOBAL		0x100
+#define PAGE_COPYONWRITE	0x200
+#define PAGE_PROTOTYPE		0x400
+#define PAGE_TRANSIT		0x800
+#define PAGE_MASK		(0xFFFFFFFFFULL << PAGE_SHIFT)
+#define PAGE_PA(page)		((page) & PAGE_MASK)
+#define PAGE_FN(page)		(((page) >> PTI_SHIFT) & PTI_MASK)
+#define PAGE_SOFT_WS_IDX_SHIFT	52
+#define PAGE_SOFT_WS_IDX_MASK	0xFFF
+#define PAGE_NX			0x8000000000000000
+#define PAGE_LPRESENT		(PAGE_PRESENT | PAGE_LARGE)
 
-#define __pxe_idx(phys)			(((phys) >> PXI_SHIFT) & PTX_MASK)
-#define __ppe_idx(phys)			(((phys) >> PPI_SHIFT) & PTX_MASK)
-#define __pde_idx(phys)			(((phys) >> PDI_SHIFT) & PTX_MASK)
-#define __pte_idx(phys)			(((phys) >> PTI_SHIFT) & PTX_MASK)
+#define PGF_PRESENT		0x1	/* present fault  */
+#define PGF_WRITE		0x2	/* write fault  */
+#define PGF_SP			0x4	/* supervisor fault (SMEP, SMAP)  */
+#define PGF_RSVD		0x8	/* reserved bit was set fault  */
+#define PGF_FETCH		0x10	/* fetch fault  */
+#define PGF_PK			0x20	/* Protection key fault  */
+#define PGF_SGX			0x40	/* SGX induced fault  */
 
-#define __pa(va)			(uintptr_t)MmGetPhysicalAddress((void *)(va)).QuadPart
-#define __va(pa)			(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (pa) })
+#define __pxe_idx(addr)		(((addr) >> PXI_SHIFT) & PTX_MASK)
+#define __ppe_idx(addr)		(((addr) >> PPI_SHIFT) & PTX_MASK)
+#define __pde_idx(addr)		(((addr) >> PDI_SHIFT) & PTX_MASK)
+#define __pte_idx(addr)		(((addr) >> PTI_SHIFT) & PTX_MASK)
+
+#define __pa(va)		(uintptr_t)MmGetPhysicalAddress((void *)(va)).QuadPart
+#define __va(pa)		(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (pa) })
 
 static inline uintptr_t *page_addr(uintptr_t *page)
 {
@@ -347,17 +355,9 @@ static inline uintptr_t subst_addr(uintptr_t *pte)
 }
 #endif
 
-#ifdef DBG
-#define POOL_TAG	'kmPv'
-#endif
-
 static inline void *mm_alloc_pool(POOL_TYPE type, size_t size)
 {
-#ifdef DBG
-	void *v = ExAllocatePoolWithTag(type, size, POOL_TAG);
-#else
 	void *v = ExAllocatePool(type, size);
-#endif
 	if (v)
 		__stosq(v, 0x00, size >> 3);
 
@@ -367,20 +367,12 @@ static inline void *mm_alloc_pool(POOL_TYPE type, size_t size)
 static inline void mm_free_pool(void *v, size_t size)
 {
 	__stosq(v, 0x00, size >> 3);
-#ifdef DBG
-	ExFreePoolWithTag(v, POOL_TAG);
-#else
 	ExFreePool(v);
-#endif
 }
 
 static inline void __mm_free_pool(void *v)
 {
-#ifdef DBG
-	ExFreePoolWithTag(v, POOL_TAG);
-#else
 	ExFreePool(v);
-#endif
 }
 
 #endif

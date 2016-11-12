@@ -71,9 +71,6 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 - Intel TXT support
 - Nesting support (shouldn't be too difficult, not mandatory.)
 - Interrupt queueing (currently if an injection fails, it will just ignore it, should be simple).
-- Cross-compiling Makefile
-- Native-compiling Makefile
-- GCC / CLang support (you can discard SEH aka `__try` and `__except` if required)
 
 ## Loading the driver
 
@@ -138,6 +135,8 @@ You can define one or more of the following:
 - `ENABLE_PML` - Enables Page Modification Log if supported.
 - `EMULATE_VMFUNC` - Forces emulation of VMFUNC even if CPU supports it.
 - `EPT_SUPPRESS_VE` - Force suppress VE bit in EPT.
+- `ENABLE_ACPI` - Enable S1-3-S4 power state monitoring for re-virtualization
+- `NESTED_VMX` - Enable experimental VT-x nesting
 
 ## Reporting bugs (or similar)
 
@@ -150,7 +149,7 @@ You can report bugs by using Github issues, please provide the following:
 If it's a crash, please provide the following:
 
 - A minidump (C:\windows\minidump) or a memory dump (C:\windows\memory.dmp).  Former prefered.
-- The compiled .sys and the .pdb file
+- The compiled .sys and the .pdb/.dbg file
 - The Kernel executable if possible, e.g. ntoskrnl.exe from C:\Windows\System32
 
 ## Thanks to...

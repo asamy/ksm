@@ -186,64 +186,6 @@ struct regs {
 	u64 eflags;
 };
 
-struct guest_context {
-	struct vcpu *vcpu;
-	u64 *gp;
-	u64 eflags;
-	u64 ip;
-	u64 cr8;
-};
-
-static inline void ksm_write_reg16(struct guest_context *gc, int reg, u16 val)
-{
-	*(u16 *)&gc->gp[reg] = val;
-}
-
-static inline void ksm_write_reg32(struct guest_context *gc, int reg, u32 val)
-{
-	*(u32 *)&gc->gp[reg] = val;
-}
-
-static inline void ksm_write_reg(struct guest_context *gc, int reg, u64 val)
-{
-	*(u64 *)&gc->gp[reg] = val;
-}
-
-static inline u16 ksm_read_reg16(struct guest_context *gc, int reg)
-{
-	return (u16)gc->gp[reg];
-}
-
-static inline u32 ksm_read_reg32(struct guest_context *gc, int reg)
-{
-	return (u32)gc->gp[reg];
-}
-
-static inline u64 ksm_read_reg(struct guest_context *gc, int reg)
-{
-	return gc->gp[reg];
-}
-
-static inline u32 ksm_combine_reg32(struct guest_context *gc, int lo, int hi)
-{
-	return (u32)ksm_read_reg32(gc, lo) | (u32)ksm_read_reg32(gc, hi) << 16;
-}
-
-static inline u64 ksm_combine_reg64(struct guest_context *gc, int lo, int hi)
-{
-	return (u64)ksm_read_reg32(gc, lo) | (u64)ksm_read_reg32(gc, hi) << 32;
-}
-
-static inline u64 *ksm_reg(struct guest_context *gc, int reg)
-{
-	return &gc->gp[reg];
-}
-
-static inline struct vcpu *to_vcpu(struct guest_context *gc)
-{
-	return gc->vcpu;
-}
-
 struct shadow_idt_entry {
 	unsigned n;
 	void *h;
@@ -272,6 +214,215 @@ struct ept {
 	u32 pre_alloc_used;
 };
 
+#ifdef NESTED_VMX
+#define VMCS_LAUNCH_STATE_CLEAR		0
+#define VMCS_LAUNCH_STATE_LAUNCHED	1
+
+struct nested_vmcs {
+	u32 revision_id;
+	u32 abort;
+	u32 launch_state;
+
+	u16 virtual_processor_id;
+	u16 posted_intr_nv;
+	u16 eptp_index;
+	u16 guest_es_selector;
+	u16 guest_cs_selector;
+	u16 guest_ss_selector;
+	u16 guest_ds_selector;
+	u16 guest_fs_selector;
+	u16 guest_gs_selector;
+	u16 guest_ldtr_selector;
+	u16 guest_tr_selector;
+	u16 guest_intr_status;
+	u16 guest_pml_index;
+	u16 host_es_selector;
+	u16 host_cs_selector;
+	u16 host_ss_selector;
+	u16 host_ds_selector;
+	u16 host_fs_selector;
+	u16 host_gs_selector;
+	u16 host_tr_selector;
+	u64 io_bitmap_a;
+	u64 io_bitmap_a_high;
+	u64 io_bitmap_b;
+	u64 io_bitmap_b_high;
+	u64 msr_bitmap;
+	u64 msr_bitmap_high;
+	u64 vm_exit_msr_store_addr;
+	u64 vm_exit_msr_store_addr_high;
+	u64 vm_exit_msr_load_addr;
+	u64 vm_exit_msr_load_addr_high;
+	u64 vm_entry_msr_load_addr;
+	u64 vm_entry_msr_load_addr_high;
+	u64 pml_address;
+	u64 pml_address_high;
+	u64 tsc_offset;
+	u64 tsc_offset_high;
+	u64 virtual_apic_page_addr;
+	u64 virtual_apic_page_addr_high;
+	u64 apic_access_addr;
+	u64 apic_access_addr_high;
+	u64 posted_intr_desc_addr;
+	u64 posted_intr_desc_addr_high;
+	u32 vm_function_ctrl;
+	u32 vm_function_ctrl_high;
+	u64 ept_pointer;
+	u64 ept_pointer_high;
+	u64 eoi_exit_bitmap0;
+	u32 eoi_exit_bitmap0_high;
+	u64 eoi_exit_bitmap1;
+	u32 eoi_exit_bitmap1_high;
+	u64 eoi_exit_bitmap2;
+	u32 eoi_exit_bitmap2_high;
+	u64 eoi_exit_bitmap3;
+	u32 eoi_exit_bitmap3_high;
+	u64 eptp_list_address;
+	u32 eptp_list_address_high;
+	u64 vmread_bitmap;
+	u32 vmread_bitmap_high;
+	u64 vmwrite_bitmap;
+	u32 vmwrite_bitmap_high;
+	u64 ve_info_address;
+	u32 ve_info_address_high;
+	u64 xss_exit_bitmap;
+	u32 xss_exit_bitmap_high;
+	u64 tsc_multiplier;
+	u32 tsc_multiplier_high;
+	u64 guest_physical_address;
+	u32 guest_physical_address_high;
+	u64 vmcs_link_pointer;
+	u32 vmcs_link_pointer_high;
+	u64 guest_ia32_debugctl;
+	u64 guest_ia32_debugctl_high;
+	u64 guest_ia32_pat;
+	u32 guest_ia32_pat_high;
+	u64 guest_ia32_efer;
+	u32 guest_ia32_efer_high;
+	u64 guest_ia32_perf_global_ctrl;
+	u32 guest_ia32_perf_global_ctrl_high;
+	u64 guest_pdptr0;
+	u32 guest_pdptr0_high;
+	u64 guest_pdptr1;
+	u32 guest_pdptr1_high;
+	u64 guest_pdptr2;
+	u32 guest_pdptr2_high;
+	u64 guest_pdptr3;
+	u32 guest_pdptr3_high;
+	u64 guest_bndcfgs;
+	u32 guest_bndcfgs_high;
+	u64 host_ia32_pat;
+	u32 host_ia32_pat_high;
+	u64 host_ia32_efer;
+	u32 host_ia32_efer_high;
+	u64 host_ia32_perf_global_ctrl;
+	u32 host_ia32_perf_global_ctrl_high;
+	u32 pin_based_vm_exec_control;
+	u32 cpu_based_vm_exec_control;
+	u32 exception_bitmap;
+	u32 page_fault_error_code_mask;
+	u32 page_fault_error_code_match;
+	u32 cr3_target_count;
+	u32 vm_exit_controls;
+	u32 vm_exit_msr_store_count;
+	u32 vm_exit_msr_load_count;
+	u32 vm_entry_controls;
+	u32 vm_entry_msr_load_count;
+	u32 vm_entry_intr_info_field;
+	u32 vm_entry_exception_error_code;
+	u32 vm_entry_instruction_len;
+	u32 tpr_threshold;
+	u32 secondary_vm_exec_control;
+	u32 ple_gap;
+	u32 ple_window;
+	u32 vm_instruction_error;
+	u32 vm_exit_reason;
+	u32 vm_exit_intr_info;
+	u32 vm_exit_intr_error_code;
+	u32 idt_vectoring_info_field;
+	u32 idt_vectoring_error_code;
+	u32 vm_exit_instruction_len;
+	u64 vmx_instruction_info;
+	u16 guest_es_limit;
+	u16 guest_cs_limit;
+	u16 guest_ss_limit;
+	u16 guest_ds_limit;
+	u16 guest_fs_limit;
+	u16 guest_gs_limit;
+	u16 guest_ldtr_limit;
+	u16 guest_tr_limit;
+	u16 guest_gdtr_limit;
+	u16 guest_idtr_limit;
+	u32 guest_es_ar_bytes;
+	u32 guest_cs_ar_bytes;
+	u32 guest_ss_ar_bytes;
+	u32 guest_ds_ar_bytes;
+	u32 guest_fs_ar_bytes;
+	u32 guest_gs_ar_bytes;
+	u32 guest_ldtr_ar_bytes;
+	u32 guest_tr_ar_bytes;
+	u32 guest_interruptibility_info;
+	u32 guest_activity_state;
+	u64 guest_sysenter_cs;
+	u64 vmx_preemption_timer_value;
+	u64 host_ia32_sysenter_cs;
+	u64 cr0_guest_host_mask;
+	u64 cr4_guest_host_mask;
+	u64 cr0_read_shadow;
+	u64 cr4_read_shadow;
+	u64 cr3_target_value0;
+	u64 cr3_target_value1;
+	u64 cr3_target_value2;
+	u64 cr3_target_value3;
+	u64 exit_qualification;
+	u64 guest_linear_address;
+	u64 guest_cr0;
+	u64 guest_cr3;
+	u64 guest_cr4;
+	u64 guest_es_base;
+	u64 guest_cs_base;
+	u64 guest_ss_base;
+	u64 guest_ds_base;
+	u64 guest_fs_base;
+	u64 guest_gs_base;
+	u64 guest_ldtr_base;
+	u64 guest_tr_base;
+	u64 guest_gdtr_base;
+	u64 guest_idtr_base;
+	u64 guest_dr7;
+	u64 guest_rsp;
+	u64 guest_rip;
+	u64 guest_rflags;
+	u64 guest_pending_dbg_exceptions;
+	u64 guest_sysenter_esp;
+	u64 guest_sysenter_eip;
+	u64 host_cr0;
+	u64 host_cr3;
+	u64 host_cr4;
+	u64 host_fs_base;
+	u64 host_gs_base;
+	u64 host_tr_base;
+	u64 host_gdtr_base;
+	u64 host_idtr_base;
+	u64 host_ia32_sysenter_esp;
+	u64 host_ia32_sysenter_eip;
+	u64 host_rsp;
+	u64 host_rip;
+};
+
+struct nested_vcpu {
+	bool vmxon;
+	/* The following are all physical addresses.  */
+	uintptr_t vmxon_region;
+	uintptr_t vmcs_region;
+	uintptr_t current_vmxon;
+	/* VMCS for guest  */
+	__align(PAGE_SIZE) struct nested_vmcs vmcs;
+	/* Some MSRs  */
+	u64 feat_ctl;
+};
+#endif
+
 #ifdef ENABLE_PML
 #define PML_MAX_ENTRIES		512
 #endif
@@ -286,6 +437,10 @@ struct vcpu {
 	__align(PAGE_SIZE) struct ve_except_info ve;
 	u32 secondary_ctl;	/* Emulation purposes of VE / VMFUNC  */
 	u32 vm_func_ctl;	/* Same as above  */
+	u64 *gp;
+	u64 eflags;
+	u64 ip;
+	u64 cr8;
 	struct ept ept;
 	/* Guest IDT (emulated)  */
 	struct gdtr g_idt;
@@ -293,7 +448,56 @@ struct vcpu {
 	struct gdtr idt;
 	/* Shadow entires we know about so we can restore them appropriately.  */
 	struct kidt_entry64 shadow_idt[X86_TRAP_VE + 1];
+#ifdef NESTED_VMX
+	/* Nested  */
+	struct nested_vcpu nested_vcpu;
+#endif
 };
+
+static inline void ksm_write_reg16(struct vcpu *vcpu, int reg, u16 val)
+{
+	*(u16 *)&vcpu->gp[reg] = val;
+}
+
+static inline void ksm_write_reg32(struct vcpu *vcpu, int reg, u32 val)
+{
+	*(u32 *)&vcpu->gp[reg] = val;
+}
+
+static inline void ksm_write_reg(struct vcpu *vcpu, int reg, u64 val)
+{
+	*(u64 *)&vcpu->gp[reg] = val;
+}
+
+static inline u16 ksm_read_reg16(struct vcpu *vcpu, int reg)
+{
+	return (u16)vcpu->gp[reg];
+}
+
+static inline u32 ksm_read_reg32(struct vcpu *vcpu, int reg)
+{
+	return (u32)vcpu->gp[reg];
+}
+
+static inline u64 ksm_read_reg(struct vcpu *vcpu, int reg)
+{
+	return vcpu->gp[reg];
+}
+
+static inline u32 ksm_combine_reg32(struct vcpu *vcpu, int lo, int hi)
+{
+	return (u32)ksm_read_reg32(vcpu, lo) | (u32)ksm_read_reg32(vcpu, hi) << 16;
+}
+
+static inline u64 ksm_combine_reg64(struct vcpu *vcpu, int lo, int hi)
+{
+	return (u64)ksm_read_reg32(vcpu, lo) | (u64)ksm_read_reg32(vcpu, hi) << 32;
+}
+
+static inline u64 *ksm_reg(struct vcpu *vcpu, int reg)
+{
+	return &vcpu->gp[reg];
+}
 
 struct page_hook_info;	/* avoid declared inside parameter list...  */
 struct phi_ops {
@@ -320,6 +524,7 @@ static inline size_t rehash(const void *e, void *unused)
 	return page_hash(((struct page_hook_info *)e)->origin);
 }
 
+#ifdef ENABLE_ACPI
 typedef struct _DEV_EXT {
 	PVOID CbRegistration;
 	PCALLBACK_OBJECT CbObject;
@@ -327,6 +532,7 @@ typedef struct _DEV_EXT {
 
 extern NTSTATUS register_power_callback(PDEV_EXT ext);
 extern void deregister_power_callback(PDEV_EXT ext);
+#endif
 
 struct ksm {
 	int active_vcpus;

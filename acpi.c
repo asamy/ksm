@@ -16,6 +16,7 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
+#ifdef ENABLE_ACPI
 #include "ksm.h"
 
 static void power_callback(PDEV_EXT ctx, void *arg0, void *arg1)
@@ -61,3 +62,4 @@ void deregister_power_callback(PDEV_EXT ext)
 	if (ext->CbObject)
 		ObDereferenceObject(ext->CbObject);
 }
+#endif

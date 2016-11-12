@@ -29,7 +29,6 @@ static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 	ept_alloc_page(ept, EPT4(ept, EPTP_NORMAL), EPT_ACCESS_ALL, dpa);
 
 	__invept_all();
-	__invvpid_all();
 }
 
 static inline u16 epage_select_eptp(struct page_hook_info *phi, u16 cur, u8 ar, u8 ac)
@@ -105,7 +104,6 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 
 	STATIC_CALL_DPC(__do_hook_page, phi);
 	htable_add(&ksm.ht, page_hash(phi->origin), phi);
-	__wbinvd();
 	return STATUS_SUCCESS;
 }
 

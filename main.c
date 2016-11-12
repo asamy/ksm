@@ -20,7 +20,9 @@
 #include "dpc.h"
 #include "pe.h"
 
+#ifdef ENABLE_ACPI
 static DEV_EXT g_dev_ext = { NULL, NULL };
+#endif
 
 /*
  * Main entry point, calls ksm_init() to virtualize the system, on failure,
@@ -69,7 +71,9 @@ static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
 static void DriverUnload(PDRIVER_OBJECT driverObject)
 {
 	UNREFERENCED_PARAMETER(driverObject);
+#ifdef ENABLE_ACPI
 	deregister_power_callback(&g_dev_ext);
+#endif
 #ifdef RUN_TEST
 	ksm_unhook_page(MmMapIoSpace);
 #endif
@@ -136,8 +140,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (!NT_SUCCESS(status = ksm_init()))
 		goto out;
 
+#ifdef ENABLE_ACPI
 	if (!NT_SUCCESS(status = register_power_callback(&g_dev_ext)))
 		goto out_exit;
+#endif
 
 #ifdef RUN_TEST
 	if (NT_SUCCESS(status = ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace))) {
@@ -157,8 +163,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	goto out;
 #endif
 
+#ifdef ENABLE_ACPI
 out_exit:
 	ksm_exit();
+#endif
 out:
 	VCPU_DEBUG("ret: 0x%08X\n", status);
 	return status;

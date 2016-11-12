@@ -130,17 +130,6 @@ TRAP_EXIT MACRO
 	add	rsp, 0E8h
 ENDM
 
-; cleans up XMM registers and CSR
-TRAP_REST_XMM MACRO
-	ldmxcsr	dword ptr[rbp + KFRAME_CSR]
-	movaps	xmm0, xmmword ptr[rbp + KFRAME_XMM0]
-	movaps	xmm1, xmmword ptr[rbp + KFRAME_XMM1]
-	movaps	xmm2, xmmword ptr[rbp + KFRAME_XMM2]
-	movaps	xmm3, xmmword ptr[rbp + KFRAME_XMM3]
-	movaps	xmm4, xmmword ptr[rbp + KFRAME_XMM4]
-	movaps	xmm5, xmmword ptr[rbp + KFRAME_XMM5]
-ENDM
-
 ; save XMM registers and CSR
 TRAP_SAVE_XMM MACRO
 	stmxcsr	dword ptr [rbp + KFRAME_CSR]
@@ -151,6 +140,17 @@ TRAP_SAVE_XMM MACRO
 	movaps	[rbp + KFRAME_XMM3], xmm3
 	movaps	[rbp + KFRAME_XMM4], xmm4
 	movaps	[rbp + KFRAME_XMM5], xmm5
+ENDM
+
+; cleans up XMM registers and CSR
+TRAP_REST_XMM MACRO
+	ldmxcsr	dword ptr[rbp + KFRAME_CSR]
+	movaps	xmm0, xmmword ptr[rbp + KFRAME_XMM0]
+	movaps	xmm1, xmmword ptr[rbp + KFRAME_XMM1]
+	movaps	xmm2, xmmword ptr[rbp + KFRAME_XMM2]
+	movaps	xmm3, xmmword ptr[rbp + KFRAME_XMM3]
+	movaps	xmm4, xmmword ptr[rbp + KFRAME_XMM4]
+	movaps	xmm5, xmmword ptr[rbp + KFRAME_XMM5]
 ENDM
 
 .CODE
@@ -401,4 +401,8 @@ __ept_violation ENDP
 
 PURGE PUSHAQ
 PURGE POPAQ
+PURGE TRAP_ENTER
+PURGE TRAP_EXIT
+PURGE TRAP_SAVE_XMM
+PURGE TRAP_REST_XMM
 END
