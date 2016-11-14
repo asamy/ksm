@@ -282,60 +282,30 @@ __str PROC
 	ret
 __str ENDP
 
-__writees PROC
-	mov	es, cx
-	ret
-__writees ENDP
-
 __reades PROC
 	mov	ax, es
 	ret
 __reades ENDP
-
-__writecs PROC
-	mov	cs, cx
-	ret
-__writecs ENDP
 
 __readcs PROC
 	mov	ax, cs
 	ret
 __readcs ENDP
 
-__writess PROC
-	mov	ss, cx
-	ret
-__writess ENDP
-
 __readss PROC
 	mov	ax, ss
 	ret
 __readss ENDP
-
-__writeds PROC
-	mov	ds, cx
-	ret
-__writeds ENDP
 
 __readds PROC
 	mov	ax, ds
 	ret
 __readds ENDP
 
-__writefs PROC
-	mov	fs, cx
-	ret
-__writefs ENDP
-
 __readfs PROC
 	mov	ax, fs
 	ret
 __readfs ENDP
-
-__writegs PROC
-	mov	gs, cx
-	ret
-__writegs ENDP
 
 __readgs PROC
 	mov	ax, gs

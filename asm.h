@@ -36,7 +36,7 @@
 #ifdef MINGW
 #define __writedr(dr, val)					\
 	__asm __volatile("movq	%[Val], %%dr" #dr		\
-			 : : [Val] "a" ((val)))
+			 : : [Val] "r" ((val)))
 
 #define __readdr(dr) __extension__ ({			\
 	unsigned long long val;				\
@@ -69,16 +69,16 @@ static inline void __cpuidex(int *ret, int func, int subf)
 static inline u64 __lar(u64 sel)
 {
 	u64 ar;
-	__asm __volatile("lar %[sel], %0"
-			 : "=r" (ar)
+	__asm __volatile("lar %[sel], %[ar]"
+			 : [ar] "=r" (ar)
 			 : [sel] "r" (sel));
 	return ar;
 }
 
 #define __wbinvd()	__asm __volatile("wbinvd")
-#define __invd()	__asm __volatile("invd")
-#define __halt()	__asm __volatile("hlt")
-#define __invlpg(addr)	__asm __volatile("invlpg (%0)" :: "r" (addr) : "memory")
+#define __invd() 	__asm __volatile("invd")
+#define __halt() 	__asm __volatile("hlt")
+#define __invlpg(addr)	__asm __volatile("invlpg %0" :: "r" (addr) : "memory")
 #define __readeflags()	({							\
 	u64 rflags;								\
 	__asm __volatile("pushfq\n\tpopq %[rf]" : [rf] "=r" (rflags));		\
@@ -112,22 +112,11 @@ extern u16 __sldt(void);
 extern void __ltr(u16);
 extern u16 __str(void);
 
-extern void __writees(u16);
 extern u16 __reades(void);
-
-extern void __writecs(u16);
 extern u16 __readcs(void);
-
-extern void __writess(u16);
 extern u16 __readss(void);
-
-extern void __writeds(u16);
 extern u16 __readds(void);
-
-extern void __writefs(u16);
 extern u16 __readfs(void);
-
-extern void __writegs(u16);
 extern u16 __readgs(void);
 
 extern uintptr_t __lar(uintptr_t);

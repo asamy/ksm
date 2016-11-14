@@ -16,8 +16,8 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
-#ifndef __TYPES_H
-#define __TYPES_H
+#ifndef __COMPILER_H
+#define __COMPILER_H
 
 #ifdef _MSC_VER
 /* Disable annoying warnings  */
