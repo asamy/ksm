@@ -23,7 +23,7 @@
 #error only 64-bit is supported
 #endif
 
-#include "types.h"
+#include "compiler.h"
 
 #define __cli()			_disable()
 #define __sti()			_enable()

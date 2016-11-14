@@ -27,7 +27,7 @@ struct _DISK_GEOMETRY_EX;
 #include <intrin.h>
 #include <ntddk.h>
 
-#include "types.h"
+#include "compiler.h"
 #include "x86.h"
 #include "vmx.h"
 #include "asm.h"

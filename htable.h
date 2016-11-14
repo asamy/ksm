@@ -4,7 +4,7 @@
 #ifndef CCAN_HTABLE_H
 #define CCAN_HTABLE_H
 
-#include "types.h"
+#include "compiler.h"
 
 /**
  * struct htable - private definition of a htable.
