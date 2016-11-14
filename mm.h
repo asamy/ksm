@@ -375,4 +375,14 @@ static inline void __mm_free_pool(void *v)
 	ExFreePool(v);
 }
 
+static inline void *kmap(u64 addr, size_t size)
+{
+	return MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = addr }, size, MmNonCached);
+}
+
+static inline void kunmap(void *addr, size_t size)
+{
+	return MmUnmapIoSpace(addr, size);
+}
+
 #endif
