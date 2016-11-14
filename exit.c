@@ -53,8 +53,8 @@ static inline u32 field_offset(u32 field)
 {
 	/* Stolen from XEN  */
 	u32 index = (field >> 1) & 0x1F;
-	u32 type = (field >> 10) & 2;
-	u32 width = (field >> 12) & 2;
+	u32 type = (field >> 10) & 3;
+	u32 width = (field >> 12) & 3;
 
 	u32 offset = index | type << 5 | width << 7;
 	if (offset == 0)
