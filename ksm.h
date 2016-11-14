@@ -197,6 +197,51 @@ struct vmcs {
 	u32 data[1];
 };
 
+#pragma warning(disable:4201)	/* stupid nonstandard bullshit  */
+
+/* Posted interrupt descriptor */
+struct pi_desc {
+	/* 256 bits of posted interrupt requests
+	* The bit index is the vector in IDT.  */
+	u32 pir[8];
+	union {
+		struct {
+			/* bit 256 - Outstanding notification, must be set to notify
+			* the processor when interrupt vector is set in the PIR.  */
+			u16 on : 1;
+			/* bit 257 - suppress notification  */
+			u16 sn : 1;
+			/* bits 271:258 - reserved  */
+			u16 rsvd0 : 14;
+			/* bit 279:272 -  notification vector  */
+			u8 nv;
+			/* bits 287:280 - reserved  */
+			u16 rsvd1;
+			/* bits 319:288 - notification destination  */
+			u32 ndst;
+		};
+		u64 control;
+	};
+	u32 rsvd[6];
+};
+
+static inline bool pi_test_bit(struct pi_desc *d, u8 vector)
+{
+	return d->pir[vector / 32] & (1 << (vector % 32));
+}
+
+static inline void pi_set_irq(struct pi_desc *d, u8 vector)
+{
+	d->pir[vector / 32] |= 1 << (vector % 32);
+	d->on = 1;
+}
+
+static inline void pi_clear_irq(struct pi_desc *d, u8 vector)
+{
+	d->pir[vector / 32] &= ~(1 << (vector % 32));
+	d->on = 0;
+}
+
 /* #VE (EPT Violation via IDT exception informaiton)  */
 struct ve_except_info {
 	u32 reason;		/* EXIT_REASON_EPT_VIOLATION  */
@@ -435,6 +480,7 @@ struct vcpu {
 	__align(PAGE_SIZE) struct vmcs vmxon;
 	__align(PAGE_SIZE) struct vmcs vmcs;
 	__align(PAGE_SIZE) struct ve_except_info ve;
+	__align(64) struct pi_desc pi_desc;
 	u32 secondary_ctl;	/* Emulation purposes of VE / VMFUNC  */
 	u32 vm_func_ctl;	/* Same as above  */
 	u64 *gp;

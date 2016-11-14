@@ -162,14 +162,15 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 		;
 	adjust_ctl_val(MSR_IA32_VMX_EXIT_CTLS + msr_off, &vm_exit);
 
-	u32 vm_pinctl = 0;
+	u32 vm_pinctl = PIN_BASED_POSTED_INTR;
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 
 	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
 
 	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID |
-		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES
+		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES |
+		SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY
 #ifndef EMULATE_VMFUNC
 		| SECONDARY_EXEC_ENABLE_VMFUNC
 #endif
@@ -207,11 +208,24 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= DEBUG_VMX_VMWRITE(IO_BITMAP_B, 0);
 	err |= DEBUG_VMX_VMWRITE(MSR_BITMAP, __pa(ksm.msr_bitmap));
 	err |= DEBUG_VMX_VMWRITE(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
+	err |= DEBUG_VMX_VMWRITE(VMCS_LINK_POINTER, -1ULL);
+
+	/* See if the processor supports APICv  */
+	if (vm_pinctl & PIN_BASED_POSTED_INTR &&
+	    vm_2ndctl & SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY) {
+		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP0, 0);
+		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP1, 0);
+		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP2, 0);
+		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP3, 0);
+		err |= DEBUG_VMX_VMWRITE(POSTED_INTR_NV, 0);
+		err |= DEBUG_VMX_VMWRITE(POSTED_INTR_DESC_ADDR, __pa(&vcpu->pi_desc));
+	}
+
+	/* CR0/CR4 controls  */
 	err |= DEBUG_VMX_VMWRITE(CR0_GUEST_HOST_MASK, __CR0_GUEST_HOST_MASK);
 	err |= DEBUG_VMX_VMWRITE(CR4_GUEST_HOST_MASK, __CR4_GUEST_HOST_MASK);
 	err |= DEBUG_VMX_VMWRITE(CR0_READ_SHADOW, cr0 & ~__CR0_GUEST_HOST_MASK);
 	err |= DEBUG_VMX_VMWRITE(CR4_READ_SHADOW, cr4 & ~__CR4_GUEST_HOST_MASK);
-	err |= DEBUG_VMX_VMWRITE(VMCS_LINK_POINTER, -1ULL);
 
 	/* Cache secondary ctl for emulation purposes  */
 	vcpu->secondary_ctl = vm_2ndctl;
