@@ -817,7 +817,7 @@ static bool vcpu_handle_vmx(struct vcpu *vcpu)
 		break;
 	case EXIT_REASON_VMPTRLD:
 	{
-		if (!vcpu_nested_root_checks(vcpu))
+		if (!vcpu_nested_root_checks(vcpu) || vmcs == 0)
 			goto out;
 
 		gva = vcpu_read_vmx_addr(vcpu,
@@ -848,7 +848,7 @@ static bool vcpu_handle_vmx(struct vcpu *vcpu)
 	}
 	case EXIT_REASON_VMREAD:
 	{
-		if (!vcpu_nested_root_checks(vcpu))
+		if (!vcpu_nested_root_checks(vcpu) || vmcs == 0)
 			goto out;
 
 		u64 exit = vmcs_read(EXIT_QUALIFICATION);
@@ -889,7 +889,7 @@ static bool vcpu_handle_vmx(struct vcpu *vcpu)
 		break;
 	case EXIT_REASON_VMWRITE:
 	{
-		if (!vcpu_nested_root_checks(vcpu))
+		if (!vcpu_nested_root_checks(vcpu) || vmcs == 0)
 			goto out;
 
 		u64 exit = vmcs_read(EXIT_QUALIFICATION);
@@ -925,7 +925,7 @@ static bool vcpu_handle_vmx(struct vcpu *vcpu)
 	}
 	case EXIT_REASON_VMOFF:
 		/* can only be executed from root  */
-		if (!vcpu_nested_root_checks(vcpu))
+		if (!vcpu_nested_root_checks(vcpu) || !nested->vmxon)
 			goto out;
 
 		break;
@@ -1409,11 +1409,11 @@ static bool vcpu_handle_ept_violation(struct vcpu *vcpu)
 			      EPT_UNHANDLED_VIOLATION,
 			      vcpu->ip,
 			      vmcs_read(GUEST_PHYSICAL_ADDRESS));
-}
+	}
 
 	VCPU_TRACER_END();
 	return true;
-	}
+}
 
 static bool vcpu_handle_ept_misconfig(struct vcpu *vcpu)
 {

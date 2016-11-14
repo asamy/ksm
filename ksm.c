@@ -23,6 +23,9 @@ struct ksm ksm = {
 	.active_vcpus = 0,
 };
 
+/* Required MSR_IA32_FEATURE_CONTROL bits:  */
+static const u64 required_feat_bits = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
+
 /*
  * This file manages CPUs initialization, for per-cpu initializaiton
  * see vcpu.c, for VM-exit handlers see exit.c
@@ -68,20 +71,24 @@ static void init_msr_bitmap(struct ksm *k)
 	RtlInitializeBitMap(&bitmap_write_hi_hdr, (PULONG)bitmap_write_hi, 1024 * CHAR_BIT);
 }
 
-static NTSTATUS set_lock_bit(void)
+static NTSTATUS set_clear_lock_bit(bool clear)
 {
-	/* Required MSR_IA32_FEATURE_CONTROL bits:  */
-	const u64 required_bits = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
-
 	uintptr_t feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
-	if ((feat_ctl & required_bits) == required_bits)
+	if ((feat_ctl & required_feat_bits) == required_feat_bits) {
+		if (clear)
+			__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl & ~required_feat_bits);
+
+		return STATUS_SUCCESS;
+	}
+
+	if (clear)
 		return STATUS_SUCCESS;
 
 	/* Attempt to set bits in place  */
-	__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl | required_bits);
+	__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl | required_feat_bits);
 
 	feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
-	if ((feat_ctl & required_bits) == required_bits)
+	if ((feat_ctl & required_feat_bits) == required_feat_bits)
 		return STATUS_SUCCESS;
 
 	return STATUS_HV_ACCESS_DENIED;
@@ -89,13 +96,15 @@ static NTSTATUS set_lock_bit(void)
 
 static NTSTATUS __ksm_init_cpu(struct ksm *k)
 {
+	bool done_feat = false;
 #ifndef MINGW
 	__try {
 #endif
-		NTSTATUS status = set_lock_bit();
+		NTSTATUS status = set_clear_lock_bit(false);
 		if (!NT_SUCCESS(status))
 			return status;
 
+		done_feat = true;
 		k->kernel_cr3 = __readcr3();
 		if (__vmx_vminit(&k->vcpu_list[cpu_nr()])) {
 			k->active_vcpus++;
@@ -105,11 +114,14 @@ static NTSTATUS __ksm_init_cpu(struct ksm *k)
 	} __except (EXCEPTION_EXECUTE_HANDLER)
 	{
 		__writecr4(__readcr4() & ~X86_CR4_VMXE);
+		if (done_feat)
+			set_clear_lock_bit(true);
 		return GetExceptionCode();
 	}
 #endif
 
 	__writecr4(__readcr4() & ~X86_CR4_VMXE);
+	set_clear_lock_bit(true);
 	return STATUS_NOT_SUPPORTED;
 }
 
@@ -180,8 +192,10 @@ static NTSTATUS __ksm_exit_cpu(struct ksm *k)
 		return STATUS_UNSUCCESSFUL;
 
 	k->active_vcpus--;
-	__writecr4(__readcr4() & ~X86_CR4_VMXE);
 	vcpu_free(ksm_current_cpu());
+
+	__writecr4(__readcr4() & ~X86_CR4_VMXE);
+	set_clear_lock_bit(true);
 	return STATUS_SUCCESS;
 }
 
