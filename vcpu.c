@@ -210,15 +210,19 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= DEBUG_VMX_VMWRITE(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
 	err |= DEBUG_VMX_VMWRITE(VMCS_LINK_POINTER, -1ULL);
 
-	/* See if the processor supports APICv  */
-	if (vm_pinctl & PIN_BASED_POSTED_INTR &&
-	    vm_2ndctl & SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY) {
+	/* See if the processor supports Posted interrupts  */
+	if (vm_pinctl & PIN_BASED_POSTED_INTR) {
+		err |= DEBUG_VMX_VMWRITE(POSTED_INTR_NV, 0);
+		err |= DEBUG_VMX_VMWRITE(POSTED_INTR_DESC_ADDR, __pa(&vcpu->pi_desc));
+	}
+
+	/* virtual interrupt delivery  */
+	if (vm_2ndctl & SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY) {
 		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP0, 0);
 		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP1, 0);
 		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP2, 0);
 		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP3, 0);
-		err |= DEBUG_VMX_VMWRITE(POSTED_INTR_NV, 0);
-		err |= DEBUG_VMX_VMWRITE(POSTED_INTR_DESC_ADDR, __pa(&vcpu->pi_desc));
+		err |= DEBUG_VMX_VMWRITE(GUEST_INTR_STATUS, 0);
 	}
 
 	/* CR0/CR4 controls  */

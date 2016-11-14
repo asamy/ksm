@@ -530,7 +530,7 @@ static inline bool vcpu_emulate_vmfunc(struct vcpu *vcpu, struct h_vmfunc *vmfun
 {
 	/* Emulate a VMFUNC due it to not being supported natively.  */
 	if (vmfunc->func >= 64 || !(vcpu->vm_func_ctl & (1 << vmfunc->func)) ||
-		(vmfunc->func == 0 && vmfunc->eptp >= EPTP_USED)) {
+	   (vmfunc->func == 0 && vmfunc->eptp >= EPTP_USED)) {
 		vcpu_inject_hardirq_noerr(X86_TRAP_UD);
 		return false;
 	}
@@ -840,7 +840,7 @@ static bool vcpu_handle_vmx(struct vcpu *vcpu)
 		}
 
 		/* Clear out "Shadow" VMCS  */
-		memset((void *)vmcs, 0, PAGE_SIZE);
+		memset(&tmp->data[0], 0, PAGE_SIZE - offsetof(tmp, data));
 
 		nested->vmcs = gva;
 		nested->vmcs_region = gpa;
@@ -855,7 +855,7 @@ static bool vcpu_handle_vmx(struct vcpu *vcpu)
 		u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
 
 		u64 field = ksm_read_reg(vcpu, (inst >> 28) & 15);
-		u64 value = nested_vmcs_read(vmcs, field);;
+		u64 value = nested_vmcs_read(vmcs, field);
 		if (value == 0) {
 			vcpu_vm_fail_valid(vcpu, VMXERR_UNSUPPORTED_VMCS_COMPONENT);
 			goto out;
@@ -1020,9 +1020,9 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 				if (*val & X86_CR4_VMXE) {
 					vcpu_inject_hardirq_noerr(X86_TRAP_GP);
 					break;
-		}
+				}
 #endif
-	}
+			}
 
 			__vmx_vmwrite(GUEST_CR4, *val);
 			__vmx_vmwrite(CR4_READ_SHADOW, *val);
@@ -1030,7 +1030,7 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 		case 8:
 			vcpu->cr8 = *val;
 			break;
-}
+		}
 		break;
 	case 1:		/* mov from cr  */
 		val = ksm_reg(vcpu, reg);
@@ -1197,7 +1197,7 @@ static bool vcpu_handle_msr_read(struct vcpu *vcpu)
 
 		val = __readmsr(msr);
 		break;
-}
+	}
 
 	ksm_write_reg32(vcpu, REG_AX, val);
 	ksm_write_reg32(vcpu, REG_CX, val >> 32);
