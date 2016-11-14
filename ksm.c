@@ -23,9 +23,6 @@ struct ksm ksm = {
 	.active_vcpus = 0,
 };
 
-/* Required MSR_IA32_FEATURE_CONTROL bits:  */
-static const u64 required_feat_bits = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
-
 /*
  * This file manages CPUs initialization, for per-cpu initializaiton
  * see vcpu.c, for VM-exit handlers see exit.c
@@ -73,10 +70,13 @@ static void init_msr_bitmap(struct ksm *k)
 
 static NTSTATUS set_clear_lock_bit(bool clear)
 {
+	/* Required MSR_IA32_FEATURE_CONTROL bits:  */
+	const u64 required_feat_bits = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
+
 	uintptr_t feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
 	if ((feat_ctl & required_feat_bits) == required_feat_bits) {
 		if (clear)
-			__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl & ~required_feat_bits);
+			__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl & ~FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX);
 
 		return STATUS_SUCCESS;
 	}
