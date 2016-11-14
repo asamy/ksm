@@ -395,6 +395,8 @@ struct ksm {
 	u64 origin_cr3;
 	struct htable ht;
 	__align(PAGE_SIZE) u8 msr_bitmap[PAGE_SIZE];
+	__align(PAGE_SIZE) u8 io_bitmap_a[PAGE_SIZE];
+	__align(PAGE_SIZE) u8 io_bitmap_b[PAGE_SIZE];
 };
 extern struct ksm ksm;
 

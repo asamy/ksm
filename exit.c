@@ -35,6 +35,7 @@ struct _DISK_GEOMETRY_EX;
 #include <intrin.h>
 
 #include "ksm.h"
+#include "apic.h"
 
 #if defined(NESTED_VMX) || defined(DBG)
 static u16 curr_handler = 0;
@@ -840,7 +841,7 @@ static bool vcpu_handle_vmx(struct vcpu *vcpu)
 		}
 
 		/* Clear out "Shadow" VMCS  */
-		memset(&tmp->data[0], 0, PAGE_SIZE - offsetof(tmp, data));
+		memset(&tmp->data[0], 0, PAGE_SIZE - offsetof(struct vmcs, data));
 
 		nested->vmcs = gva;
 		nested->vmcs_region = gpa;
@@ -1132,6 +1133,96 @@ static bool vcpu_handle_dr_access(struct vcpu *vcpu)
 out:
 	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
+	return true;
+}
+
+static bool vcpu_handle_io_port(struct vcpu *vcpu)
+{
+	u32 exit = vmcs_read32(EXIT_QUALIFICATION);
+	u64 *addr = ksm_reg(vcpu, REG_AX);
+	if (exit & 16) {
+		/* string  */
+		addr = (u64 *)ksm_read_reg(vcpu, REG_SI);
+		if (exit & 8)	/* in?  */
+			addr = (u64 *)ksm_read_reg(vcpu, REG_DI);
+	}
+
+	u16 port = exit >> 16;
+	u32 size = (exit & 7) + 1;
+	u32 count = 1;
+	if (exit & 32)
+		count = ksm_read_reg32(vcpu, REG_CX);
+
+	/* Should really just run the fucking instruction...  */
+	VCPU_ENTER_GUEST();
+
+	/* stupid warning  */
+#pragma warning(push)
+#pragma warning(disable:4057)	/* 'function': 'unsigned long *' differs in indirection to slightly different base types from 'u32 *'  */
+
+	const char *type = "in";
+	if (exit & 8) {
+		if (exit & 16) {
+			switch (size) {
+			case 1: __inbytestring(port, (u8 *)addr, count); break;
+			case 2: __inwordstring(port, (u16 *)addr, count); break;
+			case 4: __indwordstring(port, (u32 *)addr, count); break;
+			}
+		} else {
+			switch (size) {
+			case 1: *(u8 *)addr = __inbyte(port); break;
+			case 2: *(u16 *)addr = __inword(port); break;
+			case 4: *(u32 *)addr = __indword(port); break;
+			}
+		}
+	} else {
+		type = "out";
+		if (exit & 16) {
+			switch (size) {
+			case 1: __outbytestring(port, (u8 *)addr, count); break;
+			case 2: __outwordstring(port, (u16 *)addr, count); break;
+			case 4: __outdwordstring(port, (u32 *)addr, count); break;
+			}
+		} else {
+			switch (size) {
+			case 1: __outbyte(port, *(u8 *)addr); break;
+			case 2: __outword(port, *(u16 *)addr); break;
+			case 4: __outdword(port, *(u32 *)addr); break;
+			}
+		}
+	}
+#pragma warning(pop)
+
+	if (exit & 16) {
+		/*
+		* Update register:
+		*	If the DF (direction flag) is set, decrement, otherwise
+		*	increment.
+		*
+		* For in the register is RDI, for out it's RSI.
+		*/
+		u64 *reg = ksm_reg(vcpu, (exit & 8) ? REG_DI : REG_SI);
+		if (vcpu->eflags & X86_EFLAGS_DF)
+			*reg -= count * size;
+		else
+			*reg += count * size;
+
+		if (exit & 32)
+			ksm_write_reg(vcpu, REG_CX, 0);
+	}
+
+	VCPU_DEBUG("%s: port: 0x%X, addr: %p [0x%X] (str: %d, count: %d, size: %d)\n",
+		   type, port, addr, *addr, exit & 16, count, size);
+	VCPU_EXIT_GUEST();
+
+	/* Dump ISR and IRR for fun  */
+	for (int i = 0; i < 8; ++i) {
+		int off = i * 0x10;
+		VCPU_DEBUG("%d(0x%X): ISR: 0x%08X IRR: 0x%08X\n",
+			   i, off, lapic_read(APIC_ISR + off), lapic_read(APIC_IRR + off));
+	}
+
+	vcpu_advance_rip(vcpu);
 	return true;
 }
 
@@ -1498,7 +1589,7 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_VMON] = vcpu_handle_vmx,
 	[EXIT_REASON_CR_ACCESS] = vcpu_handle_cr_access,
 	[EXIT_REASON_DR_ACCESS] = vcpu_handle_dr_access,
-	[EXIT_REASON_IO_INSTRUCTION] = vcpu_nop,
+	[EXIT_REASON_IO_INSTRUCTION] = vcpu_handle_io_port,
 	[EXIT_REASON_MSR_READ] = vcpu_handle_msr_read,
 	[EXIT_REASON_MSR_WRITE] = vcpu_handle_msr_write,
 	[EXIT_REASON_INVALID_STATE] = vcpu_handle_invalid_state,

@@ -165,7 +165,8 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	u32 vm_pinctl = PIN_BASED_POSTED_INTR;
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 
-	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS;
+	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
+		CPU_BASED_USE_IO_BITMAPS;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
 
 	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID |
@@ -204,8 +205,8 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= DEBUG_VMX_VMWRITE(PAGE_FAULT_ERROR_CODE_MASK, 0);
 	err |= DEBUG_VMX_VMWRITE(PAGE_FAULT_ERROR_CODE_MATCH, 0);
 	err |= DEBUG_VMX_VMWRITE(CR3_TARGET_COUNT, 0);
-	err |= DEBUG_VMX_VMWRITE(IO_BITMAP_A, 0);
-	err |= DEBUG_VMX_VMWRITE(IO_BITMAP_B, 0);
+	err |= DEBUG_VMX_VMWRITE(IO_BITMAP_A, __pa(ksm.io_bitmap_a));
+	err |= DEBUG_VMX_VMWRITE(IO_BITMAP_B, __pa(ksm.io_bitmap_b));
 	err |= DEBUG_VMX_VMWRITE(MSR_BITMAP, __pa(ksm.msr_bitmap));
 	err |= DEBUG_VMX_VMWRITE(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
 	err |= DEBUG_VMX_VMWRITE(VMCS_LINK_POINTER, -1ULL);

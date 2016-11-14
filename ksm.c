@@ -68,6 +68,14 @@ static void init_msr_bitmap(struct ksm *k)
 	RtlInitializeBitMap(&bitmap_write_hi_hdr, (PULONG)bitmap_write_hi, 1024 * CHAR_BIT);
 }
 
+static void init_io_bitmaps(struct ksm *k)
+{
+	RTL_BITMAP bitmap_a;
+	RtlInitializeBitMap(&bitmap_a, k->io_bitmap_a, PAGE_SIZE * CHAR_BIT);
+	RtlSetBit(&bitmap_a, 0x60);	/* PS/2 Mice  */
+	RtlSetBit(&bitmap_a, 0x64);	/* PS/2 Mice and keyboard  */
+}
+
 static NTSTATUS set_lock_bit(void)
 {
 	/* Required MSR_IA32_FEATURE_CONTROL bits:  */
@@ -151,7 +159,9 @@ NTSTATUS ksm_init(void)
 	/* Caller cr3 (could be user)  */
 	ksm.origin_cr3 = __readcr3();
 	htable_init(&ksm.ht, rehash, NULL);
+
 	init_msr_bitmap(&ksm);
+	init_io_bitmaps(&ksm);
 
 	STATIC_CALL_DPC(__call_init, &ksm);
 	if (!NT_SUCCESS(status = STATIC_DPC_RET()))
