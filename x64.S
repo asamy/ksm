@@ -131,10 +131,12 @@
 	movaps	%xmm5, KFRAME_XMM5(%rbp)
 .endm
 
-.macro irq_entry symbol:req handler:req
+.macro irq_entry symbol:req handler:req no_error_code:req
 .globl \symbol
 \symbol:
-	subq	$8, %rsp
+	.ifeq \no_error_code == true
+		subq	$8, %rsp
+	.endif
 	TRAP_ENTER(1f)
 
 1:
@@ -162,7 +164,7 @@
 	.text
 
 /* EPT violations  */
-irq_entry __ept_violation	__ept_handle_violation
+irq_entry __ept_violation	__ept_handle_violation	true
 
 .globl __vmx_vminit
 __vmx_vminit:
