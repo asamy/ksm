@@ -246,7 +246,6 @@ static inline bool lapic_write(u32 reg, u32 val)
 		return false;
 
 	__lapic_write((u64)base, reg, val);
-	KeMemoryBarrier();
 	kunmap(base, PAGE_SIZE);
 	return true;
 }
@@ -258,7 +257,6 @@ static inline u32 lapic_read(u32 reg)
 		return false;
 
 	u32 val = __lapic_read((u64)base, reg);
-	KeMemoryBarrier();
 	kunmap(base, PAGE_SIZE);
 	return val;
 }
