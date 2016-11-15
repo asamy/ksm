@@ -12,3 +12,5 @@ else
 	echo "Compilation failed: $?";
 fi
 
+exit $?
+
