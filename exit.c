@@ -37,12 +37,8 @@ struct _DISK_GEOMETRY_EX;
 #include "ksm.h"
 #include "apic.h"
 
-#if defined(NESTED_VMX) || defined(DBG)
 static u16 curr_handler = 0;
-#ifdef DBG
 static u16 prev_handler = 0;
-#endif
-#endif
 
 #ifdef NESTED_VMX
 static const u32 nested_unsupported_secondary = SECONDARY_EXEC_ENABLE_VE | SECONDARY_EXEC_ENABLE_EPT |
