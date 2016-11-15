@@ -1,4 +1,8 @@
 # ksm [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm)
+<a href="https://scan.coverity.com/projects/asamy-ksm">
+  <img alt="Coverity Scan Build Status"
+       src="https://scan.coverity.com/projects/10823/badge.svg"/>
+</a>
 
 A really simple and lightweight x64 hypervisor written in C for Intel processors.
 
@@ -65,11 +69,11 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 
 ## TODO / In consideration
 
-- APIC virtualization (if nesting)
-- MMIO (if nesting)
+- APIC virtualization (Partially implemented)
+- MMIO (Partially implemented)
 - UEFI support
 - Intel TXT support
-- Nesting support (shouldn't be too difficult, not mandatory.)
+- Nesting support (Partially implemented)
 - Interrupt queueing (currently if an injection fails, it will just ignore it, should be simple).
 
 ## Loading the driver
@@ -108,12 +112,12 @@ We use 3 EPT pointers, one for executable pages, one for readwrite pages, and la
 													`VM_FUNCTION_CTL`) and enable
 relevant bits VE and VMFUNC in secondary processor control.
 
-- `x64.asm` (or `x64.S` for GCC): which contains the #VE handler (`__ept_violation`) then does the usual interrupt handling and then calls
-	`__ept_handle_violation` (ept.c) where it actually does what it needs to do.
-- `ept.c`: in `__ept_handle_violation` (#VE handler not VM-exit), usually the processor will do the #VE handler instead of
+- `x64.asm` (or `x64.S` for GCC): which contains the `#VE` handler (`__ept_violation`) then does the usual interrupt handling and then calls
+	`__ept_handle_violation` (`ept.c`) where it actually does what it needs to do.
+- `ept.c`: in `__ept_handle_violation` (`#VE` handler *not* `VM-exit`), usually the processor will do the `#VE` handler instead of
 	the VM-exit route, but sometimes it won't do so if it's delivering another exception.  This is very rare.
-- `ept.c`: while handling the violation via #VE, we switch vmfunc only when we detect that the faulting address is one of
-	our interest (e.g. a hooked page), then we determine which EPTP we want and execute `VMFUNC` with that EPTP index.
+- `ept.c`: while handling the violation via `#VE`, we call `vmfunc` only when we detect that the faulting address is one of
+	our interest (e.g. a hooked page), then we determine which `EPTP` we want and execute `VMFUNC` with that EPTP index.
 
 ### Hooking executable pages
 

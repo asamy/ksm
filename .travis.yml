@@ -4,6 +4,9 @@ compiler: gcc
 cache:
         apt: true
 matrix:
+        include:
+                - compiler: ": w64"
+                  env: HOST=x86_64-w64-mingw32 PACKAGES="gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-dev"
         fast_finish: true
         exclude:
                 - compiler: gcc
