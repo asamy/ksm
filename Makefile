@@ -74,6 +74,8 @@ SYMBOL = $(BIN_DIR)/ksm.dbg
 all: $(TARGET)
 clean:
 	$(RM) $(TARGET) $(SYMBOL) $(OBJ) $(DEP)
+test:
+	echo "No have"
 
 $(TARGET): $(BIN_DIR) $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
 	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LIBS)
