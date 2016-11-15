@@ -9,26 +9,26 @@ env:
                 - secure: "hKQaprEgWKKexa+eQH3qfhNXtZBfpY9CCCewTsFJ5rYmTDKoGkgIdLjTeLMKj8eLZLbn2YmotfuMiKX5D2n7XJt+tQmclPSjg3wQ/GsJFMhE0tfsP6afgkKFac5rL/Zpj3Bi+YeuOpGAkYhRPI8NrRCdtj6Mb/Rd+O9AFSSYdYKLTtDQ+auYKqg7lee9v0Z5/yx16GMtt/GY0w+4IK5ZNBK2rfdISnk0YVD+z4LHRgmNGugiAQ/PpXLi4ooO0D1sAZlgCo7G3w4kwl03D3EvwdsZOXK0hKkUr9mc7679X/n7SujwGBfM0lirKjOGPN6tObcEqU5Wn8dx0MYlRl9GBwFNzySL3cZWwdaEgYllVGeew96DEEiCPg65FfVx6REFKkFWgE3vhuTnBnoaI7wVd8yAHmyN6Lfw3PP2ZO0APDTNJWhX9vO42HOEnIekIKvUMeaw+5CcSYn6bYQHQRSGGTAH7qhPPcTS1Q4fygoY3RSUsbasOlBlgUij21dPwA5/iI2wGi7Bsz/tgKF4DtmcAIIX2dP7tqCsaS4TFnhjvfWsgxk7Qza49IFJ04+XX594CztrpL1YbZC6PNsFklQG8/zH8wNPeAr15Y6bonf7kf7dqYwf9KfiLSAbVepIRtFrp3sTpzelviCeLMDPyWCk+MVK4o6JoupplMlh5fGPtCI="
 
 matrix:
-        - os: linux
-          before_install:
-                  - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
-          addons:
-                  coverity_scan:
-                          project:
-                                  name: "asamy/ksm"
-                                  description: "Travis CI Build"
-                  notification_email: f.fallen45@gmail.com
-                  build_command_prepend: "make clean"
-                  build_command:   "make C=1"
-                  branch_pattern: master
-          include:
-                  - compiler: ": w64"
-          env: HOST=x86_64-w64-mingw32 PACKAGES="gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-dev"
-          fast_finish: true
-          exclude:
-                  - compiler: gcc
+        before_install:
+                - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
+        addons:
+                coverity_scan:
+                        project:
+                                name: "asamy/ksm"
+                                description: "Travis CI Build"
+                notification_email: f.fallen45@gmail.com
+                branch_pattern: master
+        include:
+                - compiler: ": w64"
+        env: HOST=x86_64-w64-mingw32 PACKAGES="gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-dev"
+        fast_finish: true
+        exclude:
+                - compiler: gcc
 
 install:
         - sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
         - sudo apt-get install -y mingw-w64 mingw-w64-dev
 
+script:
+        - make clean
+        - ./build.sh
