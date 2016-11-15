@@ -78,7 +78,7 @@ static inline u64 __lar(u64 sel)
 #define __wbinvd()	__asm __volatile("wbinvd")
 #define __invd() 	__asm __volatile("invd")
 #define __halt() 	__asm __volatile("hlt")
-#define __invlpg(addr)	__asm __volatile("invlpg %0" :: "r" (addr) : "memory")
+#define __invlpg(addr)	__asm __volatile("invlpg (%0)" :: "r" (addr) : "memory")
 #define __readeflags()	({							\
 	u64 rflags;								\
 	__asm __volatile("pushfq\n\tpopq %[rf]" : [rf] "=r" (rflags));		\
