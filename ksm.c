@@ -104,7 +104,7 @@ static NTSTATUS set_lock_bit(void)
 
 static NTSTATUS __ksm_init_cpu(struct ksm *k)
 {
-#ifndef MINGW
+#ifndef __GNUC__
 	__try {
 #endif
 		NTSTATUS status = set_lock_bit();
@@ -116,7 +116,7 @@ static NTSTATUS __ksm_init_cpu(struct ksm *k)
 			k->active_vcpus++;
 			return STATUS_SUCCESS;
 		}
-#ifndef MINGW
+#ifndef __GNUC__
 	} __except (EXCEPTION_EXECUTE_HANDLER)
 	{
 		__writecr4(__readcr4() & ~X86_CR4_VMXE);
@@ -180,12 +180,12 @@ NTSTATUS ksm_init(void)
 static NTSTATUS __ksm_exit_cpu(struct ksm *k)
 {
 	size_t err;
-#ifndef MINGW
+#ifndef __GNUC__
 	__try {
 #endif
 		err = __vmx_vmcall(HYPERCALL_STOP, NULL);
 		VCPU_DEBUG("Stopped: %d\n", err);
-#ifndef MINGW
+#ifndef __GNUC__
 	} __except (EXCEPTION_EXECUTE_HANDLER)
 	{
 		VCPU_DEBUG("this processor is not virtualized: 0x%08X\n", GetExceptionCode());

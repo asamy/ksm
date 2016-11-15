@@ -70,7 +70,7 @@ static inline bool init_vmcs(struct vmcs *vmcs)
 	return __vmx_vmptrld(&pa) == 0;
 }
 
-#ifdef MINGW
+#ifdef __GNUC__
 unsigned long __segmentlimit(unsigned long selector)
 {
 	unsigned long limit;

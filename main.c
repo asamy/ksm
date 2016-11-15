@@ -29,7 +29,7 @@ static DEV_EXT g_dev_ext = { NULL, NULL };
  * an error is printed, DebugView can be used to see the error if compiled
  * with debug.
  */
-#ifndef MINGW
+#ifndef __GNUC__
 DRIVER_INITIALIZE DriverEntry;
 #pragma alloc_text(INIT, DriverEntry)
 #endif
@@ -133,7 +133,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		   kentry->DllBase, (uintptr_t)kentry->DllBase + kentry->SizeOfImage,
 		   kentry->SizeOfImage, BYTES_TO_PAGES(kentry->SizeOfImage),
 		   kentry->FullDllName.Buffer);
-#ifndef MINGW
+#ifndef __GNUC__
 	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
 #endif
 

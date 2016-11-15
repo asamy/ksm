@@ -27,13 +27,13 @@
 
 #define __cli()			_disable()
 #define __sti()			_enable()
-#ifdef MINGW
+#ifdef __GNUC__
 #define __return_addr()		__builtin_return_address(0)
 #else
 #define __return_addr()		_ReturnAddress()
 #endif
 
-#ifdef MINGW
+#ifdef __GNUC__
 #define __writedr(dr, val)					\
 	__asm __volatile("movq	%[Val], %%dr" #dr		\
 			 : : [Val] "r" ((val)))

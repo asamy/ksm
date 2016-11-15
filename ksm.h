@@ -19,7 +19,7 @@
 #ifndef __KSM_H
 #define __KSM_H
 
-#ifdef MINGW
+#ifdef __GNUC__
 /* Annoying warning from ntddk */
 struct _DISK_GEOMETRY_EX;
 #endif

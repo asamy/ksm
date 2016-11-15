@@ -6,7 +6,7 @@
 
 #include "htable.h"
 
-#ifdef MINGW
+#ifdef __GNUC__
 /* Annoying warning from ntddk */
 struct _DISK_GEOMETRY_EX;
 #endif

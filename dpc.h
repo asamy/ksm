@@ -19,13 +19,13 @@
 #ifndef __KERNEL_DPC_H
 #define __KERNEL_DPC_H
 
-#ifdef MINGW
+#ifdef __GNUC__
 #define _In_
 #define _In_opt_
 #endif
 
 NTKERNELAPI
-#ifndef MINGW
+#ifndef __GNUC__
 _IRQL_requires_max_(APC_LEVEL)
 _IRQL_requires_min_(PASSIVE_LEVEL)
 _IRQL_requires_same_
@@ -37,7 +37,7 @@ KeGenericCallDpc(
 );
 
 NTKERNELAPI
-#ifndef MINGW
+#ifndef __GNUC__
 _IRQL_requires_(DISPATCH_LEVEL)
 _IRQL_requires_same_
 #endif
@@ -47,7 +47,7 @@ KeSignalCallDpcDone(
 );
 
 NTKERNELAPI
-#ifndef MINGW
+#ifndef __GNUC__
 _IRQL_requires_(DISPATCH_LEVEL)
 _IRQL_requires_same_
 #endif

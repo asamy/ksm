@@ -46,7 +46,7 @@ WINVER=0x0601
 
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEP_DIR)/$*.d
 DBGFLAGS = -DDBG -O0 -ggdb
-CFLAGS = -I$(CROSS_INC) -DMINGW $(DBGFLAGS) -D_WIN32_WINNT=$(WINVER) -std=c99 \
+CFLAGS = -I$(CROSS_INC) $(DBGFLAGS) -D_WIN32_WINNT=$(WINVER) -std=c99 \
 	 -Wno-multichar -municode -fno-stack-protector -fms-extensions -fno-stack-check \
 	 -mno-stack-arg-probe -fno-asynchronous-unwind-tables -fno-pic
 LDFLAGS = -shared -Wl,--subsystem,native -Wl,--dynamicbase -Wl,--stack=0x6000 \
