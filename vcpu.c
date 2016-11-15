@@ -17,6 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 #include "ksm.h"
+#include "apic.h"
 
 static inline bool enter_vmx(struct vmcs *vmxon)
 {
@@ -144,6 +145,14 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	for (unsigned n = 0; n < count; ++n)
 		memcpy(&shadow[n], &current[n], sizeof(*shadow));
 
+	u32 apicv = 0;
+	if (lapic_in_kernel()) {
+		apicv |= SECONDARY_EXEC_APIC_REGISTER_VIRT | SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES |
+			SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY;
+		if (cpu_has_x2apic() && x2apic_enabled())
+			apicv |= SECONDARY_EXEC_VIRTUALIZE_X2APIC_MODE;
+	}
+
 	u32 msr_off = 0;
 	if (__readmsr(MSR_IA32_VMX_BASIC) & VMX_BASIC_TRUE_CTLS)
 		msr_off = 0xC;
@@ -165,18 +174,14 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	u32 vm_pinctl = PIN_BASED_POSTED_INTR;
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 
-	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
-		CPU_BASED_USE_IO_BITMAPS;
-	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
-
 	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID |
 		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES |
-		SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY
 #ifndef EMULATE_VMFUNC
-		| SECONDARY_EXEC_ENABLE_VMFUNC
+		SECONDARY_EXEC_ENABLE_VMFUNC
 #endif
 		| SECONDARY_EXEC_ENABLE_VE
-#if _WIN32_WINNT == 0x0A00 	/* Windows 10  */
+		| /* apic virtualization  */ apicv
+#if _WIN32_WINNT == 0x0A00
 		| SECONDARY_EXEC_RDTSCP
 #endif
 #ifdef ENABLE_PML
@@ -187,6 +192,12 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 #endif
 		;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
+
+	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
+		CPU_BASED_USE_IO_BITMAPS;
+	if (vm_2ndctl & apicv)
+		vm_cpuctl |= CPU_BASED_TPR_SHADOW;
+	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
 
 	/* Processor control fields  */
 	err |= DEBUG_VMX_VMWRITE(PIN_BASED_VM_EXEC_CONTROL, vm_pinctl);
@@ -211,14 +222,15 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= DEBUG_VMX_VMWRITE(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
 	err |= DEBUG_VMX_VMWRITE(VMCS_LINK_POINTER, -1ULL);
 
-	/* See if the processor supports Posted interrupts  */
+	/* Posted interrupts if available.  */
 	if (vm_pinctl & PIN_BASED_POSTED_INTR) {
 		err |= DEBUG_VMX_VMWRITE(POSTED_INTR_NV, 0);
 		err |= DEBUG_VMX_VMWRITE(POSTED_INTR_DESC_ADDR, __pa(&vcpu->pi_desc));
 	}
 
-	/* virtual interrupt delivery  */
-	if (vm_2ndctl & SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY) {
+	/* Full APIC virtualization if any available.  */
+	if (vm_2ndctl & apicv) {
+		err |= DEBUG_VMX_VMWRITE(VIRTUAL_APIC_PAGE_ADDR, __pa(vcpu->vapic_page));
 		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP0, 0);
 		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP1, 0);
 		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP2, 0);

@@ -18,6 +18,7 @@
 */
 #include "ksm.h"
 #include "dpc.h"
+#include "apic.h"
 
 struct ksm ksm = {
 	.active_vcpus = 0,
@@ -51,7 +52,10 @@ static void init_msr_bitmap(struct ksm *k)
 	RtlSetBit(&bitmap_read_lo_hdr, MSR_IA32_FEATURE_CONTROL);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		RtlSetBit(&bitmap_read_lo_hdr, msr);
-	
+
+	if (lapic_in_kernel() && x2apic_enabled())
+		RtlSetBits(&bitmap_read_lo_hdr, 0x800, 0x100);
+
 	u8 *bitmap_read_hi = bitmap_read_lo + 1024;
 	RTL_BITMAP bitmap_read_hi_hdr;
 	RtlInitializeBitMap(&bitmap_read_hi_hdr, (PULONG)bitmap_read_hi, 1024 * CHAR_BIT);
@@ -62,6 +66,9 @@ static void init_msr_bitmap(struct ksm *k)
 	RtlSetBit(&bitmap_write_lo_hdr, MSR_IA32_FEATURE_CONTROL);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		RtlSetBit(&bitmap_write_lo_hdr, msr);
+
+	if (lapic_in_kernel() && x2apic_enabled())
+		RtlSetBits(&bitmap_write_lo_hdr, 0x800, 0x100);
 
 	u8 *bitmap_write_hi = bitmap_write_lo + 1024;
 	RTL_BITMAP bitmap_write_hi_hdr;

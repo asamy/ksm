@@ -1366,6 +1366,33 @@ static bool vcpu_handle_mtf(struct vcpu *vcpu)
 	return true;
 }
 
+static bool vcpu_handle_tpr_threshold(struct vcpu *vcpu)
+{
+	/* should maybe congratulate them or something.  */
+	VCPU_DEBUG("!!! TPR below threshold\n");
+	return true;
+}
+
+static bool vcpu_handle_apic_access(struct vcpu *vcpu)
+{
+	u32 exit = vmcs_read32(EXIT_QUALIFICATION);
+	u16 offset = exit & APIC_ACCESS_OFFSET;
+	u32 type = exit & APIC_ACCESS_TYPE;
+
+	VCPU_DEBUG("!!! APIC access using offset 0x%04X and type 0x%X\n",
+		   offset, type);
+	return true;
+}
+
+static bool vcpu_handle_eoi_induced(struct vcpu *vcpu)
+{
+	u32 exit = vmcs_read32(EXIT_QUALIFICATION);
+	u16 vector = exit & 0xFFF;
+
+	VCPU_DEBUG("!!! EOI induced, vector: 0x%04X\n", vector);
+	return true;
+}
+
 static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 {
 	/*
@@ -1557,6 +1584,15 @@ static bool vcpu_handle_xsetbv(struct vcpu *vcpu)
 	return true;
 }
 
+static bool vcpu_handle_apic_write(struct vcpu *vcpu)
+{
+	u32 exit = vmcs_read32(EXIT_QUALIFICATION);
+	u16 offset = exit & 0xFF0;
+
+	VCPU_DEBUG("!!! APIC write at offset 0x%04X\n", offset);
+	return true;
+}
+
 /* VM-exit handlers.  */
 static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_EXCEPTION_NMI] = vcpu_handle_except_nmi,
@@ -1602,9 +1638,8 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_PAUSE_INSTRUCTION] = vcpu_nop,
 	[EXIT_REASON_MCE_DURING_VMENTRY] = vcpu_nop,
 	[EXIT_REASON_UNKNOWN42] = vcpu_nop,
-	[EXIT_REASON_TPR_BELOW_THRESHOLD] = vcpu_nop,
-	[EXIT_REASON_APIC_ACCESS] = vcpu_nop,
-	[EXIT_REASON_EOI_INDUCED] = vcpu_nop,
+	[EXIT_REASON_APIC_ACCESS] = vcpu_handle_apic_access,
+	[EXIT_REASON_EOI_INDUCED] = vcpu_handle_eoi_induced,
 	[EXIT_REASON_GDT_IDT_ACCESS] = vcpu_handle_gdt_idt_access,
 	[EXIT_REASON_LDT_TR_ACCESS] = vcpu_handle_ldt_tr_access,
 	[EXIT_REASON_EPT_VIOLATION] = vcpu_handle_ept_violation,
@@ -1615,7 +1650,7 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_INVVPID] = vcpu_handle_vmx,
 	[EXIT_REASON_WBINVD] = vcpu_handle_wbinvd,
 	[EXIT_REASON_XSETBV] = vcpu_handle_xsetbv,
-	[EXIT_REASON_APIC_WRITE] = vcpu_nop,
+	[EXIT_REASON_APIC_WRITE] = vcpu_handle_apic_write,
 	[EXIT_REASON_RDRAND] = vcpu_nop,
 	[EXIT_REASON_INVPCID] = vcpu_nop,
 	[EXIT_REASON_VMFUNC] = vcpu_handle_vmfunc,
