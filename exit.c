@@ -1638,6 +1638,7 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_PAUSE_INSTRUCTION] = vcpu_nop,
 	[EXIT_REASON_MCE_DURING_VMENTRY] = vcpu_nop,
 	[EXIT_REASON_UNKNOWN42] = vcpu_nop,
+	[EXIT_REASON_TPR_BELOW_THRESHOLD] = vcpu_handle_tpr_threshold,
 	[EXIT_REASON_APIC_ACCESS] = vcpu_handle_apic_access,
 	[EXIT_REASON_EOI_INDUCED] = vcpu_handle_eoi_induced,
 	[EXIT_REASON_GDT_IDT_ACCESS] = vcpu_handle_gdt_idt_access,
