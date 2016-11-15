@@ -294,7 +294,6 @@ struct vcpu {
 	u64 *gp;
 	u64 eflags;
 	u64 ip;
-	u64 cr8;
 	struct ept ept;
 	/* Guest IDT (emulated)  */
 	struct gdtr g_idt;

@@ -1029,7 +1029,7 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 			__vmx_vmwrite(CR4_READ_SHADOW, *val);
 			break;
 		case 8:
-			vcpu->cr8 = *val;
+			__lapic_write((u64)vcpu->vapic_page, APIC_TASKPRI, *val);
 			break;
 		}
 		break;
@@ -1040,7 +1040,7 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 			__vmx_vmread(GUEST_CR3, val);
 			break;
 		case 8:
-			*val = vcpu->cr8;
+			*val = __lapic_read((u64)vcpu->vapic_page, APIC_TASKPRI);
 			break;
 		}
 		break;
@@ -1156,10 +1156,6 @@ static bool vcpu_handle_io_port(struct vcpu *vcpu)
 	/* Should really just run the fucking instruction...  */
 	VCPU_ENTER_GUEST();
 
-	/* stupid warning  */
-#pragma warning(push)
-#pragma warning(disable:4057)	/* 'function': 'unsigned long *' differs in indirection to slightly different base types from 'u32 *'  */
-
 	const char *type = "in";
 	if (exit & 8) {
 		if (exit & 16) {
@@ -1191,7 +1187,6 @@ static bool vcpu_handle_io_port(struct vcpu *vcpu)
 			}
 		}
 	}
-#pragma warning(pop)
 
 	if (exit & 16) {
 		/*
@@ -1669,7 +1664,6 @@ bool vcpu_handle_exit(u64 *regs)
 	u64 cr8 = __readcr8();
 
 	vcpu->gp = regs;
-	vcpu->cr8 = cr8;
 	__vmx_vmread(GUEST_RFLAGS, &vcpu->eflags);
 	__vmx_vmread(GUEST_RIP, &vcpu->ip);
 	__vmx_vmread(GUEST_RSP, &vcpu->gp[REG_SP]);
@@ -1705,8 +1699,6 @@ bool vcpu_handle_exit(u64 *regs)
 		__invvpid_all();
 	}
 
-	if ((cr8 ^ vcpu->cr8) != 0)
-		__writecr8(vcpu->cr8);
 	return ret;
 }
 

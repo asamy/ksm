@@ -40,6 +40,7 @@
 #pragma warning(disable:4706)		/* assignment within conditional expression  */
 #pragma warning(disable:4221)		/* nonstandard extension used : 'identifier' : cannot be initialized using address of automatic variable  */
 #pragma warning(disable:4054)		/*  'conversion' : from function pointer 'type1' to data pointer 'type2'  */
+#pragma warning(disable:4057)		/* 'function' : 'unsigned int *' differs in indirection to slightly different base types from 'u32 *'  */
 #endif
 
 /* Long names  */
