@@ -234,9 +234,20 @@ static inline void __lapic_write(u64 base, u32 reg, u32 val)
 	*(volatile u32 *)(base + reg) = val;
 }
 
+static inline void __lapic_write64(u64 base, u32 reg, u64 val)
+{
+	/* XXX:  x2APIC case:  see exit.c (vcpu_handle_msr_write).  */
+	*(volatile u64 *)(base + reg) = val;
+}
+
 static inline u32 __lapic_read(u64 base, u32 reg)
 {
 	return *(volatile u32 *)(base + reg);
+}
+
+static inline u64 __lapic_read64(u64 base, u32 reg)
+{
+	return *(volatile u64 *)(base + reg);
 }
 
 static inline bool lapic_write(u32 reg, u32 val)

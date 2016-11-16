@@ -1275,9 +1275,18 @@ static bool vcpu_handle_msr_read(struct vcpu *vcpu)
 			if (msr == MSR_IA32_VMX_PROCBASED_CTLS2)
 				val &= ~(nested_unsupported_secondary | vcpu->secondary_ctl);
 #endif
-	}
+		} else if (msr >= 0x800 && msr <= 0x83F) {
+			/* x2APIC  */
+			u32 offset = (msr - 0x800) * 0x10;
+			if (msr == 0x830)	/* ICR special case  */
+				val = __lapic_read64((u64)vcpu->vapic_page, offset);
+			else
+				val = __lapic_read((u64)vcpu->vapic_page, offset);
+		} else {
+			/* XXX  */
+			val = __readmsr(msr);
+		}
 
-		val = __readmsr(msr);
 		break;
 	}
 
@@ -1322,15 +1331,36 @@ static bool vcpu_handle_msr_write(struct vcpu *vcpu)
 		else
 			vcpu->nested_vcpu.feat_ctl = val;
 #else
-		if (val & (FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
+		if (val & (FEATURE_CONTROL_VMXON_ENABLED_INSIDE_SMX |
+			   FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
 			vcpu_inject_hardirq_noerr(X86_TRAP_UD);
 #endif
 		break;
 	default:
-		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC)
+		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC) {
+			/* VMX MSRs are readonly.  */
 			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
-		else
+		} else if (msr >= 0x800 && msr <= 0x83F) {
+			/*
+			 * x2APIC 
+			 * FIXME: Probe readonly writes.
+			*/
+			u32 offset = (msr - 0x800) * 0x10;
+			if (msr == 0x830) {
+				/* ICR special case: 64-bit write:  */
+				__lapic_write64((u64)vcpu->vapic_page, offset, val);
+			} else {
+				/* Otherwise they are mostly 32-bit writes  */
+				if ((val >> 32) != 0)
+					vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+				else
+					__lapic_write((u64)vcpu->vapic_page, offset, val);
+			}
+		} else {
+			/* XXX  */
 			__writemsr(msr, val);
+		}
+
 		break;
 	}
 
