@@ -24,17 +24,67 @@
  */
 #include "ksm.h"
 
+#ifdef _MSC_VER
 #include <ntstrsafe.h>
+#endif
 
 #define PRINT_BUF_PAGES		6
 #define PRINT_BUF_SIZE		(PAGE_SIZE * PRINT_BUF_PAGES)
 
 static bool do_exit = false;
-static bool do_work = false;
+static bool work = false;
 static bool exited = false;
 static char buf[PRINT_BUF_SIZE];
 static size_t curr_pos = 0;
 static KSPIN_LOCK lock;
+
+#ifndef _MSC_VER
+/*
+ * Taken from:
+ * 	https://searchcode.com/codesearch/view/20802857/
+ */
+typedef char *STRSAFE_LPSTR;
+typedef const char *STRSAFE_LPCSTR;
+
+#ifndef NTSTRSAFE_MAX_CCH
+#define NTSTRSAFE_MAX_CCH 2147483647
+#endif
+#define NTSTRSAFEAPI	static __inline NTSTATUS NTAPI
+
+NTSTRSAFEAPI RtlStringVPrintfWorkerA(STRSAFE_LPSTR pszDest,size_t cchDest,STRSAFE_LPCSTR pszFormat,va_list argList)
+{
+	NTSTATUS Status = STATUS_SUCCESS;
+	if (cchDest==0)
+		Status = STATUS_INVALID_PARAMETER;
+	else
+	{
+		int iRet;
+		size_t cchMax;
+		cchMax = cchDest - 1;
+		iRet = _vsnprintf(pszDest,cchMax,pszFormat,argList);
+		if ((iRet < 0) || (((size_t)iRet) > cchMax))
+		{
+			pszDest += cchMax;
+			*pszDest = '\0';
+			Status = STATUS_BUFFER_OVERFLOW;
+		}
+		else
+			if (((size_t)iRet)==cchMax)
+			{
+				pszDest += cchMax;
+				*pszDest = '\0';
+			}
+	}
+	return Status;
+}
+
+NTSTRSAFEAPI RtlStringCchVPrintfA(STRSAFE_LPSTR pszDest,size_t cchDest,STRSAFE_LPCSTR pszFormat,va_list argList)
+{
+	if (cchDest > NTSTRSAFE_MAX_CCH)
+		return STATUS_INVALID_PARAMETER;
+	return RtlStringVPrintfWorkerA(pszDest,cchDest,pszFormat,argList);
+}
+#endif
 
 static void print_flush(void)
 {
@@ -46,13 +96,17 @@ static void print_flush(void)
 static NTSTATUS print_thread(void)
 {
 	while (!do_exit) {
-		while (!do_work)
-			_mm_pause();
+		while (!work)
+			cpu_relax();
 
 		KLOCK_QUEUE_HANDLE q;
 		KeAcquireInStackQueuedSpinLock(&lock, &q);
 		print_flush();
-		InterlockedExchange8(&do_work, false);
+#ifdef _MSC_VER
+		InterlockedExchange8(&work, false);
+#else
+		__sync_add_and_fetch(&work, -1);
+#endif
 		KeReleaseInStackQueuedSpinLock(&q);
 
 		if (do_exit)
@@ -90,9 +144,13 @@ NTSTATUS print_init(void)
 
 void print_exit(void)
 {
+#ifdef _MSC_VER
 	InterlockedExchange8(&do_exit, true);
+#else
+	__sync_fetch_and_add(&do_exit, true);
+#endif
 	while (!exited)
-		_mm_pause();
+		cpu_relax();
 }
 
 void do_print(const char *fmt, ...)
@@ -116,7 +174,12 @@ void do_print(const char *fmt, ...)
 		memcpy(&buf[curr_pos], &buffer[0], len);
 		curr_pos += len;
 	} KeReleaseInStackQueuedSpinLockFromDpcLevel(&q);
-	InterlockedExchange8(&do_work, 1);
+#ifdef _MSC_VER
+	InterlockedExchange8(&work, 1);
+#else
+	__sync_fetch_and_add(&work, 1);
+#endif
 }
 
 #endif
+

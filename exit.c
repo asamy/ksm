@@ -26,7 +26,7 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
-#ifdef __GNUC__
+#ifndef _MSC_VER
 /* Annoying warning from ntddk */
 struct _DISK_GEOMETRY_EX;
 #endif
@@ -1226,7 +1226,7 @@ static inline u64 read_tsc_msr(void)
 	u64 tsc_mul;
 	__vmx_vmread(TSC_MULTIPLIER, &tsc_mul);
 
-#ifdef __GNUC__
+#ifndef _MSC_VER
 	return (u64)(((unsigned __int128)host_tsc * tsc_mul) >> 48);
 #else
 	return (u64)MultiplyExtract128(host_tsc, tsc_mul, 48);
@@ -1574,7 +1574,7 @@ static bool vcpu_handle_rdtscp(struct vcpu *vcpu)
 	VCPU_TRACER_START();
 
 	u32 tsc_aux;
-	u64 tsc = __rdtscp(&tsc_aux);
+	u64 tsc = __rdtscp((unsigned int *)&tsc_aux);
 
 	ksm_write_reg32(vcpu, REG_AX, tsc);
 	ksm_write_reg32(vcpu, REG_DX, tsc >> 32);

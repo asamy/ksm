@@ -70,7 +70,7 @@ static inline bool init_vmcs(struct vmcs *vmcs)
 	return __vmx_vmptrld(&pa) == 0;
 }
 
-#ifdef __GNUC__
+#ifndef _MSC_VER
 unsigned long __segmentlimit(unsigned long selector)
 {
 	unsigned long limit;

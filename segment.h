@@ -63,7 +63,7 @@ struct kidt_entry64 {
 } __packed;
 #include <poppack.h>
 
-#ifdef __GNUC__
+#ifndef _MSC_VER
 static inline void __sidt(struct gdtr *idt)
 {
 	__asm __volatile("sidt %0" : "=m" (*idt));

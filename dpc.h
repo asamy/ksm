@@ -19,7 +19,7 @@
 #ifndef __KERNEL_DPC_H
 #define __KERNEL_DPC_H
 
-#ifdef __GNUC__
+#ifndef _MSC_VER
 #define _In_
 #define _In_opt_
 #endif

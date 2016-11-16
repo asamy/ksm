@@ -27,13 +27,15 @@
 
 #define __cli()			_disable()
 #define __sti()			_enable()
-#ifdef __GNUC__
+#ifndef _MSC_VER
 #define __return_addr()		__builtin_return_address(0)
+#define cpu_relax()		__asm __volatile("" ::: "memory")
 #else
 #define __return_addr()		_ReturnAddress()
+#define cpu_relax()		_mm_pause()
 #endif
 
-#ifdef __GNUC__
+#ifndef _MSC_VER
 #define __writedr(dr, val)					\
 	__asm __volatile("movq	%[Val], %%dr" #dr		\
 			 : : [Val] "r" ((val)))

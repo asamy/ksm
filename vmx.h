@@ -419,7 +419,7 @@ typedef struct {
 	u64 gpa;
 } invept_t;
 
-#ifdef __GNUC__
+#ifndef _MSC_VER
 #define ASM_VMX_VMCLEAR_RAX       ".byte 0x66, 0x0f, 0xc7, 0x30"
 #define ASM_VMX_VMLAUNCH          ".byte 0x0f, 0x01, 0xc2"
 #define ASM_VMX_VMRESUME          ".byte 0x0f, 0x01, 0xc3"
