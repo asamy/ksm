@@ -96,8 +96,10 @@ static void print_flush(void)
 static NTSTATUS print_thread(void)
 {
 	while (!do_exit) {
-		while (!work)
-			cpu_relax();
+		while (!work) {
+			sleep_ms(100);
+			barrier();
+		}
 
 		KLOCK_QUEUE_HANDLE q;
 		KeAcquireInStackQueuedSpinLock(&lock, &q);
@@ -171,7 +173,6 @@ void do_print(const char *fmt, ...)
 		size_t len = strlen(buffer);
 		memcpy(&buf[curr_pos], &buffer[0], len);
 		curr_pos += len;
-		barrier();
 	} KeReleaseInStackQueuedSpinLock(&q);
 #ifdef _MSC_VER
 	InterlockedExchange8(&work, 1);
