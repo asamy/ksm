@@ -22,9 +22,9 @@
  * A stupid kernel debug printing interface so that we don't hang
  * the kernel when we are inside VMX root.
  */
-#include <ntstrsafe.h>
-
 #include "ksm.h"
+
+#include <ntstrsafe.h>
 
 #define PRINT_BUF_PAGES		6
 #define PRINT_BUF_SIZE		(PAGE_SIZE * PRINT_BUF_PAGES)
