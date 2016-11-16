@@ -22,7 +22,6 @@
  * A stupid kernel debug printing interface so that we don't hang
  * the kernel when we are inside VMX root.
  */
-#include <ntifs.h>
 #include <ntstrsafe.h>
 
 #include "ksm.h"
