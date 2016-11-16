@@ -30,9 +30,11 @@
 #ifndef _MSC_VER
 #define __return_addr()		__builtin_return_address(0)
 #define cpu_relax()		__asm __volatile("pause\n\t" ::: "memory")
+#define barrier() 		__asm __volatile("lock orq $0, 0(%%rsp)" ::: "memory")
 #else
 #define __return_addr()		_ReturnAddress()
 #define cpu_relax()		_mm_pause()
+#define barrier() 		_ReadWriteBarrier()
 #endif
 
 #ifndef _MSC_VER

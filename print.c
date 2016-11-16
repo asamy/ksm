@@ -171,6 +171,7 @@ void do_print(const char *fmt, ...)
 		size_t len = strlen(buffer);
 		memcpy(&buf[curr_pos], &buffer[0], len);
 		curr_pos += len;
+		barrier();
 	} KeReleaseInStackQueuedSpinLock(&q);
 #ifdef _MSC_VER
 	InterlockedExchange8(&work, 1);
