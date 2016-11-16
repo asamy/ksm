@@ -109,8 +109,6 @@ static NTSTATUS print_thread(void)
 #endif
 		KeReleaseInStackQueuedSpinLock(&q);
 
-		if (do_exit)
-			break;
 	}
 
 	if (curr_pos != 0)

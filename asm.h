@@ -29,7 +29,7 @@
 #define __sti()			_enable()
 #ifndef _MSC_VER
 #define __return_addr()		__builtin_return_address(0)
-#define cpu_relax()		__asm __volatile("" ::: "memory")
+#define cpu_relax()		__asm __volatile("pause\n\t" ::: "memory")
 #else
 #define __return_addr()		_ReturnAddress()
 #define cpu_relax()		_mm_pause()
