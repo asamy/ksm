@@ -92,12 +92,12 @@ struct _DISK_GEOMETRY_EX;
 
 #ifdef DBG
 #ifdef _MSC_VER
-#define VCPU_DEBUG(fmt, ...)		DbgPrint("CPU %d: " __func__ ": " fmt, cpu_nr(), __VA_ARGS__)
-#define VCPU_DEBUG_RAW(str)		DbgPrint("CPU %d: " __func__ ": " str, cpu_nr())
+#define VCPU_DEBUG(fmt, ...)		do_print("CPU %d: " __func__ ": " fmt, cpu_nr(), __VA_ARGS__)
+#define VCPU_DEBUG_RAW(str)		do_print("CPU %d: " __func__ ": " str, cpu_nr())
 #else
 /* avoid warning on empty argument list  */
-#define VCPU_DEBUG(fmt, args...)	DbgPrint("CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
-#define VCPU_DEBUG_RAW(str)		DbgPrint("CPU %d: %s: " str, cpu_nr(), __func__)
+#define VCPU_DEBUG(fmt, args...)	do_print("CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
+#define VCPU_DEBUG_RAW(str)		do_print("CPU %d: %s: " str, cpu_nr(), __func__)
 #endif
 #else
 #define VCPU_DEBUG(fmt, ...)
@@ -400,6 +400,13 @@ struct ksm {
 };
 extern struct ksm ksm;
 
+#ifdef DBG
+/* print.c  */
+extern NTSTATUS print_init(void);
+extern void print_exit(void);
+extern void do_print(const char *fmt, ...);
+#endif
+
 /* ksm.c  */
 extern NTSTATUS ksm_init(void);
 extern NTSTATUS ksm_exit(void);
@@ -479,6 +486,13 @@ static inline NTSTATUS exec_on_cpu(int cpu, oncpu_fn_t oncpu, void *param)
 	/* Switch back to old CPU.  */
 	KeRevertToUserGroupAffinityThread(&prev);
 	return status;
+}
+
+static __forceinline NTSTATUS sleep_ms(s32 ms)
+{
+	return KeDelayExecutionThread(KernelMode, FALSE, &(LARGE_INTEGER) {
+		.QuadPart = -(10000 * ms)
+	});
 }
 
 static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)

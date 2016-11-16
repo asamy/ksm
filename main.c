@@ -42,14 +42,6 @@ uintptr_t ppe_base = 0xfffff6fb7da00000ull;
 uintptr_t pde_base = 0xfffff6fb40000000ull;
 uintptr_t pte_base = 0xfffff68000000000ull;
 
-static NTSTATUS sleep_ms(int ms)
-{
-	LARGE_INTEGER ival;
-	ival.QuadPart = -(10000 * ms);
-
-	return KeDelayExecutionThread(KernelMode, FALSE, &ival);
-}
-
 #ifdef RUN_TEST
 static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
 			    _In_ SIZE_T              NumberOfBytes,
@@ -78,6 +70,9 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 	ksm_unhook_page(MmMapIoSpace);
 #endif
 	VCPU_DEBUG("ret: 0x%08X\n", ksm_exit());
+#ifdef DBG
+	print_exit();
+#endif
 }
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
@@ -137,6 +132,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
 #endif
 
+	print_init();
 	if (!NT_SUCCESS(status = ksm_init()))
 		goto out;
 

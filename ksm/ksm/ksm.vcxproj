@@ -88,6 +88,7 @@
     <ClCompile Include="..\..\ksm.c" />
     <ClCompile Include="..\..\main.c" />
     <ClCompile Include="..\..\page.c" />
+    <ClCompile Include="..\..\print.c" />
     <ClCompile Include="..\..\vcpu.c" />
   </ItemGroup>
   <ItemGroup>
