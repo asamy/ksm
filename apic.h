@@ -272,4 +272,10 @@ static inline u32 lapic_read(u32 reg)
 	return val;
 }
 
+static inline void lapic_send_self_ipi(u8 vector)
+{
+	u32 icr = vector | APIC_DEST_SELF | APIC_DM_FIXED | APIC_DEST_PHYSICAL;
+	lapic_write(APIC_ICR, icr);
+}
+
 #endif
