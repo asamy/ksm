@@ -167,11 +167,11 @@ void do_print(const char *fmt, ...)
 		return;
 
 	KLOCK_QUEUE_HANDLE q;
-	KeAcquireInStackQueuedSpinLockForDpc(&lock, &q); {
+	KeAcquireInStackQueuedSpinLock(&lock, &q); {
 		size_t len = strlen(buffer);
 		memcpy(&buf[curr_pos], &buffer[0], len);
 		curr_pos += len;
-	} KeReleaseInStackQueuedSpinLockFromDpcLevel(&q);
+	} KeReleaseInStackQueuedSpinLock(&q);
 #ifdef _MSC_VER
 	InterlockedExchange8(&work, 1);
 #else
