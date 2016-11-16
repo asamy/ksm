@@ -488,7 +488,7 @@ static inline NTSTATUS exec_on_cpu(int cpu, oncpu_fn_t oncpu, void *param)
 	return status;
 }
 
-static __forceinline NTSTATUS sleep_ms(s32 ms)
+static inline NTSTATUS sleep_ms(s32 ms)
 {
 	return KeDelayExecutionThread(KernelMode, FALSE, &(LARGE_INTEGER) {
 		.QuadPart = -(10000 * ms)
