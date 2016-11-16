@@ -1687,9 +1687,8 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 bool vcpu_handle_exit(u64 *regs)
 {
 	struct vcpu *vcpu = ksm_current_cpu();
-	u64 cr8 = __readcr8();
-
 	vcpu->gp = regs;
+
 	__vmx_vmread(GUEST_RFLAGS, &vcpu->eflags);
 	__vmx_vmread(GUEST_RIP, &vcpu->ip);
 	__vmx_vmread(GUEST_RSP, &vcpu->gp[REG_SP]);
