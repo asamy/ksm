@@ -157,7 +157,6 @@
 #define APIC_CLUSTER(apicid)	((apicid) & XAPIC_DEST_CLUSTER_MASK)
 #define APIC_CLUSTERID(apicid)	(APIC_CLUSTER(apicid) >> XAPIC_DEST_CPUS_SHIFT)
 #define APIC_CPUID(apicid)	((apicid) & XAPIC_DEST_CPUS_MASK)
-#define NUM_APIC_CLUSTERS	((BAD_APICID + 1) >> XAPIC_DEST_CPUS_SHIFT)
 
 enum ioapic_dest {
 	IOAPIC_FIXED_DEST = 0,

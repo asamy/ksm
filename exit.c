@@ -372,7 +372,7 @@ static bool vcpu_handle_vmfunc(struct vcpu *vcpu)
 	vcpu_inject_hardirq_noerr(X86_TRAP_UD);
 	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END()
-		return true;
+	return true;
 }
 
 #ifdef ENABLE_PML
@@ -860,7 +860,7 @@ static bool vcpu_handle_vmx(struct vcpu *vcpu)
 
 		if ((inst >> 10) & 1) {
 			ksm_write_reg(vcpu, (inst >> 3) & 15, value);
-			goto out;
+			break;
 		}
 
 		gva = vcpu_read_vmx_addr(vcpu, exit, inst, &gpa, PAGE_WRITE | PAGE_PRESENT);
@@ -1052,9 +1052,8 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 		u64 msw = exit >> LMSW_SOURCE_DATA_SHIFT;
 		u64 cr0 = vmcs_read(GUEST_CR0);
 
-		cr0 = ((cr0 & ~(X86_CR0_MP | X86_CR0_EM | X86_CR0_TS)) |
-			(msw & (X86_CR0_PE | X86_CR0_MP | X86_CR0_EM | X86_CR0_TS)))
-			& ~__CR0_GUEST_HOST_MASK;
+		cr0 = (cr0 & ~(X86_CR0_MP | X86_CR0_EM | X86_CR0_TS)) |
+			(msw & (X86_CR0_PE | X86_CR0_MP | X86_CR0_EM | X86_CR0_TS));
 
 		__vmx_vmwrite(GUEST_CR0, cr0);
 		__vmx_vmwrite(CR0_READ_SHADOW, cr0);
@@ -1079,7 +1078,7 @@ static bool vcpu_handle_dr_access(struct vcpu *vcpu)
 	/*
 	 * See Intel Manual, when CR4.DE is enabled, dr4/5 cannot be used,
 	 * when clear, they are aliased to 6/7.
-	 * */
+	 */
 	u64 cr4 = vmcs_read(GUEST_CR4);
 	if (cr4 & X86_CR4_DE && (dr == 4 || dr == 5)) {
 		vcpu_inject_hardirq_noerr(X86_TRAP_GP);
@@ -1711,7 +1710,7 @@ bool vcpu_handle_exit(u64 *regs)
 	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY) {
 		/*
 		 * Mostly comes via invalid guest state, and is due to a cruical
-		 * thing that happened past VM-exit, let the handler see what it does first
+		 * error that happened past VM-exit, let the handler see what it does first
 		 */
 		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, vcpu->ip,
 			      vmcs_read(EXIT_QUALIFICATION), curr_handler);
@@ -1742,4 +1741,3 @@ void vcpu_handle_fail(struct regs *regs)
 
 	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, err, curr_handler, prev_handler);
 }
-
