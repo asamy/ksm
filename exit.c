@@ -1341,17 +1341,19 @@ static bool vcpu_handle_msr_write(struct vcpu *vcpu)
 			/* VMX MSRs are readonly.  */
 			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
 		} else if (msr >= 0x800 && msr <= 0x83F) {
-			/*
-			 * x2APIC 
-			 * FIXME: Probe readonly writes.
-			*/
+			/* x2APIC   */
 			u32 offset = (msr - 0x800) * 0x10;
 			if (msr == 0x830) {
 				/* ICR special case: 64-bit write:  */
 				__lapic_write64((u64)vcpu->vapic_page, offset, val);
 			} else {
-				/* Otherwise they are mostly 32-bit writes  */
-				if ((val >> 32) != 0)
+				if ((val >> 32) != 0 /* 32bit only  */||
+				    val == 0x803 /* APIC version register  */||
+				    val == 0x80A /* Processor Priority Register  */||
+				    val == 0x80D /* Logical Destination Register  */||
+				    (val >= 0x810 && val <= 0x827) /* ISR through IRR  */||
+				    val == 0x839 /* Current count register (APIC timer)  */||
+				    val == 0x83F /* Self IPI  */)
 					vcpu_inject_hardirq_noerr(X86_TRAP_GP);
 				else
 					__lapic_write((u64)vcpu->vapic_page, offset, val);
