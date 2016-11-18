@@ -40,7 +40,11 @@ struct _DISK_GEOMETRY_EX;
 
 #define KSM_MAX_VCPUS		32
 #define __CR0_GUEST_HOST_MASK	0
+#ifdef NESTED_vMX
+#define __CR4_GUEST_HOST_MASK	0
+#else
 #define __CR4_GUEST_HOST_MASK	X86_CR4_VMXE
+#endif
 #define __EXCEPTION_BITMAP	0
 
 #define HYPERCALL_STOP		0	/* Stop virtualization on this CPU  */
@@ -272,7 +276,23 @@ struct nested_vcpu {
 	uintptr_t vmcs;
 	u32 launch_state;
 	u64 feat_ctl;
+	bool inside_guest;
 };
+
+static inline void nested_enter(struct nested_vcpu *nested)
+{
+	nested->inside_guest = true;
+}
+
+static inline void nested_leave(struct nested_vcpu *nested)
+{
+	nested->inside_guest = false;
+}
+
+static inline bool nested_entered(const struct nested_vcpu *nested)
+{
+	return nested->inside_guest;
+}
 #endif
 
 #ifdef ENABLE_PML

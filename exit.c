@@ -645,6 +645,68 @@ static inline uintptr_t vcpu_read_vmx_addr(struct vcpu *vcpu, u64 exit, u64 inst
 	return gva;
 }
 
+static inline void nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
+{
+	__vmx_vmwrite(GUEST_RIP, nested_vmcs_read(vmcs, HOST_RIP));
+	__vmx_vmwrite(GUEST_RSP, nested_vmcs_read(vmcs, HOST_RSP));
+	__vmx_vmwrite(GUEST_RFLAGS, X86_EFLAGS_FIXED);
+
+	__vmx_vmwrite(GUEST_CR0, nested_vmcs_read(vmcs, HOST_CR0));
+	__vmx_vmwrite(GUEST_CR4, nested_vmcs_read(vmcs, HOST_CR4));
+	__vmx_vmwrite(GUEST_CR3, nested_vmcs_read(vmcs, HOST_CR3));
+
+	__vmx_vmwrite(GUEST_SYSENTER_CS, nested_vmcs_read(vmcs, HOST_IA32_SYSENTER_CS));
+	__vmx_vmwrite(GUEST_SYSENTER_EIP, nested_vmcs_read(vmcs, HOST_IA32_SYSENTER_EIP));
+	__vmx_vmwrite(GUEST_SYSENTER_ESP, nested_vmcs_read(vmcs, HOST_IA32_SYSENTER_ESP));
+
+	__vmx_vmwrite(GUEST_IDTR_BASE, nested_vmcs_read(vmcs, HOST_IDTR_BASE));
+	__vmx_vmwrite(GUEST_GDTR_BASE, nested_vmcs_read(vmcs, HOST_GDTR_BASE));
+
+	__vmx_vmwrite(GUEST_FS_BASE, nested_vmcs_read(vmcs, HOST_FS_BASE));
+	__vmx_vmwrite(GUEST_GS_BASE, nested_vmcs_read(vmcs, HOST_GS_BASE));
+	__vmx_vmwrite(GUEST_TR_BASE, nested_vmcs_read(vmcs, HOST_TR_BASE));
+
+	__vmx_vmwrite(GUEST_ES_SELECTOR, nested_vmcs_read(vmcs, HOST_ES_SELECTOR));
+	__vmx_vmwrite(GUEST_CS_SELECTOR, nested_vmcs_read(vmcs, HOST_CS_SELECTOR));
+	__vmx_vmwrite(GUEST_SS_SELECTOR, nested_vmcs_read(vmcs, HOST_SS_SELECTOR));
+	__vmx_vmwrite(GUEST_DS_SELECTOR, nested_vmcs_read(vmcs, HOST_DS_SELECTOR));
+	__vmx_vmwrite(GUEST_FS_SELECTOR, nested_vmcs_read(vmcs, HOST_FS_SELECTOR));
+	__vmx_vmwrite(GUEST_GS_SELECTOR, nested_vmcs_read(vmcs, HOST_GS_SELECTOR));
+	__vmx_vmwrite(GUEST_DS_SELECTOR, nested_vmcs_read(vmcs, HOST_DS_SELECTOR));
+	__vmx_vmwrite(GUEST_TR_SELECTOR, nested_vmcs_read(vmcs, HOST_TR_SELECTOR));
+
+	__writedr(7, 0x400);
+	__vmx_vmwrite(GUEST_IA32_DEBUGCTL, 0);
+	__vmx_vmwrite(MSR_BITMAP, nested_vmcs_read(vmcs, MSR_BITMAP));
+}
+
+static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
+						u32 exit_reason,
+						u32 intr_info,
+						u64 exit_qualification,
+						bool fail)
+{
+	/* 
+	 * Here we came from the nested hypervisor's guest, we have received an
+	 * event that we can't help ourselves, so we need to throw it back to the
+	 * nested hypervisor to handle it appropriately.
+	 *
+	 * Do so by setting the appropriate _nested_ VMCS fields and then setting
+	 * "guest's RIP" to that of the nested hypervisor's RIP (Host RIP from their
+	 * VMCS).
+	 */
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	uintptr_t vmcs = nested->vmcs;
+
+	/*
+	 * Mark it as left the nested hypervisor' guest, so we can know if the next
+	 * vm-exit came from it and not from it's guest.
+	*/
+	nested_leave(nested);
+	nested_prepare_hypervisor(vcpu, vmcs);
+	return true;
+}
+
 static inline bool vcpu_nested_root_checks(struct vcpu *vcpu)
 {
 	/* Typical VMX checks, make sure we're inside the nested hypervisor's "root".  */
@@ -661,7 +723,7 @@ static inline void nested_copy(uintptr_t vmcs, u32 field)
 	__vmx_vmwrite(field, nested_vmcs_read(vmcs, field));
 }
 
-static void prepare_nested_vmcs(struct vcpu *vcpu, uintptr_t vmcs)
+static void prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 {
 	/*
 	 * Here, we are called from the nested hypervisor which called us via either:
@@ -714,7 +776,6 @@ static void prepare_nested_vmcs(struct vcpu *vcpu, uintptr_t vmcs)
 	nested_copy(vmcs, GUEST_TR_AR_BYTES);
 
 	if (nested_vmcs_read(vmcs, VM_ENTRY_CONTROLS) & VM_ENTRY_LOAD_DEBUG_CONTROLS) {
-		__writedr(7, nested_vmcs_read(vmcs, GUEST_DR7));
 		nested_copy(vmcs, GUEST_DR7);
 		nested_copy(vmcs, GUEST_IA32_DEBUGCTL);
 	}
@@ -729,7 +790,6 @@ static void prepare_nested_vmcs(struct vcpu *vcpu, uintptr_t vmcs)
 	nested_copy(vmcs, GUEST_LINEAR_ADDRESS);
 	nested_copy(vmcs, GUEST_PHYSICAL_ADDRESS);
 	nested_copy(vmcs, VMCS_LINK_POINTER);
-	nested_copy(vmcs, EXIT_QUALIFICATION);
 
 	nested_copy(vmcs, GUEST_RIP);
 	nested_copy(vmcs, GUEST_RFLAGS);
@@ -747,7 +807,7 @@ static void prepare_nested_vmcs(struct vcpu *vcpu, uintptr_t vmcs)
 static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 {
 	/*
-	 * We're called from the nested hypervisor to run it's nested guest here.
+	 * We're called from the nested hypervisor to run it's guest here.
 	 * Do the appropriate checks then prepare the VMCS fields with the appropriate
 	 * nested guest fields.
 	 */
@@ -755,12 +815,17 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 	uintptr_t vmcs = nested->vmcs;
 
 	if (nested_vmcs_read(vmcs, VMCS_LINK_POINTER) != -1ULL) {
-		/* TODO: VM entry fail  */
+		vcpu_enter_nested_hypervisor(vcpu,
+					     EXIT_REASON_INVALID_STATE,
+					     0/*???*/,
+					     0,
+					     true);
 		return false;
 	}
 
 	/* FIXME  */
-	prepare_nested_vmcs(vcpu, vmcs);
+	nested_enter(nested);
+	prepare_nested_guest(vcpu, vmcs);
 	return true;
 }
 #endif
@@ -1013,16 +1078,13 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 		case 4:
 			__invvpid_single(vpid_nr());
 			if (*val & __CR4_GUEST_HOST_MASK) {
-#ifndef NESTED_VMX
-				if (*val & X86_CR4_VMXE) {
-					vcpu_inject_hardirq_noerr(X86_TRAP_GP);
-					break;
-				}
-#endif
+				/* Not allowed  */
+				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+			} else {
+				__vmx_vmwrite(GUEST_CR4, *val);
+				__vmx_vmwrite(CR4_READ_SHADOW, *val);
 			}
 
-			__vmx_vmwrite(GUEST_CR4, *val);
-			__vmx_vmwrite(CR4_READ_SHADOW, *val);
 			break;
 		case 8:
 			__lapic_write((u64)vcpu->vapic_page, APIC_TASKPRI, *val);
