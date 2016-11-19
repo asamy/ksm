@@ -1085,6 +1085,7 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 					__vmx_vmwrite(CR4_READ_SHADOW,
 						      vmcs_read(CR4_READ_SHADOW) & ~vcpu->cr4_guest_host_mask);
 					__vmx_vmwrite(GUEST_CR4, *val);
+					break;
 				}
 #endif
 
