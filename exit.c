@@ -1063,7 +1063,7 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 		val = ksm_reg(vcpu, reg);
 		switch (cr) {
 		case 0:
-			if (*val & __CR0_GUEST_HOST_MASK) {
+			if (*val & vcpu->cr0_guest_host_mask) {
 				/* unsupported  */
 				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
 			} else {
@@ -1077,8 +1077,17 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 			break;
 		case 4:
 			__invvpid_single(vpid_nr());
-			if (*val & __CR4_GUEST_HOST_MASK) {
-				/* Not allowed  */
+			if (*val & vcpu->cr4_guest_host_mask) {
+#ifdef NESTED_VMX
+				if (!(*val & (vcpu->cr4_guest_host_mask & ~X86_CR4_VMXE))) {
+					vcpu->cr4_guest_host_mask &= ~X86_CR4_VMXE;
+					__vmx_vmwrite(CR4_GUEST_HOST_MASK, vcpu->cr4_guest_host_mask);
+					__vmx_vmwrite(CR4_READ_SHADOW,
+						      vmcs_read(CR4_READ_SHADOW) & ~vcpu->cr4_guest_host_mask);
+					__vmx_vmwrite(GUEST_CR4, *val);
+				}
+#endif
+
 				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
 			} else {
 				__vmx_vmwrite(GUEST_CR4, *val);

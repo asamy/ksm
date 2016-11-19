@@ -239,10 +239,10 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	}
 
 	/* CR0/CR4 controls  */
-	err |= DEBUG_VMX_VMWRITE(CR0_GUEST_HOST_MASK, __CR0_GUEST_HOST_MASK);
-	err |= DEBUG_VMX_VMWRITE(CR4_GUEST_HOST_MASK, __CR4_GUEST_HOST_MASK);
-	err |= DEBUG_VMX_VMWRITE(CR0_READ_SHADOW, cr0 & ~__CR0_GUEST_HOST_MASK);
-	err |= DEBUG_VMX_VMWRITE(CR4_READ_SHADOW, cr4 & ~__CR4_GUEST_HOST_MASK);
+	err |= DEBUG_VMX_VMWRITE(CR0_GUEST_HOST_MASK, vcpu->cr0_guest_host_mask);
+	err |= DEBUG_VMX_VMWRITE(CR4_GUEST_HOST_MASK, vcpu->cr4_guest_host_mask);
+	err |= DEBUG_VMX_VMWRITE(CR0_READ_SHADOW, cr0 & ~vcpu->cr0_guest_host_mask);
+	err |= DEBUG_VMX_VMWRITE(CR4_READ_SHADOW, cr4 & ~vcpu->cr4_guest_host_mask);
 
 	/* Cache secondary ctl for emulation purposes  */
 	vcpu->secondary_ctl = vm_2ndctl;
@@ -404,6 +404,13 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	if (!init_vmcs(&vcpu->vmcs))
 		goto out_off;
 
+	/*
+	 * Leave cr0 guest host mask empty, we support all.
+	 * Set VMXE bit in cr4 gurest host mask so they VM-exit to us when
+	 * they try to set that bit.
+	 */
+	vcpu->cr0_guest_host_mask = 0;
+	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;
 	if (setup_vmcs(vcpu, sp, ip, (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE))
 		vcpu_launch();
 

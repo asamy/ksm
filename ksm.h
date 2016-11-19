@@ -39,12 +39,6 @@ struct _DISK_GEOMETRY_EX;
 #define container_of(address, type, field)	CONTAINING_RECORD(address, type, field)
 
 #define KSM_MAX_VCPUS		32
-#define __CR0_GUEST_HOST_MASK	0
-#ifdef NESTED_vMX
-#define __CR4_GUEST_HOST_MASK	0
-#else
-#define __CR4_GUEST_HOST_MASK	X86_CR4_VMXE
-#endif
 #define __EXCEPTION_BITMAP	0
 
 #define HYPERCALL_STOP		0	/* Stop virtualization on this CPU  */
@@ -314,6 +308,8 @@ struct vcpu {
 	u64 *gp;
 	u64 eflags;
 	u64 ip;
+	u64 cr0_guest_host_mask;
+	u64 cr4_guest_host_mask;
 	struct ept ept;
 	/* Guest IDT (emulated)  */
 	struct gdtr g_idt;
