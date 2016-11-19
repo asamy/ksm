@@ -77,6 +77,9 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 {
+	/* Stupid printing interface  */
+	print_init();
+
 	/* On Windows 10 build 14316+ Page table base addresses are not static.  */
 	RTL_OSVERSIONINFOW osv;
 	osv.dwOSVersionInfoSize = sizeof(osv);
@@ -132,7 +135,6 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
 #endif
 
-	print_init();
 	if (!NT_SUCCESS(status = ksm_init()))
 		goto out;
 
