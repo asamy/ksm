@@ -36,7 +36,6 @@ static bool work = false;
 static bool exited = false;
 static char buf[PRINT_BUF_SIZE];
 static size_t curr_pos = 0;
-static KSPIN_LOCK lock;
 
 #ifndef _MSC_VER
 /*
@@ -86,11 +85,20 @@ NTSTRSAFEAPI RtlStringCchVPrintfA(STRSAFE_LPSTR pszDest,size_t cchDest,STRSAFE_L
 }
 #endif
 
-static void print_flush(void)
+static inline void print_flush(void)
 {
 	buf[curr_pos] = '\0';
 	DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", buf);
 	curr_pos = 0;
+}
+
+static inline void set_done(void)
+{
+#ifdef _MSC_VER
+	InterlockedExchange8(&work, false);
+#else
+	__sync_add_and_fetch(&work, -1);
+#endif
 }
 
 static NTSTATUS print_thread(void)
@@ -101,16 +109,8 @@ static NTSTATUS print_thread(void)
 			barrier();
 		}
 
-		KLOCK_QUEUE_HANDLE q;
-		KeAcquireInStackQueuedSpinLock(&lock, &q);
 		print_flush();
-#ifdef _MSC_VER
-		InterlockedExchange8(&work, false);
-#else
-		__sync_add_and_fetch(&work, -1);
-#endif
-		KeReleaseInStackQueuedSpinLock(&q);
-
+		set_done();
 	}
 
 	if (curr_pos != 0)
@@ -126,9 +126,7 @@ NTSTATUS print_init(void)
 	CLIENT_ID cid;
 	NTSTATUS status;
 
-	KeInitializeSpinLock(&lock);
 	memset(&buf[0], 0x00, sizeof(buf));
-
 	if (!NT_SUCCESS(status = PsCreateSystemThread(&hThread,
 						      STANDARD_RIGHTS_ALL,
 						      NULL,
@@ -153,27 +151,15 @@ void print_exit(void)
 		cpu_relax();
 }
 
-void do_print(const char *fmt, ...)
+static inline void buffer_str(const char *str)
 {
-	if (do_exit || curr_pos >= PRINT_BUF_SIZE)
-		return;
+	size_t len = strlen(str);
+	memcpy(&buf[curr_pos], &str[0], len);
+	curr_pos += len;
+}
 
-	va_list va;
-	va_start(va, fmt);
-
-	char buffer[1024];
-	NTSTATUS status = RtlStringCchVPrintfA(buffer, sizeof(buffer), fmt, va);
-	va_end(va);
-
-	if (!NT_SUCCESS(status))
-		return;
-
-	KLOCK_QUEUE_HANDLE q;
-	KeAcquireInStackQueuedSpinLock(&lock, &q); {
-		size_t len = strlen(buffer);
-		memcpy(&buf[curr_pos], &buffer[0], len);
-		curr_pos += len;
-	} KeReleaseInStackQueuedSpinLock(&q);
+static inline void signal_work(void)
+{
 #ifdef _MSC_VER
 	InterlockedExchange8(&work, 1);
 #else
@@ -181,5 +167,24 @@ void do_print(const char *fmt, ...)
 #endif
 }
 
-#endif
+void do_print(const char *fmt, ...)
+{
+	while (curr_pos >= PRINT_BUF_SIZE) {
+		signal_work();
+		barrier();
+	}
 
+	va_list va;
+	va_start(va, fmt);
+
+	char buffer[PAGE_SIZE];
+	NTSTATUS status = RtlStringCchVPrintfA(buffer, sizeof(buffer), fmt, va);
+	va_end(va);
+
+	if (NT_SUCCESS(status)) {
+		buffer_str(buffer);
+		signal_work();
+	}
+}
+
+#endif
