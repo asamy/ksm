@@ -37,7 +37,7 @@ Simply `make C=1` (if cross compiling under Linux) or `mingw32-make` (under MinG
 
 - UEFI
 - Intel TXT
-- VT-x nesting (i.e. having a vm running inside it and not the other way around!)
+- VT-x nesting (i.e. having a vm running inside it not the other way around!)
 
 ## Debugging and/or testing
 
