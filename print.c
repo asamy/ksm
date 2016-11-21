@@ -85,6 +85,11 @@ NTSTRSAFEAPI RtlStringCchVPrintfA(STRSAFE_LPSTR pszDest,size_t cchDest,STRSAFE_L
 }
 #endif
 
+static inline bool atomic_read(bool *b)
+{
+	return *(volatile bool *)b;
+}
+
 static inline void print_flush(void)
 {
 	buf[curr_pos] = '\0';
@@ -97,14 +102,14 @@ static inline void set_done(void)
 #ifdef _MSC_VER
 	InterlockedExchange8(&work, false);
 #else
-	__sync_add_and_fetch(&work, -1);
+	__sync_bool_compare_and_swap(&work, true, false);
 #endif
 }
 
 static NTSTATUS print_thread(void)
 {
-	while (!do_exit) {
-		while (!work) {
+	while (!atomic_read(&do_exit)) {
+		while (!atomic_read(&work)) {
 			sleep_ms(100);
 			barrier();
 		}
@@ -116,7 +121,11 @@ static NTSTATUS print_thread(void)
 	if (curr_pos != 0)
 		print_flush();
 
-	exited = true;
+#ifdef _MSC_VER
+	InterlockedExchange8(&exited, true);
+#else
+	__sync_bool_compare_and_swap(&exited, false, true);
+#endif
 	return STATUS_SUCCESS;
 }
 
@@ -145,9 +154,9 @@ void print_exit(void)
 #ifdef _MSC_VER
 	InterlockedExchange8(&do_exit, true);
 #else
-	__sync_fetch_and_add(&do_exit, true);
+	__sync_bool_compare_and_swap(&do_exit, false, true);
 #endif
-	while (!exited)
+	while (!atomic_read(&exited))
 		cpu_relax();
 }
 
@@ -161,9 +170,9 @@ static inline void buffer_str(const char *str)
 static inline void signal_work(void)
 {
 #ifdef _MSC_VER
-	InterlockedExchange8(&work, 1);
+	InterlockedExchange8(&work, true);
 #else
-	__sync_fetch_and_add(&work, 1);
+	__sync_bool_compare_and_swap(&work, false, true);
 #endif
 }
 
