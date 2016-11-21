@@ -115,6 +115,7 @@ static NTSTATUS print_thread(void)
 		}
 
 		print_flush();
+		barrier();
 		set_done();
 	}
 
