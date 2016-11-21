@@ -16,6 +16,7 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
+#ifdef EPAGE_HOOK
 #include "ksm.h"
 #include "dpc.h"
 
@@ -26,7 +27,7 @@ static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 	__set_epte_ar_pfn(epte, EPT_ACCESS_EXEC, phi->c_pfn);
 
 	ept_alloc_page(ept, EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, dpa);
-	ept_alloc_page(ept, EPT4(ept, EPTP_NORMAL), EPT_ACCESS_ALL, dpa);
+	ept_alloc_page(ept, EPT4(ept, EPTP_NORMAL), EPT_ACCESS_EXEC, dpa);
 
 	__invept_all();
 }
@@ -139,3 +140,5 @@ struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn)
 			return phi;
 	return NULL;
 }
+#endif
+

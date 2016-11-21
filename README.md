@@ -129,13 +129,15 @@ Since we use 3 EPT pointers, and since the page needs to be read and written to 
 											   verification),
       we also need to catch RW access to the page and then switch the EPTP appropriately according to
       the access.  In that case we switch over to `EPTP_RWHOOK` to allow RW access only!
-	The third pointer is used for when we need to call the original function.
+	The third pointer is used for when we need to call the original function.  The third pointer
+	has execute only access rights to the page with the sane page frame number.
 
 ## Enabling certain features / tests
 
 You can define one or more of the following:
 
-- `RUN_TEST` - Runs a small MmMapIoSpace shadow hook test.
+- `EPAGE_HOOK` - Enables executable page shadow hook (hooks MmMapIoSpace as an
+						      example, see `main.c`)
 - `ENABLE_PML` - Enables Page Modification Log if supported.
 - `EMULATE_VMFUNC` - Forces emulation of VMFUNC even if CPU supports it.
 - `EPT_SUPPRESS_VE` - Force suppress VE bit in EPT.

@@ -276,6 +276,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 			if (!ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa))
 				return false;
 	} else {
+#ifdef EPAGE_HOOK
 		struct page_hook_info *phi = ksm_find_page((void *)gva);
 		if (phi) {
 			u16 eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
@@ -287,9 +288,12 @@ bool ept_handle_violation(struct vcpu *vcpu)
 				VCPU_DEBUG_RAW("Found hooked page but NO switching was required!\n");
 			}
 		} else {
+#endif
 			VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
 			ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, gpa);
+#ifdef EPAGE_HOOK
 		}
+#endif
 	}
 
 	__invept_all();
@@ -321,6 +325,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 		for_each_eptp(i)
 			ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa);
 	} else {
+#ifdef EPAGE_HOOK
 		struct page_hook_info *phi = ksm_find_page((void *)gva);
 		if (phi) {
 			u16 eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
@@ -332,9 +337,12 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 				VCPU_DEBUG_RAW("Found hooked page but NO switching was required!\n");
 			}
 		} else {
+#endif
 			VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
 			ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, gpa);
+#ifdef EPAGE_HOOK
 		}
+#endif
 	}
 }
 

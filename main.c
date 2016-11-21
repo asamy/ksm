@@ -42,7 +42,7 @@ uintptr_t ppe_base = 0xfffff6fb7da00000ull;
 uintptr_t pde_base = 0xfffff6fb40000000ull;
 uintptr_t pte_base = 0xfffff68000000000ull;
 
-#ifdef RUN_TEST
+#ifdef EPAGE_HOOK
 static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
 			    _In_ SIZE_T              NumberOfBytes,
 			    _In_ MEMORY_CACHING_TYPE CacheType)
@@ -66,7 +66,7 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 #ifdef ENABLE_ACPI
 	deregister_power_callback(&g_dev_ext);
 #endif
-#ifdef RUN_TEST
+#ifdef EPAGE_HOOK
 	ksm_unhook_page(MmMapIoSpace);
 #endif
 	VCPU_DEBUG("ret: 0x%08X\n", ksm_exit());
@@ -143,7 +143,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		goto out_exit;
 #endif
 
-#ifdef RUN_TEST
+#ifdef EPAGE_HOOK
 	if (NT_SUCCESS(status = ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace))) {
 		/* Quick test  */
 		void *va = MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = __pa(g_kernel_base) },
