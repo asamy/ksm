@@ -205,7 +205,7 @@ static inline bool vcpu_inject_ve(struct vcpu *vcpu)
 static inline bool vcpu_inject_pf(struct vcpu *vcpu, u64 gla, u32 ec)
 {
 	__writecr2(gla);	/* XXX  */
-	return vcpu_inject_irq(vmcs_read(VM_EXIT_INSTRUCTION_LEN),
+	return vcpu_inject_irq(0,
 			       INTR_TYPE_HARD_EXCEPTION,
 			       X86_TRAP_PF,
 			       true,
