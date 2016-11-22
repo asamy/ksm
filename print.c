@@ -27,6 +27,7 @@
 #ifdef _MSC_VER
 #include <ntstrsafe.h>
 #endif
+#include <intrin.h>
 
 #define PRINT_BUF_STRIDE	PAGE_SIZE
 #define PRINT_BUF_SIZE		(PRINT_BUF_STRIDE << 1)
@@ -84,26 +85,31 @@ NTSTRSAFEAPI RtlStringCchVPrintfA(STRSAFE_LPSTR pszDest, size_t cchDest, STRSAFE
 }
 #endif
 
+static inline char *stpcpy(char *dst, const char *src)
+{
+	const size_t len = strlen(src);
+	return (char *)memcpy(dst, src, len + 1) + len;
+}
+
 static inline void print_flush(void)
 {
 	KLOCK_QUEUE_HANDLE q;
 	KeAcquireInStackQueuedSpinLock(&lock, &q);
 
-	size_t prev = next;
-	char *printbuf = buf + ((prev & 1) << PAGE_SHIFT);
-	*next_use = '\0';
-
+	char *printbuf = buf + ((next & 1) << PAGE_SHIFT);
 	head_use = buf + ((++next & 1) << PAGE_SHIFT);
 	next_use = head_use;
-	KeReleaseInStackQueuedSpinLock(&q);
+	barrier();
 
-	DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", printbuf);
+	KeReleaseInStackQueuedSpinLock(&q);
+	if (KeGetCurrentIrql() < CLOCK_LEVEL)
+		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", printbuf);
 }
 
 static void print_thread(void)
 {
 	while (!do_exit) {
-		while (next_use == head_use)
+		while (next_use == head_use && !do_exit)
 			sleep_ms(50);
 
 		print_flush();
@@ -148,25 +154,36 @@ void print_exit(void)
 	__sync_bool_compare_and_swap(&do_exit, false, true);
 #endif
 	while (!exited)
-		_mm_pause();
+		cpu_relax();
 }
 
 void do_print(const char *fmt, ...)
 {
+	char buffer[1 << PAGE_SHIFT];
 	va_list va;
-	va_start(va, fmt);
+	NTSTATUS status;
+	KLOCK_QUEUE_HANDLE q;
 
-	char buffer[2048];
-	NTSTATUS status = RtlStringCchVPrintfA(buffer, sizeof(buffer), fmt, va);
+	va_start(va, fmt);
+	status = RtlStringCchVPrintfA(buffer, sizeof(buffer), fmt, va);
 	va_end(va);
 
-	KLOCK_QUEUE_HANDLE q;
 	if (NT_SUCCESS(status)) {
-		size_t len = strlen(buffer);
+		if (__readeflags() & X86_EFLAGS_IF) {
+			/*
+			 * No need to queue, DbgPrint uses IPIs to do some stuff, we can
+			 * use it safely here.
+			 *
+			 * This will not branch inside a VM-exit, simply because the IF flag
+			 * is clear for obvious reasons.
+			 */
+			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", buffer);
+			return;
+		}
 
 		KeAcquireInStackQueuedSpinLock(&lock, &q);
-		memcpy(next_use, buffer, len);
-		next_use += len;
+		next_use = stpcpy(next_use, buffer);
+		barrier();
 		KeReleaseInStackQueuedSpinLock(&q);
 	}
 }
