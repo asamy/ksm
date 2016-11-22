@@ -21,27 +21,30 @@
 /*
  * A stupid kernel debug printing interface so that we don't hang
  * the kernel when we are inside VMX root.
- */
+*/
 #include "ksm.h"
 
 #ifdef _MSC_VER
 #include <ntstrsafe.h>
 #endif
 
-#define PRINT_BUF_PAGES		6
-#define PRINT_BUF_SIZE		(PAGE_SIZE * PRINT_BUF_PAGES)
+#define PRINT_BUF_STRIDE	PAGE_SIZE
+#define PRINT_BUF_SIZE		(PRINT_BUF_STRIDE << 1)
 
-static bool do_exit = false;
-static bool work = false;
-static bool exited = false;
+static volatile bool do_exit = false;
+static volatile bool exited = false;
+static volatile bool work = false;
 static char buf[PRINT_BUF_SIZE];
-static size_t curr_pos = 0;
+static char *head_use = buf;
+static char *next_use = buf;
+static size_t next = 0;
+static KSPIN_LOCK lock;
 
 #ifndef _MSC_VER
 /*
  * Taken from:
  * 	https://searchcode.com/codesearch/view/20802857/
- */
+*/
 typedef char *STRSAFE_LPSTR;
 typedef const char *STRSAFE_LPCSTR;
 
@@ -50,26 +53,22 @@ typedef const char *STRSAFE_LPCSTR;
 #endif
 #define NTSTRSAFEAPI	static __inline NTSTATUS NTAPI
 
-NTSTRSAFEAPI RtlStringVPrintfWorkerA(STRSAFE_LPSTR pszDest,size_t cchDest,STRSAFE_LPCSTR pszFormat,va_list argList)
+NTSTRSAFEAPI RtlStringVPrintfWorkerA(STRSAFE_LPSTR pszDest, size_t cchDest, STRSAFE_LPCSTR pszFormat, va_list argList)
 {
 	NTSTATUS Status = STATUS_SUCCESS;
-	if (cchDest==0)
+	if (cchDest == 0)
 		Status = STATUS_INVALID_PARAMETER;
-	else
-	{
+	else {
 		int iRet;
 		size_t cchMax;
 		cchMax = cchDest - 1;
-		iRet = _vsnprintf(pszDest,cchMax,pszFormat,argList);
-		if ((iRet < 0) || (((size_t)iRet) > cchMax))
-		{
+		iRet = _vsnprintf(pszDest, cchMax, pszFormat, argList);
+		if ((iRet < 0) || (((size_t)iRet) > cchMax)) {
 			pszDest += cchMax;
 			*pszDest = '\0';
 			Status = STATUS_BUFFER_OVERFLOW;
-		}
-		else
-			if (((size_t)iRet)==cchMax)
-			{
+		} else
+			if (((size_t)iRet) == cchMax) {
 				pszDest += cchMax;
 				*pszDest = '\0';
 			}
@@ -77,49 +76,40 @@ NTSTRSAFEAPI RtlStringVPrintfWorkerA(STRSAFE_LPSTR pszDest,size_t cchDest,STRSAF
 	return Status;
 }
 
-NTSTRSAFEAPI RtlStringCchVPrintfA(STRSAFE_LPSTR pszDest,size_t cchDest,STRSAFE_LPCSTR pszFormat,va_list argList)
+NTSTRSAFEAPI RtlStringCchVPrintfA(STRSAFE_LPSTR pszDest, size_t cchDest, STRSAFE_LPCSTR pszFormat, va_list argList)
 {
 	if (cchDest > NTSTRSAFE_MAX_CCH)
 		return STATUS_INVALID_PARAMETER;
-	return RtlStringVPrintfWorkerA(pszDest,cchDest,pszFormat,argList);
+	return RtlStringVPrintfWorkerA(pszDest, cchDest, pszFormat, argList);
 }
 #endif
-
-static inline bool atomic_read(bool *b)
-{
-	return *(volatile bool *)b;
-}
 
 static inline void print_flush(void)
 {
-	buf[curr_pos] = '\0';
-	DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", buf);
-	curr_pos = 0;
+	KLOCK_QUEUE_HANDLE q;
+	KeAcquireInStackQueuedSpinLock(&lock, &q);
+
+	size_t prev = next;
+	char *printbuf = buf + ((prev & 1) << PAGE_SHIFT);
+	*next_use = '\0';
+
+	head_use = buf + ((++next & 1) << PAGE_SHIFT);
+	next_use = head_use;
+	KeReleaseInStackQueuedSpinLock(&q);
+
+	DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", printbuf);
 }
 
-static inline void set_done(void)
+static void print_thread(void)
 {
-#ifdef _MSC_VER
-	InterlockedExchange8(&work, false);
-#else
-	__sync_bool_compare_and_swap(&work, true, false);
-#endif
-}
-
-static NTSTATUS print_thread(void)
-{
-	while (!atomic_read(&do_exit)) {
-		while (!atomic_read(&work)) {
-			sleep_ms(100);
-			barrier();
-		}
+	while (!do_exit) {
+		while (next_use == head_use)
+			sleep_ms(50);
 
 		print_flush();
-		barrier();
-		set_done();
 	}
 
-	if (curr_pos != 0)
+	if (next_use != head_use)
 		print_flush();
 
 #ifdef _MSC_VER
@@ -127,7 +117,7 @@ static NTSTATUS print_thread(void)
 #else
 	__sync_bool_compare_and_swap(&exited, false, true);
 #endif
-	return STATUS_SUCCESS;
+	PsTerminateSystemThread(STATUS_SUCCESS);
 }
 
 NTSTATUS print_init(void)
@@ -136,7 +126,7 @@ NTSTATUS print_init(void)
 	CLIENT_ID cid;
 	NTSTATUS status;
 
-	memset(&buf[0], 0x00, sizeof(buf));
+	KeInitializeSpinLock(&lock);
 	if (!NT_SUCCESS(status = PsCreateSystemThread(&hThread,
 						      STANDARD_RIGHTS_ALL,
 						      NULL,
@@ -157,43 +147,27 @@ void print_exit(void)
 #else
 	__sync_bool_compare_and_swap(&do_exit, false, true);
 #endif
-	while (!atomic_read(&exited))
-		cpu_relax();
-}
-
-static inline void buffer_str(const char *str)
-{
-	size_t len = strlen(str);
-	memcpy(&buf[curr_pos], &str[0], len);
-	curr_pos += len;
-}
-
-static inline void signal_work(void)
-{
-#ifdef _MSC_VER
-	InterlockedExchange8(&work, true);
-#else
-	__sync_bool_compare_and_swap(&work, false, true);
-#endif
+	while (!exited)
+		_mm_pause();
 }
 
 void do_print(const char *fmt, ...)
 {
-	while (curr_pos >= PRINT_BUF_SIZE) {
-		signal_work();
-		barrier();
-	}
-
 	va_list va;
 	va_start(va, fmt);
 
-	char buffer[PAGE_SIZE];
+	char buffer[2048];
 	NTSTATUS status = RtlStringCchVPrintfA(buffer, sizeof(buffer), fmt, va);
 	va_end(va);
 
+	KLOCK_QUEUE_HANDLE q;
 	if (NT_SUCCESS(status)) {
-		buffer_str(buffer);
-		signal_work();
+		size_t len = strlen(buffer);
+
+		KeAcquireInStackQueuedSpinLock(&lock, &q);
+		memcpy(next_use, buffer, len);
+		next_use += len;
+		KeReleaseInStackQueuedSpinLock(&q);
 	}
 }
 
