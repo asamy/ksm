@@ -6,11 +6,8 @@
 
 #include "htable.h"
 
-#ifndef _MSC_VER
-/* Annoying warning from ntddk */
-struct _DISK_GEOMETRY_EX;
-#endif
 #include <ntddk.h>
+
 #include "mm.h"
 
  /* We use 0x1 as deleted marker. */

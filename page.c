@@ -17,6 +17,8 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 #ifdef EPAGE_HOOK
+#incldue <ntddk.h>
+
 #include "ksm.h"
 #include "dpc.h"
 

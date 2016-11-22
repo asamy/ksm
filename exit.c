@@ -26,11 +26,6 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
-#ifndef _MSC_VER
-/* Annoying warning from ntddk */
-struct _DISK_GEOMETRY_EX;
-#endif
-
 #include <ntddk.h>
 #include <intrin.h>
 

@@ -22,12 +22,13 @@
  * A stupid kernel debug printing interface so that we don't hang
  * the kernel when we are inside VMX root.
 */
-#include "ksm.h"
-
+#include <ntddk.h>
+#include <intrin.h>
 #ifdef _MSC_VER
 #include <ntstrsafe.h>
 #endif
-#include <intrin.h>
+
+#include "ksm.h"
 
 #define PRINT_BUF_STRIDE	PAGE_SIZE
 #define PRINT_BUF_SIZE		(PRINT_BUF_STRIDE << 1)

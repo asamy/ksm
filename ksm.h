@@ -19,14 +19,6 @@
 #ifndef __KSM_H
 #define __KSM_H
 
-#ifndef _MSC_VER
-/* Annoying warning from ntddk */
-struct _DISK_GEOMETRY_EX;
-#endif
-
-#include <intrin.h>
-#include <ntddk.h>
-
 #include "compiler.h"
 #include "x86.h"
 #include "vmx.h"
