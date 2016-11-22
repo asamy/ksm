@@ -32,6 +32,19 @@
 #define PRINT_BUF_STRIDE	PAGE_SIZE
 #define PRINT_BUF_SIZE		(PRINT_BUF_STRIDE << 1)
 
+/*
+ * @head_use - points to the head of the buffer we should be buffering to
+ * @next_use - points to next buffering location
+ * @next - specifies next index of the buffer slice to use
+ *
+ * head_use is switched between buf + 0 and buf + PRINT_BUF_STRIDE, to avoid
+ * confusions and to make it better in terms of performance, between do_print()
+ * and print_thread().
+ *
+ * The spin lock is used to synchronize updates to @head_use and @next_use.
+ * For synchronization of writes, a barrier is used to make sure that print_thread()
+ * will see the head being updated.
+ */
 static volatile bool do_exit = false;
 static volatile bool exited = false;
 static volatile bool work = false;
@@ -53,6 +66,9 @@ typedef const char *STRSAFE_LPCSTR;
 #define NTSTRSAFE_MAX_CCH 2147483647
 #endif
 #define NTSTRSAFEAPI	static __inline NTSTATUS NTAPI
+
+/* Exported by ntoskrnl  */
+extern int __cdecl _vsnprintf(char *, size_t, const char *, va_list);
 
 NTSTRSAFEAPI RtlStringVPrintfWorkerA(STRSAFE_LPSTR pszDest, size_t cchDest, STRSAFE_LPCSTR pszFormat, va_list argList)
 {
@@ -108,6 +124,15 @@ static inline void print_flush(void)
 
 static void print_thread(void)
 {
+	/*
+	 * Note: This thread most of the time (if not all) will be running
+	 * on a different processor other than the caller of do_print().
+	 *
+	 * We need this to sort of "queue" debug prints to avoid windbg
+	 * hanging around because DbgPrintEx() needs to do IPI and stuff
+	 * so it needs to be called with interrupts enabled, which in our
+	 * case, they are mostly not especially inside VM exit.
+	 */
 	while (!do_exit) {
 		while (next_use == head_use && !do_exit)
 			sleep_ms(50);
@@ -181,8 +206,10 @@ void do_print(const char *fmt, ...)
 			return;
 		}
 
+		/* Acquire lock to update head:  */
 		KeAcquireInStackQueuedSpinLock(&lock, &q);
 		next_use = stpcpy(next_use, buffer);
+		/* Make sure print_thread() will see the update:  */
 		barrier();
 		KeReleaseInStackQueuedSpinLock(&q);
 	}
