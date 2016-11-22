@@ -452,7 +452,7 @@ void vcpu_set_mtf(bool enable)
 
 void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 {
-	if (vcpu->secondary_ctl & VM_FUNCTION_CTL_EPTP_SWITCHING) {
+	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VE) {
 		/* Native  */
 		__vmx_vmwrite(EPTP_INDEX, index);
 	} else {
