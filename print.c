@@ -16,13 +16,13 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
-#ifdef DBG
+#if defined(DBG) && (defined(ENABLE_DBGPRINT) || defined(ENABLE_FILEPRINT))
 
 /*
  * A stupid kernel debug printing interface so that we don't hang
  * the kernel when we are inside VMX root.
 */
-#include <ntddk.h>
+#include <ntifs.h>
 #include <intrin.h>
 #ifdef _MSC_VER
 #include <ntstrsafe.h>
@@ -32,6 +32,10 @@
 
 #define PRINT_BUF_STRIDE	PAGE_SIZE
 #define PRINT_BUF_SIZE		(PRINT_BUF_STRIDE << 1)
+
+#ifdef ENABLE_FILEPRINT
+#define FILE_PATH		L"\\SystemRoot\\ksm.log"
+#endif
 
 /*
  * @head_use - points to the head of the buffer we should be buffering to
@@ -54,6 +58,8 @@ static char *head_use = buf;
 static char *next_use = buf;
 static size_t next = 0;
 static KSPIN_LOCK lock;
+static ERESOURCE resource;
+static HANDLE file;
 
 #ifndef _MSC_VER
 /*
@@ -111,16 +117,28 @@ static inline char *stpcpy(char *dst, const char *src)
 static inline void print_flush(void)
 {
 	KLOCK_QUEUE_HANDLE q;
-	KeAcquireInStackQueuedSpinLock(&lock, &q);
+#ifdef ENABLE_FILEPRINT
+	IO_STATUS_BLOCK sblk;
+#endif
 
+	KeAcquireInStackQueuedSpinLock(&lock, &q);
 	char *printbuf = buf + ((next & 1) << PAGE_SHIFT);
 	head_use = buf + ((++next & 1) << PAGE_SHIFT);
 	next_use = head_use;
 	barrier();
-
 	KeReleaseInStackQueuedSpinLock(&q);
+
+#ifdef ENABLE_DBGPRINT
 	if (KeGetCurrentIrql() < CLOCK_LEVEL)
 		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", printbuf);
+#endif
+#ifdef ENABLE_FILEPRINT
+	ExEnterCriticalRegionAndAcquireResourceExclusive(&resource);
+	ZwWriteFile(file, NULL, NULL, NULL,
+		    &sblk, printbuf, (ULONG)strlen(printbuf),
+		    NULL, NULL);
+	ExReleaseResourceAndLeaveCriticalRegion(&resource);
+#endif
 }
 
 static void print_thread(void)
@@ -157,18 +175,44 @@ NTSTATUS print_init(void)
 	HANDLE hThread;
 	CLIENT_ID cid;
 	NTSTATUS status;
+#ifdef ENABLE_FILEPRINT
+	IO_STATUS_BLOCK sblk;
+	OBJECT_ATTRIBUTES oa;
+	UNICODE_STRING path;
+
+	RtlInitUnicodeString(&path, FILE_PATH);
+	InitializeObjectAttributes(&oa, &path,
+				   OBJ_KERNEL_HANDLE | OBJ_CASE_INSENSITIVE,
+				   NULL, NULL);
+	status = ZwCreateFile(&file, FILE_APPEND_DATA | SYNCHRONIZE,
+			      &oa, &sblk, NULL, FILE_ATTRIBUTE_NORMAL,
+			      FILE_SHARE_READ, FILE_OPEN_IF,
+			      FILE_SYNCHRONOUS_IO_ALERT | FILE_NON_DIRECTORY_FILE,
+			      NULL, 0);
+	if (!NT_SUCCESS(status))
+		return status;
+#endif
+
+	if (!NT_SUCCESS(status = ExInitializeResourceLite(&resource)))
+#ifdef ENABLE_FILEPRINT
+		goto err_file;
+#else
+		return status;
+#endif
 
 	KeInitializeSpinLock(&lock);
-	if (!NT_SUCCESS(status = PsCreateSystemThread(&hThread,
-						      STANDARD_RIGHTS_ALL,
-						      NULL,
-						      NULL,
-						      &cid,
-						      (PKSTART_ROUTINE)print_thread,
-						      NULL)))
+	if (NT_SUCCESS(status = PsCreateSystemThread(&hThread, STANDARD_RIGHTS_ALL,
+						     NULL, NULL, &cid,
+						     (PKSTART_ROUTINE)print_thread, NULL))) {
+		ZwClose(hThread);
 		return status;
+	}
 
-	ZwClose(hThread);
+	ExDeleteResourceLite(&resource);
+#ifdef ENABLE_FILEPRINT
+err_file:
+	ZwClose(file);
+#endif
 	return status;
 }
 
@@ -181,6 +225,11 @@ void print_exit(void)
 #endif
 	while (!exited)
 		cpu_relax();
+
+	ExDeleteResourceLite(&resource);
+#ifdef ENABLE_FILEPRINT
+	ZwClose(file);
+#endif
 }
 
 void do_print(const char *fmt, ...)
@@ -195,6 +244,7 @@ void do_print(const char *fmt, ...)
 	va_end(va);
 
 	if (NT_SUCCESS(status)) {
+#ifdef ENABLE_DBGPRINT
 		if (__readeflags() & X86_EFLAGS_IF) {
 			/*
 			 * No need to queue, DbgPrint uses IPIs to do some stuff, we can
@@ -204,8 +254,20 @@ void do_print(const char *fmt, ...)
 			 * is clear for obvious reasons.
 			 */
 			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", buffer);
+
+#ifdef ENABLE_FILEPRINT
+			IO_STATUS_BLOCK sblk;
+			if (!KeAreAllApcsDisabled() && NT_SUCCESS(ZwWriteFile(file, NULL, NULL, NULL,
+									      &sblk, buffer, (ULONG)strlen(buffer),
+									      NULL, NULL))) {
+				ZwFlushBuffersFile(file, &sblk);
+				return;
+			}
+#else
 			return;
+#endif
 		}
+#endif
 
 		/* Acquire lock to update head:  */
 		KeAcquireInStackQueuedSpinLock(&lock, &q);

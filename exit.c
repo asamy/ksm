@@ -1272,13 +1272,6 @@ static bool vcpu_handle_io_port(struct vcpu *vcpu)
 		   type, port, addr, *addr, exit & 16, count, size);
 	VCPU_EXIT_GUEST();
 
-	/* Dump ISR and IRR for fun  */
-	for (int i = 0; i < 8; ++i) {
-		int off = i * 0x10;
-		VCPU_DEBUG("%d(0x%X): ISR: 0x%08X IRR: 0x%08X\n",
-			   i, off, lapic_read(APIC_ISR + off), lapic_read(APIC_IRR + off));
-	}
-
 	vcpu_advance_rip(vcpu);
 	return true;
 }

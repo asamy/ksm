@@ -79,8 +79,13 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 {
+#ifdef DBG
 	/* Stupid printing interface  */
-	print_init();
+	if (!NT_SUCCESS(print_init())) {
+		DbgPrint("failed to initialize log!\n");
+		return STATUS_ABANDONED;
+	}
+#endif
 
 	/* On Windows 10 build 14316+ Page table base addresses are not static.  */
 	RTL_OSVERSIONINFOW osv;

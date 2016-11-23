@@ -143,6 +143,10 @@ You can define one or more of the following:
 - `EPT_SUPPRESS_VE` - Force suppress VE bit in EPT.
 - `ENABLE_ACPI` - Enable S1-3-S4 power state monitoring for re-virtualization
 - `NESTED_VMX` - Enable experimental VT-x nesting
+- `ENABLE_FILEPRINT` - Available only when `DBG` is defined.  Enables loggin to
+disk
+- `ENABLE_DBGPRINT` - Available only when `DBG` is defined.  Enables `DbgPrint`
+log.
 
 ## Reporting bugs (or similar)
 
