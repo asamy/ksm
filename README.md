@@ -70,7 +70,6 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 ## TODO / In consideration
 
 - APIC virtualization (Partially implemented)
-- MMIO (Partially implemented)
 - UEFI support
 - Intel TXT support
 - Nesting support (Partially implemented)

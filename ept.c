@@ -57,7 +57,7 @@ static inline void ept_init_entry(uintptr_t *entry, uint8_t access, uintptr_t ph
  * Assuming:
  *	1) Each PML4 entry is 1 GB, so that makes the whole PML4 table 512 GB
  *	2) Each PDPT entry is 2 MB, so that makes the whole PDPT table 1 GB
- *	3) Each PDT entry is 4 KG, so that makes the whole PDT table 2 MB
+ *	3) Each PDT entry is 4 KB, so that makes the whole PDT table 2 MB
  *
  * So, with that being said, while we only have the initial table (PML4) virtual address
  * to work with, we need first need to get an offset into it (for the PDPT), and so on, so
@@ -264,7 +264,7 @@ static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa, u64 gva, u16 ep
 	if (ar == EPT_ACCESS_NONE) {
 		for_each_eptp(i)
 			if (!ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa))
-				return false;
+				return EPT_MAX_EPTP_LIST;
 	} else {
 #ifdef EPAGE_HOOK
 		struct page_hook_info *phi = ksm_find_page((void *)gva);
@@ -298,6 +298,9 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	VCPU_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   eptp, gpa, gva, ar, ar_get_bits(ar), ac, ar_get_bits(ac));
 	u16 eptp_switch = do_ept_violation(vcpu, vcpu->ip, gpa, gva, eptp, ar, ac);
+	if (eptp_switch == EPT_MAX_EPTP_LIST)
+		return false;
+
 	if (eptp_switch != eptp)
 		vcpu_switch_root_eptp(vcpu, eptp_switch);
 
@@ -326,6 +329,9 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 	info->except_mask = 0;
 
 	u16 eptp_switch = do_ept_violation(vcpu, rip, gpa, gva, eptp, ar, ac);
+	if (eptp_switch == EPT_MAX_EPTP_LIST)
+		VCPU_BUGCHECK(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, rip, gpa);
+
 	if (eptp_switch != eptp)
 		vcpu_vmfunc(eptp, 0);
 }

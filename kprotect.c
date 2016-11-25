@@ -99,6 +99,7 @@ static void kprotect_driver_pages(void)
 				uintptr_t *map = va_to_pte(va);
 				uintptr_t spa = PAGE_PA(*map);
 				uintptr_t poff = sec_base + ((page - head_page) << PAGE_SHIFT);
+
 				/*
 				 * For obvious reasons, ignore __ept_violation, otherwise
 				 * we will cause havoc.
@@ -108,6 +109,11 @@ static void kprotect_driver_pages(void)
 			}
 		}
 	}
+
+	/* Protect MSR and IO bitmaps  */
+	pages[count++] = __pa(ksm.msr_bitmap);
+	pages[count++] = __pa(ksm.io_bitmap_a);
+	pages[count++] = __pa(ksm.io_bitmap_b);
 
 	for (size_t i = 0; i < count; ++i)
 		STATIC_CALL_DPC(kprotect_page, (void *)pages[i]);
