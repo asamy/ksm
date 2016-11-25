@@ -58,8 +58,10 @@ static char *head_use = buf;
 static char *next_use = buf;
 static size_t next = 0;
 static KSPIN_LOCK lock;
+#ifdef ENABLE_FILEPRINT
 static ERESOURCE resource;
 static HANDLE file;
+#endif
 
 #ifndef _MSC_VER
 /*
@@ -191,13 +193,9 @@ NTSTATUS print_init(void)
 			      NULL, 0);
 	if (!NT_SUCCESS(status))
 		return status;
-#endif
 
 	if (!NT_SUCCESS(status = ExInitializeResourceLite(&resource)))
-#ifdef ENABLE_FILEPRINT
 		goto err_file;
-#else
-		return status;
 #endif
 
 	KeInitializeSpinLock(&lock);
