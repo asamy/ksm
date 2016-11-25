@@ -131,7 +131,6 @@ static inline void print_flush(void)
 
 	head_use = buf + ((++next & 1) << PAGE_SHIFT);
 	next_use = head_use;
-	barrier();
 	KeReleaseInStackQueuedSpinLock(&q);
 
 #ifdef ENABLE_DBGPRINT

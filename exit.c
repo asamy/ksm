@@ -1405,20 +1405,24 @@ static bool vcpu_handle_msr_write(struct vcpu *vcpu)
 		} else if (msr >= 0x800 && msr <= 0x83F) {
 			/* x2APIC   */
 			u32 offset = (msr - 0x800) * 0x10;
-			if (msr == 0x830) {
+			switch (msr) {
+			case 0x803:	/* APIC version register  */
+			case 0x80A:	/* Processor Priority Register  */
+			case 0x80D:	/* Logical Destination Register  */
+			case 0x839:	/* APIC Timer: Current count register  */
+			case 0x83F:	/* Self IPI  */
+				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+				break;
+			case 0x830:
 				/* ICR special case: 64-bit write:  */
 				__lapic_write64((u64)vcpu->vapic_page, offset, val);
-			} else {
-				if ((val >> 32) != 0 /* 32bit only  */||
-				    val == 0x803 /* APIC version register  */||
-				    val == 0x80A /* Processor Priority Register  */||
-				    val == 0x80D /* Logical Destination Register  */||
-				    (val >= 0x810 && val <= 0x827) /* ISR through IRR  */||
-				    val == 0x839 /* Current count register (APIC timer)  */||
-				    val == 0x83F /* Self IPI  */)
+				break;
+			default:
+				if ((val >> 32) != 0 || (msr >= 0x810 && msr <= 0x827)) /* ISR through IRR  */
 					vcpu_inject_hardirq_noerr(X86_TRAP_GP);
 				else
 					__lapic_write((u64)vcpu->vapic_page, offset, val);
+				break;
 			}
 		} else {
 			/* XXX  */
