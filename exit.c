@@ -562,6 +562,9 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 	case HYPERCALL_VMFUNC:
 		vcpu_adjust_rflags(vcpu, vcpu_emulate_vmfunc(vcpu, (struct h_vmfunc *)arg));
 		break;
+	case HYPERCALL_KPROTECT:
+		vcpu_adjust_rflags(vcpu, kprotect_init_eptp(vcpu, arg));
+		break;
 	default:
 		VCPU_DEBUG("unsupported hypercall: %d\n", nr);
 		vcpu_inject_hardirq_noerr(X86_TRAP_UD);

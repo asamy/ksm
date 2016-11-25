@@ -85,6 +85,7 @@
     <ClCompile Include="..\..\ept.c" />
     <ClCompile Include="..\..\exit.c" />
     <ClCompile Include="..\..\htable.c" />
+    <ClCompile Include="..\..\kprotect.c" />
     <ClCompile Include="..\..\ksm.c" />
     <ClCompile Include="..\..\main.c" />
     <ClCompile Include="..\..\page.c" />

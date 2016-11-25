@@ -258,6 +258,31 @@ uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys)
 	return &pde[__pte_idx(phys)];
 }
 
+static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa, u64 gva, u16 eptp, u8 ar, u8 ac)
+{
+	struct ept *ept = &vcpu->ept;
+	if (ar == EPT_ACCESS_NONE) {
+		for_each_eptp(i)
+			if (!ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa))
+				return false;
+	} else {
+#ifdef EPAGE_HOOK
+		struct page_hook_info *phi = ksm_find_page((void *)gva);
+		if (phi) {
+			u16 eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
+			VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
+			return eptp_switch;
+		} else {
+#endif
+			return kprotect_select_eptp(ept, rip, ac);
+#ifdef EPAGE_HOOK
+		}
+#endif
+	}
+
+	return eptp;
+}
+
 /*
  * Handle a VM-Exit EPT violation (we're inside VMX root here).
  */
@@ -272,34 +297,10 @@ bool ept_handle_violation(struct vcpu *vcpu)
 
 	VCPU_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   eptp, gpa, gva, ar, ar_get_bits(ar), ac, ar_get_bits(ac));
+	u16 eptp_switch = do_ept_violation(vcpu, vcpu->ip, gpa, gva, eptp, ar, ac);
+	if (eptp_switch != eptp)
+		vcpu_switch_root_eptp(vcpu, eptp_switch);
 
-	struct ept *ept = &vcpu->ept;
-	if (ar == EPT_ACCESS_NONE) {
-		for_each_eptp(i)
-			if (!ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa))
-				return false;
-	} else {
-#ifdef EPAGE_HOOK
-		struct page_hook_info *phi = ksm_find_page((void *)gva);
-		if (phi) {
-			u16 eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
-			if (eptp_switch != eptp) {
-				VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
-				vcpu_switch_root_eptp(vcpu, eptp_switch);
-			} else {
-				/* Crtical error  */
-				VCPU_DEBUG_RAW("Found hooked page but NO switching was required!\n");
-			}
-		} else {
-#endif
-			VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
-			ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, gpa);
-#ifdef EPAGE_HOOK
-		}
-#endif
-	}
-
-	__invept_all();
 	return true;
 }
 
@@ -322,31 +323,11 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 
 	VCPU_DEBUG("0x%X:%p [%d]: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   cs, rip, eptp, gpa, gva, ar, ar_get_bits(ar), ac, ar_get_bits(ac));
-
 	info->except_mask = 0;
-	if (ar == EPT_ACCESS_NONE) {
-		for_each_eptp(i)
-			ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa);
-	} else {
-#ifdef EPAGE_HOOK
-		struct page_hook_info *phi = ksm_find_page((void *)gva);
-		if (phi) {
-			u16 eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
-			if (eptp_switch != eptp) {
-				VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
-				vcpu_vmfunc(eptp_switch, 0);	/* One does not imply the other  */
-			} else {
-				/* Typically a critical error...  */
-				VCPU_DEBUG_RAW("Found hooked page but NO switching was required!\n");
-			}
-		} else {
-#endif
-			VCPU_DEBUG_RAW("Something smells totally off; fixing manually.\n");
-			ept_alloc_page(ept, EPT4(ept, eptp), ac | ar, gpa);
-#ifdef EPAGE_HOOK
-		}
-#endif
-	}
+
+	u16 eptp_switch = do_ept_violation(vcpu, rip, gpa, gva, eptp, ar, ac);
+	if (eptp_switch != eptp)
+		vcpu_vmfunc(eptp, 0);
 }
 
 bool ept_check_capabilitiy(void)

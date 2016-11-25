@@ -143,4 +143,3 @@ struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn)
 	return NULL;
 }
 #endif
-

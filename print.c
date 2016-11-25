@@ -118,6 +118,7 @@ static inline char *stpcpy(char *dst, const char *src)
 
 static inline void print_flush(void)
 {
+	char on_stack[PAGE_SIZE];
 	KLOCK_QUEUE_HANDLE q;
 #ifdef ENABLE_FILEPRINT
 	IO_STATUS_BLOCK sblk;
@@ -125,6 +126,9 @@ static inline void print_flush(void)
 
 	KeAcquireInStackQueuedSpinLock(&lock, &q);
 	char *printbuf = buf + ((next & 1) << PAGE_SHIFT);
+	char *p = stpcpy(on_stack, printbuf);
+	*p = '\0';
+
 	head_use = buf + ((++next & 1) << PAGE_SHIFT);
 	next_use = head_use;
 	barrier();
@@ -132,12 +136,12 @@ static inline void print_flush(void)
 
 #ifdef ENABLE_DBGPRINT
 	if (KeGetCurrentIrql() < CLOCK_LEVEL)
-		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", printbuf);
+		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", on_stack);
 #endif
 #ifdef ENABLE_FILEPRINT
 	ExEnterCriticalRegionAndAcquireResourceExclusive(&resource);
 	ZwWriteFile(file, NULL, NULL, NULL,
-		    &sblk, printbuf, (ULONG)strlen(printbuf),
+		    &sblk, on_stack, (u32)strlen(on_stack),
 		    NULL, NULL);
 	ExReleaseResourceAndLeaveCriticalRegion(&resource);
 #endif
@@ -242,7 +246,6 @@ void do_print(const char *fmt, ...)
 	va_end(va);
 
 	if (NT_SUCCESS(status)) {
-#ifdef ENABLE_DBGPRINT
 		if (__readeflags() & X86_EFLAGS_IF) {
 			/*
 			 * No need to queue, DbgPrint uses IPIs to do some stuff, we can
@@ -251,21 +254,23 @@ void do_print(const char *fmt, ...)
 			 * This will not branch inside a VM-exit, simply because the IF flag
 			 * is clear for obvious reasons.
 			 */
-			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", buffer);
-
+			bool queue = false;
 #ifdef ENABLE_FILEPRINT
 			IO_STATUS_BLOCK sblk;
 			if (!KeAreAllApcsDisabled() && NT_SUCCESS(ZwWriteFile(file, NULL, NULL, NULL,
 									      &sblk, buffer, (ULONG)strlen(buffer),
-									      NULL, NULL))) {
+									      NULL, NULL)))
 				ZwFlushBuffersFile(file, &sblk);
+			else
+				queue = true;
+#endif
+#ifdef ENABLE_DBGPRINT
+			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", buffer);
+#endif
+
+			if (!queue)
 				return;
-			}
-#else
-			return;
-#endif
 		}
-#endif
 
 		/* Acquire lock to update head:  */
 		KeAcquireInStackQueuedSpinLock(&lock, &q);

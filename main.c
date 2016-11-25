@@ -38,38 +38,19 @@ DRIVER_INITIALIZE DriverEntry;
 
 PLIST_ENTRY PsLoadedModuleList;
 void *g_kernel_base = NULL;
+uintptr_t g_driver_base;
+uintptr_t g_driver_size;
 
 uintptr_t pxe_base = 0xfffff6fb7dbed000ull;
 uintptr_t ppe_base = 0xfffff6fb7da00000ull;
 uintptr_t pde_base = 0xfffff6fb40000000ull;
 uintptr_t pte_base = 0xfffff68000000000ull;
 
-#ifdef EPAGE_HOOK
-static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
-			    _In_ SIZE_T              NumberOfBytes,
-			    _In_ MEMORY_CACHING_TYPE CacheType)
-{
-	VCPU_DEBUG("Map %p, %d pages with cache %d\n",
-		   PhysicalAddress.QuadPart,
-		   BYTES_TO_PAGES(NumberOfBytes),
-		   CacheType);
-
-	/* Call original  */
-	vcpu_vmfunc(EPTP_NORMAL, 0);
-	void *ret = MmMapIoSpace(PhysicalAddress, NumberOfBytes, CacheType);
-	vcpu_vmfunc(EPTP_EXHOOK, 0);
-	return ret;
-}
-#endif
-
 static void DriverUnload(PDRIVER_OBJECT driverObject)
 {
 	UNREFERENCED_PARAMETER(driverObject);
 #ifdef ENABLE_ACPI
 	deregister_power_callback(&g_dev_ext);
-#endif
-#ifdef EPAGE_HOOK
-	ksm_unhook_page(MmMapIoSpace);
 #endif
 	VCPU_DEBUG("ret: 0x%08X\n", ksm_exit());
 #ifdef DBG
@@ -131,6 +112,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 
 	VCPU_DEBUG("We're mapped at %p (size: %d bytes (%d KB), on %d pages)\n",
 		   entry->DllBase, entry->SizeOfImage, entry->SizeOfImage / 1024, entry->SizeOfImage / PAGE_SIZE);
+	g_driver_base = (uintptr_t)entry->DllBase;
+	g_driver_size = entry->SizeOfImage;
+
 	LDR_DATA_TABLE_ENTRY *kentry = container_of(PsLoadedModuleList->Flink, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
 	g_kernel_base = kentry->DllBase;
 
@@ -150,23 +134,11 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		goto out_exit;
 #endif
 
-#ifdef EPAGE_HOOK
-	if (NT_SUCCESS(status = ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace))) {
-		/* Quick test  */
-		void *va = MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = __pa(g_kernel_base) },
-					PAGE_SIZE,
-					MmNonCached);
-		if (va) {
-			VCPU_DEBUG("Mapped kernel base at %p\n", va);
-			MmUnmapIoSpace(va, PAGE_SIZE);
-		}
-
-		return status;
-	}
-#else
-	/* Good to go...  */
-	goto out;
+#ifndef DBG
+	/* This can cause a lot of violations.  */
+	if (NT_SUCCESS(status = kprotect_init()))
 #endif
+		return status;
 
 #ifdef ENABLE_ACPI
 out_exit:

@@ -51,6 +51,9 @@
     <ClCompile Include="..\..\print.c">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="..\..\kprotect.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\asm.h">
