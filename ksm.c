@@ -139,7 +139,8 @@ static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT chang
 {
 	/* CPU Hotplug callback, a CPU just came online.  */
 	if (change_ctx->State == KeProcessorAddCompleteNotify) {
-		/* virtualize it.   */
+		VCPU_DEBUG_RAW("New processor\n");
+
 		NTSTATUS status = __ksm_init_cpu(&ksm);
 		if (!NT_SUCCESS(status))
 			*op_status = status;
@@ -149,7 +150,7 @@ static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT chang
 STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
 NTSTATUS ksm_init(void)
 {
-	NTSTATUS status;
+	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	int info[4];
 
 	__cpuid(info, 1);
@@ -162,13 +163,13 @@ NTSTATUS ksm_init(void)
 	if (!ept_check_capabilitiy())
 		return STATUS_HV_FEATURE_UNAVAILABLE;
 
-	ksm.hotplug_cpu = KeRegisterProcessorChangeCallback(ksm_hotplug_cpu, &status, 0);
-	if (!ksm.hotplug_cpu)
-		return status;
-
 	/* Zero out everything (this is allocated by the kernel device driver
 	 * loader)  */
 	__stosq((unsigned long long *)&ksm, 0, sizeof(ksm) >> 3);
+
+	ksm.hotplug_cpu = KeRegisterProcessorChangeCallback(ksm_hotplug_cpu, NULL, 0);
+	if (!ksm.hotplug_cpu)
+		return status;
 
 	/* Caller cr3 (could be user)  */
 	ksm.origin_cr3 = __readcr3();
