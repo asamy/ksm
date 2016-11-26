@@ -46,7 +46,7 @@ WINVER=0x0601
 
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEP_DIR)/$*.d
 DBGFLAGS = -DDBG -O0 -ggdb
-CFLAGS = -I$(CROSS_INC) $(DBGFLAGS) -D_WIN32_WINNT=$(WINVER) -DENABLE_DBGPRINT -DENABLE_FILEPRINT \
+CFLAGS = -I$(CROSS_INC) $(DBGFLAGS) -D_WIN32_WINNT=$(WINVER) -DENABLE_DBGPRINT \
 	 -std=c99 -Wno-multichar -municode -fno-stack-protector -fms-extensions -fno-stack-check \
 	 -mno-stack-arg-probe -fno-asynchronous-unwind-tables -fno-pic
 LDFLAGS = -shared -Wl,--subsystem,native -Wl,--dynamicbase -Wl,--stack=0x6000 \
@@ -55,7 +55,7 @@ LDFLAGS = -shared -Wl,--subsystem,native -Wl,--dynamicbase -Wl,--stack=0x6000 \
 	  -Wl,--enable-stdcall-fixup -nostartfiles -nostdlib
 LIBS = -L$(CROSS_LIB) -lntoskrnl -lhal -lmingwex
 
-SRC = acpi.c ept.c exit.c htable.c ksm.c main.c page.c print.c vcpu.c
+SRC = acpi.c ept.c exit.c htable.c ksm.c kprotect.c main.c page.c print.c vcpu.c
 ASM = x64.S
 
 BIN_DIR = bin

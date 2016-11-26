@@ -21,8 +21,19 @@
 /*
  * A stupid kernel debug printing interface so that we don't hang
  * the kernel when we are inside VMX root.
+ * 
+ * Fileprint: workaround stupid error due to ntifs under MinGW-w64:
+ *	ntifs.h: error flexible array in union
+ *
+ * As far as I know, the only fix would be editing the ntifs.h file
+ * itself by and just replacing [] with [0] will fix it.
 */
+#ifdef ENABLE_FILEPRINT
 #include <ntifs.h>
+#else
+#include <ntddk.h>
+#endif
+
 #include <intrin.h>
 #ifdef _MSC_VER
 #include <ntstrsafe.h>
