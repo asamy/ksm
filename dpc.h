@@ -19,11 +19,6 @@
 #ifndef __KERNEL_DPC_H
 #define __KERNEL_DPC_H
 
-#ifndef _MSC_VER
-#define _In_
-#define _In_opt_
-#endif
-
 NTKERNELAPI
 #ifndef __GNUC__
 _IRQL_requires_max_(APC_LEVEL)
@@ -66,10 +61,11 @@ static NTSTATUS __g_dpc_logical_rval = 0;
 		KeSignalCallDpcDone(sys0);	\
 	}	\
 
-#define STATIC_CALL_DPC(name, ...) do {	\
+#define STATIC_CALL_DPC(name, ctx) do {	\
 	__g_dpc_logical_rval = 0;	\
-	KeGenericCallDpc(__percpu_##name, __VA_ARGS__);	\
+	KeGenericCallDpc(__percpu_##name, (ctx));	\
 } while (0)
 #define STATIC_DPC_RET() 	__g_dpc_logical_rval
 
 #endif
+
