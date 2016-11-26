@@ -209,8 +209,8 @@ NTSTATUS print_init(void)
 		return status;
 	}
 
-	ExDeleteResourceLite(&resource);
 #ifdef ENABLE_FILEPRINT
+	ExDeleteResourceLite(&resource);
 err_file:
 	ZwClose(file);
 #endif
@@ -227,8 +227,8 @@ void print_exit(void)
 	while (!exited)
 		cpu_relax();
 
-	ExDeleteResourceLite(&resource);
 #ifdef ENABLE_FILEPRINT
+	ExDeleteResourceLite(&resource);
 	ZwClose(file);
 #endif
 }
