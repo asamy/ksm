@@ -884,12 +884,6 @@ fault:
 static inline uintptr_t vcpu_read_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst,
 					   u64 *gpa, u64 *hpa, u32 mask)
 {
-	if (inst & (1 << 10)) {
-		/* register not allowed  */
-		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
-		return 0;
-	}
-
 	uintptr_t base = 0;
 	if (!((inst >> 27) & 1))
 		base = ksm_read_reg(vcpu, (inst >> 23) & 15);
@@ -1147,9 +1141,15 @@ static bool vcpu_handle_vmclear(struct vcpu *vcpu)
 	if (!nested_is_root(vcpu))
 		goto out;
 
+	u64 vmx = vmcs_read(VMX_INSTRUCTION_INFO);
+	if ((vmx >> 10) & 1) {
+		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+		goto out;
+	}
+
 	gva = vcpu_read_vmx_addr(vcpu,
 				 vmcs_read(EXIT_QUALIFICATION),
-				 vmcs_read(VMX_INSTRUCTION_INFO),
+				 vmx,
 				 &gpa,
 				 &hpa,
 				 PAGE_PRESENT | PAGE_WRITE);
@@ -1210,9 +1210,15 @@ static bool vcpu_handle_vmptrld(struct vcpu *vcpu)
 	if (!nested_is_root(vcpu))
 		goto out;
 
+	u64 vmx = vmcs_read(VMX_INSTRUCTION_INFO);
+	if ((vmx >> 10) & 1) {
+		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+		goto out;
+	}
+
 	gva = vcpu_read_vmx_addr(vcpu,
 				 vmcs_read(EXIT_QUALIFICATION),
-				 vmcs_read(VMX_INSTRUCTION_INFO),
+				 vmx,
 				 &gpa,
 				 &hpa,
 				 PAGE_PRESENT | PAGE_WRITE);
@@ -1248,6 +1254,44 @@ out:
 	return true;
 }
 
+static bool vcpu_handle_vmptrst(struct vcpu *vcpu)
+{
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	u64 gpa = 0;
+	u64 gva = 0;
+	u64 hpa = 0;
+
+	if (!nested_is_root(vcpu))
+		goto out;
+
+	u64 vmx = vmcs_read(VMX_INSTRUCTION_INFO);
+	if ((vmx >> 10) & 1) {
+		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+		goto out;
+	}
+
+	gva = vcpu_read_vmx_addr(vcpu,
+				 vmcs_read(EXIT_QUALIFICATION),
+				 vmx,
+				 &gpa,
+				 &hpa,
+				 PAGE_PRESENT | PAGE_WRITE);
+	if (!gva)
+		goto out;
+
+	void *v = kmap(hpa, PAGE_SIZE);
+	if (!v)
+		goto out;
+
+	*(u64 *)v = nested->vmcs_region;
+	kunmap(v, PAGE_SIZE);
+	vcpu_vm_succeed(vcpu);
+
+out:
+	vcpu_advance_rip(vcpu);
+	return true;
+}
+
 static bool vcpu_handle_vmread(struct vcpu *vcpu)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
@@ -1260,7 +1304,6 @@ static bool vcpu_handle_vmread(struct vcpu *vcpu)
 		goto err;
 
 	u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
-
 	u32 field = ksm_read_reg(vcpu, (inst >> 28) & 15);
 	u64 value;
 	if (!nested_vmcs_read(vmcs, field, &value)) {
@@ -1273,8 +1316,12 @@ static bool vcpu_handle_vmread(struct vcpu *vcpu)
 		goto out;
 	}
 
-	u64 exit = vmcs_read(EXIT_QUALIFICATION);
-	gva = vcpu_read_vmx_addr(vcpu, exit, inst, &gpa, &hpa, PAGE_WRITE | PAGE_PRESENT);
+	gva = vcpu_read_vmx_addr(vcpu,
+				 vmcs_read(EXIT_QUALIFICATION),
+				 inst,
+				 &gpa,
+				 &hpa,
+				 PAGE_WRITE | PAGE_PRESENT);
 	if (gva == 0)
 		goto err;
 
