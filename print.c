@@ -173,6 +173,7 @@ static void print_thread(void)
 			sleep_ms(50);
 
 		print_flush();
+		cpu_relax();
 	}
 
 	if (next_use != head_use)

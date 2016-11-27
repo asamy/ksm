@@ -17,6 +17,7 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 #include <ntddk.h>
+#include <intrin.h>
 
 #include "ksm.h"
 #include "dpc.h"

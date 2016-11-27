@@ -8,10 +8,6 @@
  *	2) injects an exception into guest
  * Otherwise it returns execution to guest.
  *
- * TODO:
- *	1) APIC virtualization
- *	2) Interrupt Queueing (currently, if it fails, it just ignores error)
- *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -115,36 +111,92 @@ static inline int vcpu_read_cpl(void)
 	return VMX_AR_DPL(ar);
 }
 
-static inline bool vcpu_check_cpl(int required)
+static inline bool vcpu_probe_cpl(int required)
 {
 	return vcpu_read_cpl() <= required;
 }
 
-static inline bool vcpu_inject_irq(size_t instr_len, u16 intr_type, u8 vector, bool has_err, u32 ec)
+static inline void vcpu_inject_pending_irq(struct vcpu *vcpu)
 {
-	u32 irq = vector | intr_type | INTR_INFO_VALID_MASK;
-	if (has_err) {
-		irq |= INTR_INFO_DELIVER_CODE_MASK;
-		__vmx_vmwrite(VM_ENTRY_EXCEPTION_ERROR_CODE, ec);
-	}
 
-	bool ret = __vmx_vmwrite(VM_ENTRY_INTR_INFO_FIELD, irq & ~INTR_INFO_RESVD_BITS_MASK) == 0;
-	if (instr_len)
-		ret &= __vmx_vmwrite(VM_ENTRY_INSTRUCTION_LEN, instr_len) == 0;
-	return ret;
 }
 
-static inline bool vcpu_inject_hardirq_noerr(u8 vector)
+typedef enum {
+	EXCEPTION_BENIGN,
+	EXCEPTION_CONTRIBUTORY,
+	EXCEPTION_PAGE_FAULT,
+} except_class_t;
+
+static inline except_class_t exception_class(u8 vec)
 {
-	return vcpu_inject_irq(vmcs_read(VM_EXIT_INSTRUCTION_LEN), INTR_TYPE_HARD_EXCEPTION,
-			       vector, false, 0);
+	switch (vec) {
+	case X86_TRAP_PF:
+		return EXCEPTION_PAGE_FAULT;
+	case X86_TRAP_DE:
+	case X86_TRAP_TS:
+	case X86_TRAP_NP:
+	case X86_TRAP_SS:
+	case X86_TRAP_GP:
+		return EXCEPTION_CONTRIBUTORY;
+	}
+
+	return EXCEPTION_BENIGN;
+}
+
+static inline void vcpu_inject_irq(struct vcpu *vcpu, size_t instr_len, u16 intr_type,
+				   u8 vector, bool has_err, u32 ec)
+{
+	/*
+	 * Queue the IRQ, no injection happens here.
+	 * In case we have contributory exceptions that follow, then
+	 * we inject the appropriate IRQ.
+	 */
+	struct pending_irq *pirq = &vcpu->irq;
+	if (pirq->pending) {
+		u8 prev_vec = pirq->bits;
+		if (prev_vec == X86_TRAP_DF) {
+			/* Triple fault  */
+			return;
+		}
+
+		except_class_t lhs = exception_class(prev_vec);
+		except_class_t rhs = exception_class(vector);
+		if ((lhs == EXCEPTION_CONTRIBUTORY && rhs == EXCEPTION_CONTRIBUTORY) ||
+		    (lhs == EXCEPTION_PAGE_FAULT && rhs != EXCEPTION_BENIGN)) {
+			/* Double fault  */
+			vector = X86_TRAP_DF;
+			has_err = true;
+			ec = 0;
+		}
+	}
+
+	u32 irq = vector | intr_type | INTR_INFO_VALID_MASK;
+	if (has_err)
+		irq |= INTR_INFO_DELIVER_CODE_MASK;
+
+	pirq->pending = true;
+	pirq->err = ec;
+	pirq->instr_len = instr_len;
+	pirq->bits = irq & ~INTR_INFO_RESVD_BITS_MASK;
+}
+
+static inline void vcpu_inject_hardirq_noerr(struct vcpu *vcpu, u8 vector)
+{
+	return vcpu_inject_irq(vcpu, vmcs_read(VM_EXIT_INSTRUCTION_LEN),
+			       INTR_TYPE_HARD_EXCEPTION, vector, false, 0);
+}
+
+static inline void vcpu_inject_hardirq(struct vcpu *vcpu, u8 vector, u32 err)
+{
+	return vcpu_inject_irq(vcpu, vmcs_read(VM_EXIT_INSTRUCTION_LEN),
+			       INTR_TYPE_HARD_EXCEPTION, vector, true, err);
 }
 
 static inline void vcpu_advance_rip(struct vcpu *vcpu)
 {
 	if (vcpu->eflags & X86_EFLAGS_TF) {
-		vcpu_inject_hardirq_noerr(X86_TRAP_DB);
-		if (vcpu_check_cpl(0)) {
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_DB);
+		if (vcpu_probe_cpl(0)) {
 			__writedr(6, __readdr(6) | DR6_BS | DR6_RTM);
 			__writedr(7, __readdr(7) & ~DR7_GD);
 
@@ -164,7 +216,7 @@ static inline void vcpu_advance_rip(struct vcpu *vcpu)
 		      interruptibility & ~(GUEST_INTR_STATE_MOV_SS | GUEST_INTR_STATE_STI));
 }
 
-static inline bool vcpu_inject_ve(struct vcpu *vcpu)
+static inline void vcpu_inject_ve(struct vcpu *vcpu)
 {
 	/*
 	 * Shouldn't really call this function at all unless
@@ -194,13 +246,13 @@ static inline bool vcpu_inject_ve(struct vcpu *vcpu)
 	__vmx_vmread(GUEST_LINEAR_ADDRESS, &info->gla);
 	__vmx_vmread(EXIT_QUALIFICATION, &info->exit);
 
-	return vcpu_inject_hardirq_noerr(X86_TRAP_VE);
+	return vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_VE);
 }
 
-static inline bool vcpu_inject_pf(struct vcpu *vcpu, u64 gla, u32 ec)
+static inline void vcpu_inject_pf(struct vcpu *vcpu, u64 gla, u32 ec)
 {
 	__writecr2(gla);	/* XXX  */
-	return vcpu_inject_irq(0,
+	return vcpu_inject_irq(vcpu, 0,
 			       INTR_TYPE_HARD_EXCEPTION,
 			       X86_TRAP_PF,
 			       true,
@@ -233,8 +285,7 @@ static bool vcpu_handle_except_nmi(struct vcpu *vcpu)
 
 	bool has_err = intr_info & INTR_INFO_DELIVER_CODE_MASK;
 	u32 err = vmcs_read32(IDT_VECTORING_ERROR_CODE);
-	if (!vcpu_inject_irq(instr_len, intr_type, vector, has_err, err))
-		VCPU_BUGCHECK(VCPU_IRQ_NOT_HANDLED, vcpu->ip, intr_type, vector);
+	vcpu_inject_irq(vcpu, instr_len, intr_type, vector, has_err, err);
 
 	VCPU_TRACER_END();
 	return true;
@@ -364,7 +415,7 @@ static bool vcpu_handle_vmfunc(struct vcpu *vcpu)
 	VCPU_TRACER_START();
 	VCPU_DEBUG("vmfunc caused VM-exit!  func is %d eptp index is %d\n",
 		   ksm_read_reg32(vcpu, REG_AX), ksm_read_reg32(vcpu, REG_CX));
-	vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+	vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END()
 	return true;
@@ -523,7 +574,7 @@ static inline bool vcpu_emulate_vmfunc(struct vcpu *vcpu, struct h_vmfunc *vmfun
 	/* Emulate a VMFUNC due it to not being supported natively.  */
 	if (vmfunc->func >= 64 || !(vcpu->vm_func_ctl & (1 << vmfunc->func)) ||
 	   (vmfunc->func == 0 && vmfunc->eptp >= EPTP_USED)) {
-		vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 		return false;
 	}
 
@@ -535,8 +586,8 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
-	if (!vcpu_check_cpl(0)) {
-		vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+	if (!vcpu_probe_cpl(0)) {
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 		goto out;
 	}
 
@@ -567,7 +618,7 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 		break;
 	default:
 		VCPU_DEBUG("unsupported hypercall: %d\n", nr);
-		vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 		break;
 	}
 
@@ -611,7 +662,7 @@ static inline uintptr_t vcpu_read_vmx_addr(struct vcpu *vcpu, u64 exit, u64 inst
 {
 	if (inst & (1 << 10)) {
 		/* register not allowed  */
-		vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 		return 0;
 	}
 
@@ -635,7 +686,7 @@ static inline uintptr_t vcpu_read_vmx_addr(struct vcpu *vcpu, u64 exit, u64 inst
 		gva &= 0xFFFFFFFF;
 
 	if ((gva & (PAGE_SIZE - 1)) != 0 || (gva >> 48) != 0) {
-		vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 		return 0;
 	}
 
@@ -709,7 +760,7 @@ static inline bool vcpu_nested_root_checks(struct vcpu *vcpu)
 {
 	/* Typical VMX checks, make sure we're inside the nested hypervisor's "root".  */
 	if (!vcpu->nested_vcpu.current_vmxon) {
-		vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 		return false;
 	}
 
@@ -831,9 +882,9 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 static bool vcpu_handle_vmx(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
-	if (!vcpu_check_cpl(0)) {
+	if (!vcpu_probe_cpl(0)) {
 		/* all of these instructions require CPL 0  */
-		vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 		goto out;
 	}
 
@@ -992,13 +1043,13 @@ static bool vcpu_handle_vmx(struct vcpu *vcpu)
 	case EXIT_REASON_VMON:
 	{
 		if (!(vmcs_read(GUEST_CR4) & X86_CR4_VMXE)) {
-			vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+			vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 			goto out;
 		}
 
 		const u64 required_feat = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
 		if ((nested->feat_ctl & required_feat) != required_feat) {
-			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 			goto out;
 		}
 
@@ -1019,7 +1070,7 @@ static bool vcpu_handle_vmx(struct vcpu *vcpu)
 		struct vmcs *vmxon = (struct vmcs *)gva;
 		struct vmcs *ours = &vcpu->vmxon;
 		if (vmxon->revision_id != ours->revision_id) {
-			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 			goto out;
 		}
 
@@ -1038,7 +1089,7 @@ static bool vcpu_handle_vmx(struct vcpu *vcpu)
 	VCPU_DEBUG("VMX instruction succeeded\n");
 	vcpu_vm_succeed(vcpu);
 #else
-	vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+	vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 #endif
 out:
 	vcpu_advance_rip(vcpu);
@@ -1063,7 +1114,7 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 		case 0:
 			if (*val & vcpu->cr0_guest_host_mask) {
 				/* unsupported  */
-				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+				vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 			} else {
 				__vmx_vmwrite(GUEST_CR0, *val);
 				__vmx_vmwrite(CR0_READ_SHADOW, *val);
@@ -1087,7 +1138,7 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 				}
 #endif
 
-				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+				vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 			} else {
 				__vmx_vmwrite(GUEST_CR4, *val);
 				__vmx_vmwrite(CR4_READ_SHADOW, *val);
@@ -1151,12 +1202,12 @@ static bool vcpu_handle_dr_access(struct vcpu *vcpu)
 	 */
 	u64 cr4 = vmcs_read(GUEST_CR4);
 	if (cr4 & X86_CR4_DE && (dr == 4 || dr == 5)) {
-		vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 		goto out;
 	}
 
-	if (!vcpu_check_cpl(0)) {
-		vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+	if (!vcpu_probe_cpl(0)) {
+		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 		goto out;
 	}
 
@@ -1182,13 +1233,13 @@ static bool vcpu_handle_dr_access(struct vcpu *vcpu)
 		case 5: __writedr(5, *reg); break;
 		case 6:
 			if ((*reg >> 32) != 0)
-				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+				vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 			else
 				__writedr(6, *reg);
 			break;
 		case 7:
 			if ((*reg >> 32) != 0)
-				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+				vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 			else
 				__vmx_vmwrite(GUEST_DR7, *reg);
 			break;
@@ -1331,7 +1382,7 @@ static bool vcpu_handle_msr_read(struct vcpu *vcpu)
 	default:
 		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC) {
 #ifndef NESTED_VMX
-			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 #else
 			val = __readmsr(msr);
 			if (msr == MSR_IA32_VMX_PROCBASED_CTLS2)
@@ -1381,7 +1432,7 @@ static bool vcpu_handle_msr_write(struct vcpu *vcpu)
 		break;
 	case MSR_IA32_DEBUGCTLMSR:
 		if (val & ~(DEBUGCTLMSR_LBR | DEBUGCTLMSR_BTF))
-			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 		else
 			__vmx_vmwrite(GUEST_IA32_DEBUGCTL, val);
 		break;
@@ -1389,19 +1440,19 @@ static bool vcpu_handle_msr_write(struct vcpu *vcpu)
 #ifdef NESTED_VMX
 		if (val & ~(FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_LMCE |
 			    FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
-			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 		else
 			vcpu->nested_vcpu.feat_ctl = val;
 #else
 		if (val & (FEATURE_CONTROL_VMXON_ENABLED_INSIDE_SMX |
 			   FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
-			vcpu_inject_hardirq_noerr(X86_TRAP_UD);
+			vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 #endif
 		break;
 	default:
 		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC) {
 			/* VMX MSRs are readonly.  */
-			vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 		} else if (msr >= 0x800 && msr <= 0x83F) {
 			/* x2APIC   */
 			u32 offset = (msr - 0x800) * 0x10;
@@ -1411,7 +1462,7 @@ static bool vcpu_handle_msr_write(struct vcpu *vcpu)
 			case 0x80D:	/* Logical Destination Register  */
 			case 0x839:	/* APIC Timer: Current count register  */
 			case 0x83F:	/* Self IPI  */
-				vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+				vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 				break;
 			case 0x830:
 				/* ICR special case: 64-bit write:  */
@@ -1419,7 +1470,7 @@ static bool vcpu_handle_msr_write(struct vcpu *vcpu)
 				break;
 			default:
 				if ((val >> 32) != 0 || (msr >= 0x810 && msr <= 0x827)) /* ISR through IRR  */
-					vcpu_inject_hardirq_noerr(X86_TRAP_GP);
+					vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 				else
 					__lapic_write((u64)vcpu->vapic_page, offset, val);
 				break;
@@ -1790,6 +1841,20 @@ bool vcpu_handle_exit(u64 *regs)
 		 */
 		__invept_all();
 		__invvpid_all();
+	} else {
+		struct pending_irq *irq = &vcpu->irq;
+		if (irq->pending) {
+			bool injected = false;
+
+			if (irq->bits & INTR_INFO_DELIVER_CODE_MASK)
+				injected = __vmx_vmwrite(VM_ENTRY_EXCEPTION_ERROR_CODE, irq->err) == 0;
+
+			injected &= __vmx_vmwrite(VM_ENTRY_INTR_INFO_FIELD, irq->bits) == 0;
+			if (irq->instr_len)
+				injected &= __vmx_vmwrite(VM_ENTRY_INSTRUCTION_LEN, irq->instr_len) == 0;
+
+			irq->pending = !injected;
+		}
 	}
 
 	return ret;

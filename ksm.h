@@ -282,6 +282,13 @@ static inline bool nested_entered(const struct nested_vcpu *nested)
 }
 #endif
 
+struct pending_irq {
+	bool pending;
+	u32 err;
+	u32 bits;
+	size_t instr_len;
+};
+
 #ifdef ENABLE_PML
 #define PML_MAX_ENTRIES		512
 #endif
@@ -303,6 +310,8 @@ struct vcpu {
 	u64 ip;
 	u64 cr0_guest_host_mask;
 	u64 cr4_guest_host_mask;
+	/* Pending IRQ  */
+	struct pending_irq irq;
 	struct ept ept;
 	/* Guest IDT (emulated)  */
 	struct gdtr g_idt;
@@ -315,6 +324,11 @@ struct vcpu {
 	struct nested_vcpu nested_vcpu;
 #endif
 };
+
+static inline bool vcpu_has_pending_irq(const struct vcpu *vcpu)
+{
+	return vcpu->irq.pending;
+}
 
 static inline void ksm_write_reg16(struct vcpu *vcpu, int reg, u16 val)
 {
