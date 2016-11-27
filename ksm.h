@@ -251,19 +251,19 @@ struct ept {
 };
 
 #ifdef NESTED_VMX
-#define VMCS_LAUNCH_STATE_CLEAR		0
-#define VMCS_LAUNCH_STATE_LAUNCHED	1
+#define VMCS_LAUNCH_STATE_NONE		0
+#define VMCS_LAUNCH_STATE_CLEAR		1
+#define VMCS_LAUNCH_STATE_LAUNCHED	2
 
 struct nested_vcpu {
 	bool vmxon;
-	/* The following are all physical addresses.  */
 	uintptr_t vmxon_region;
 	uintptr_t vmcs_region;
 	uintptr_t current_vmxon;
-	uintptr_t vmcs;
 	u32 launch_state;
 	u64 feat_ctl;
 	bool inside_guest;
+	struct vmcs *vmcs;
 };
 
 static inline void nested_enter(struct nested_vcpu *nested)
