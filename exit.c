@@ -890,6 +890,7 @@ out:
 	return true;
 }
 
+#ifdef NESTED_VMX
 static bool vcpu_handle_vmclear(struct vcpu *vcpu)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
@@ -1156,6 +1157,7 @@ out:
 	vcpu_advance_rip(vcpu);
 	return true;
 }
+#endif
 
 static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 {
