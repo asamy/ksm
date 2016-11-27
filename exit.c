@@ -116,11 +116,6 @@ static inline bool vcpu_probe_cpl(int required)
 	return vcpu_read_cpl() <= required;
 }
 
-static inline void vcpu_inject_pending_irq(struct vcpu *vcpu)
-{
-
-}
-
 typedef enum {
 	EXCEPTION_BENIGN,
 	EXCEPTION_CONTRIBUTORY,
@@ -888,212 +883,277 @@ static bool vcpu_handle_vmx(struct vcpu *vcpu)
 		goto out;
 	}
 
-#ifdef NESTED_VMX
+	vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+out:
+	vcpu_advance_rip(vcpu);
+	VCPU_TRACER_END();
+	return true;
+}
+
+static bool vcpu_handle_vmclear(struct vcpu *vcpu)
+{
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	uintptr_t vmcs = nested->vmcs;
-	u64 gpa = 0;	/* shit compiler  */
-	u64 gva = 0;	/* shit compiler (x2)  */
-	switch (curr_handler) {
-	case EXIT_REASON_VMCLEAR:
-		if (!vcpu_nested_root_checks(vcpu))
-			goto out;
+	u64 gpa = 0;
+	u64 gva = 0;
 
-		gva = vcpu_read_vmx_addr(vcpu,
-					 vmcs_read(EXIT_QUALIFICATION),
-					 vmcs_read(VMX_INSTRUCTION_INFO),
-					 &gpa,
-					 PAGE_PRESENT | PAGE_WRITE);
-		if (!gva)
-			goto out;
+	if (!vcpu_nested_root_checks(vcpu))
+		goto out;
 
-		if (gpa == nested->vmxon_region) {
-			vcpu_vm_fail_valid(vcpu, VMXERR_VMCLEAR_VMXON_POINTER);
-			goto out;
-		}
+	gva = vcpu_read_vmx_addr(vcpu,
+				 vmcs_read(EXIT_QUALIFICATION),
+				 vmcs_read(VMX_INSTRUCTION_INFO),
+				 &gpa,
+				 PAGE_PRESENT | PAGE_WRITE);
+	if (!gva)
+		goto out;
 
-		/* clear VMCS launch state  */
-		nested->launch_state = VMCS_LAUNCH_STATE_CLEAR;
-		break;
-	case EXIT_REASON_VMLAUNCH:
-		if (!vcpu_nested_root_checks(vcpu))
-			goto out;
-
-		if (nested->launch_state != VMCS_LAUNCH_STATE_CLEAR) {
-			/* must be clear prior to call to vmlaunch  */
-			vcpu_vm_fail_valid(vcpu, VMXERR_VMLAUNCH_NONCLEAR_VMCS);
-			goto out;
-		}
-
-		vcpu_enter_nested_guest(vcpu);
-		break;
-	case EXIT_REASON_VMPTRLD:
-	{
-		if (!vcpu_nested_root_checks(vcpu) || vmcs == 0)
-			goto out;
-
-		gva = vcpu_read_vmx_addr(vcpu,
-					 vmcs_read(EXIT_QUALIFICATION),
-					 vmcs_read(VMX_INSTRUCTION_INFO),
-					 &gpa,
-					 PAGE_PRESENT | PAGE_WRITE);
-		if (!gva)
-			goto out;
-
-		if (gpa == nested->vmxon_region) {
-			vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_VMXON_POINTER);
-			goto out;
-		}
-
-		struct vmcs *tmp = (struct vmcs *)gva;
-		if (tmp->revision_id != vcpu->vmcs.revision_id) {
-			vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_INCORRECT_VMCS_REVISION_ID);
-			goto out;
-		}
-
-		/* Clear out "Shadow" VMCS  */
-		memset(&tmp->data[0], 0, PAGE_SIZE - offsetof(struct vmcs, data));
-
-		nested->vmcs = gva;
-		nested->vmcs_region = gpa;
-		break;
+	if (gpa == nested->vmxon_region) {
+		vcpu_vm_fail_valid(vcpu, VMXERR_VMCLEAR_VMXON_POINTER);
+		goto out;
 	}
-	case EXIT_REASON_VMREAD:
-	{
-		if (!vcpu_nested_root_checks(vcpu) || vmcs == 0)
-			goto out;
 
-		u64 exit = vmcs_read(EXIT_QUALIFICATION);
-		u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
+	nested->launch_state = VMCS_LAUNCH_STATE_CLEAR;
+	vcpu_vm_succeed(vcpu);
 
-		u64 field = ksm_read_reg(vcpu, (inst >> 28) & 15);
-		u64 value = nested_vmcs_read(vmcs, field);
-		if (value == 0) {
-			vcpu_vm_fail_valid(vcpu, VMXERR_UNSUPPORTED_VMCS_COMPONENT);
-			goto out;
-		}
+out:
+	vcpu_advance_rip(vcpu);
+	return true;
+}
 
-		if ((inst >> 10) & 1) {
-			ksm_write_reg(vcpu, (inst >> 3) & 15, value);
-			break;
-		}
+static bool vcpu_handle_vmlaunch(struct vcpu *vcpu)
+{
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	uintptr_t vmcs = nested->vmcs;
+	u64 gpa = 0;
+	u64 gva = 0;
 
-		gva = vcpu_read_vmx_addr(vcpu, exit, inst, &gpa, PAGE_WRITE | PAGE_PRESENT);
+	if (!vcpu_nested_root_checks(vcpu))
+		goto out;
+
+	if (nested->launch_state != VMCS_LAUNCH_STATE_CLEAR) {
+		/* must be clear prior to call to vmlaunch  */
+		vcpu_vm_fail_valid(vcpu, VMXERR_VMLAUNCH_NONCLEAR_VMCS);
+		goto out;
+	}
+
+	vcpu_enter_nested_guest(vcpu);
+out:
+	vcpu_advance_rip(vcpu);
+	return true;
+}
+
+static bool vcpu_handle_vmptrld(struct vcpu *vcpu)
+{
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	uintptr_t vmcs = nested->vmcs;
+	u64 gpa = 0;
+	u64 gva = 0;
+
+	if (!vcpu_nested_root_checks(vcpu) || vmcs == 0)
+		goto out;
+
+	gva = vcpu_read_vmx_addr(vcpu,
+				 vmcs_read(EXIT_QUALIFICATION),
+				 vmcs_read(VMX_INSTRUCTION_INFO),
+				 &gpa,
+				 PAGE_PRESENT | PAGE_WRITE);
+	if (!gva)
+		goto out;
+
+	if (gpa == nested->vmxon_region) {
+		vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_VMXON_POINTER);
+		goto out;
+	}
+
+	struct vmcs *tmp = (struct vmcs *)gva;
+	if (tmp->revision_id != vcpu->vmcs.revision_id) {
+		vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_INCORRECT_VMCS_REVISION_ID);
+		goto out;
+	}
+
+	/* Clear out "Shadow" VMCS  */
+	memset(&tmp->data[0], 0, PAGE_SIZE - offsetof(struct vmcs, data));
+
+	nested->vmcs = gva;
+	nested->vmcs_region = gpa;
+	vcpu_vm_succeed(vcpu);
+
+out:
+	vcpu_advance_rip(vcpu);
+	return true;
+}
+
+static bool vcpu_handle_vmread(struct vcpu *vcpu)
+{
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	uintptr_t vmcs = nested->vmcs;
+	u64 gpa = 0;
+	u64 gva = 0;
+
+	if (!vcpu_nested_root_checks(vcpu) || vmcs == 0)
+		goto err;
+
+	u64 exit = vmcs_read(EXIT_QUALIFICATION);
+	u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
+
+	u64 field = ksm_read_reg(vcpu, (inst >> 28) & 15);
+	u64 value = nested_vmcs_read(vmcs, field);
+	if (value == 0) {
+		vcpu_vm_fail_valid(vcpu, VMXERR_UNSUPPORTED_VMCS_COMPONENT);
+		goto err;
+	}
+
+	if ((inst >> 10) & 1) {
+		ksm_write_reg(vcpu, (inst >> 3) & 15, value);
+		goto out;
+	}
+
+	gva = vcpu_read_vmx_addr(vcpu, exit, inst, &gpa, PAGE_WRITE | PAGE_PRESENT);
+	if (gva == 0)
+		goto out;
+
+	VCPU_ENTER_GUEST();
+	*(u64 *)gva = value;
+	VCPU_EXIT_GUEST();
+
+out:
+	vcpu_vm_succeed(vcpu);
+err:
+	vcpu_advance_rip(vcpu);
+	return true;
+}
+
+static bool vcpu_handle_vmresume(struct vcpu *vcpu)
+{
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	uintptr_t vmcs = nested->vmcs;
+	u64 gpa = 0;
+	u64 gva = 0;
+
+	if (!vcpu_nested_root_checks(vcpu))
+		goto out;
+
+	/* Must be launched prior to vmresume...  */
+	if (nested->launch_state != VMCS_LAUNCH_STATE_LAUNCHED) {
+		vcpu_vm_fail_valid(vcpu, VMXERR_VMRESUME_NONLAUNCHED_VMCS);
+		goto out;
+	}
+
+	vcpu_enter_nested_guest(vcpu);
+out:
+	vcpu_advance_rip(vcpu);
+	return true;
+}
+
+static bool vcpu_handle_vmwrite(struct vcpu *vcpu)
+{
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	uintptr_t vmcs = nested->vmcs;
+	u64 gpa = 0;
+	u64 gva = 0;
+
+	if (!vcpu_nested_root_checks(vcpu) || vmcs == 0)
+		goto out;
+
+	u64 exit = vmcs_read(EXIT_QUALIFICATION);
+	u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
+
+	u64 field = ksm_read_reg(vcpu, (inst >> 28) & 15);
+	if (field_ro(field)) {
+		vcpu_vm_fail_valid(vcpu, VMXERR_VMWRITE_READ_ONLY_VMCS_COMPONENT);
+		goto out;
+	}
+
+	u64 value;
+	if ((inst >> 10) & 1) {
+		/* register  */
+		value = ksm_read_reg(vcpu, (inst >> 3) & 15);
+	} else {
+		/* memory address  */
+		gva = vcpu_read_vmx_addr(vcpu, exit, inst, &gpa, PAGE_PRESENT);
 		if (gva == 0)
 			goto out;
 
 		VCPU_ENTER_GUEST();
-		*(u64 *)gva = value;
+		value = *(u64 *)gva;
 		VCPU_EXIT_GUEST();
-		break;
-	}
-	case EXIT_REASON_VMRESUME:
-		if (!vcpu_nested_root_checks(vcpu))
-			goto out;
-
-		/* Must be launched prior to vmresume...  */
-		if (nested->launch_state != VMCS_LAUNCH_STATE_LAUNCHED) {
-			vcpu_vm_fail_valid(vcpu, VMXERR_VMRESUME_NONLAUNCHED_VMCS);
-			goto out;
-		}
-
-		vcpu_enter_nested_guest(vcpu);
-		break;
-	case EXIT_REASON_VMWRITE:
-	{
-		if (!vcpu_nested_root_checks(vcpu) || vmcs == 0)
-			goto out;
-
-		u64 exit = vmcs_read(EXIT_QUALIFICATION);
-		u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
-
-		u64 field = ksm_read_reg(vcpu, (inst >> 28) & 15);
-		if (field_ro(field)) {
-			vcpu_vm_fail_valid(vcpu, VMXERR_VMWRITE_READ_ONLY_VMCS_COMPONENT);
-			goto out;
-		}
-
-		u64 value;
-		if ((inst >> 10) & 1) {
-			/* register  */
-			value = ksm_read_reg(vcpu, (inst >> 3) & 15);
-		} else {
-			/* memory address  */
-			gva = vcpu_read_vmx_addr(vcpu, exit, inst, &gpa, PAGE_PRESENT);
-			if (gva == 0)
-				goto out;
-
-			VCPU_ENTER_GUEST();
-			value = *(u64 *)gva;
-			VCPU_EXIT_GUEST();
-		}
-
-		if (!nested_vmcs_write(vmcs, field, value)) {
-			vcpu_vm_fail_valid(vcpu, VMXERR_UNSUPPORTED_VMCS_COMPONENT);
-			goto out;
-		}
-
-		break;
-	}
-	case EXIT_REASON_VMOFF:
-		/* can only be executed from root  */
-		if (!vcpu_nested_root_checks(vcpu) || !nested->vmxon)
-			goto out;
-
-		break;
-	case EXIT_REASON_VMON:
-	{
-		if (!(vmcs_read(GUEST_CR4) & X86_CR4_VMXE)) {
-			vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
-			goto out;
-		}
-
-		const u64 required_feat = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
-		if ((nested->feat_ctl & required_feat) != required_feat) {
-			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
-			goto out;
-		}
-
-		if (nested->current_vmxon) {
-			/* In root  */
-			vcpu_vm_fail_valid(vcpu, VMXERR_VMXON_IN_VMX_ROOT_OPERATION);
-			goto out;
-		}
-
-		gva = vcpu_read_vmx_addr(vcpu,
-					 vmcs_read(EXIT_QUALIFICATION),
-					 vmcs_read(VMX_INSTRUCTION_INFO),
-					 &gpa,
-					 PAGE_PRESENT);
-		if (!gva)
-			goto out;
-
-		struct vmcs *vmxon = (struct vmcs *)gva;
-		struct vmcs *ours = &vcpu->vmxon;
-		if (vmxon->revision_id != ours->revision_id) {
-			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
-			goto out;
-		}
-
-		/* Mark them as inside root now  */
-		nested->vmxon_region = gpa;
-		nested->current_vmxon = gpa;
-		nested->vmxon = true;
-		break;
-	}
-	default:
-		/* FIXME: invept/invvpid  */
-		break;
 	}
 
-	/* succeeded  */
-	VCPU_DEBUG("VMX instruction succeeded\n");
+	if (!nested_vmcs_write(vmcs, field, value)) {
+		vcpu_vm_fail_valid(vcpu, VMXERR_UNSUPPORTED_VMCS_COMPONENT);
+		goto out;
+	}
+
 	vcpu_vm_succeed(vcpu);
-#else
-	vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
-#endif
 out:
 	vcpu_advance_rip(vcpu);
-	VCPU_TRACER_END();
+	return true;
+}
+
+static bool vcpu_handle_vmoff(struct vcpu *vcpu)
+{
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	uintptr_t vmcs = nested->vmcs;
+	u64 gpa = 0;
+	u64 gva = 0;
+
+	/* can only be executed from root  */
+	if (!vcpu_nested_root_checks(vcpu) || !nested->vmxon)
+		goto out;
+
+	vcpu_vm_succeed(vcpu);
+out:
+	vcpu_advance_rip(vcpu);
+	return true;
+}
+
+static bool vcpu_handle_vmon(struct vcpu *vcpu)
+{
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	uintptr_t vmcs = nested->vmcs;
+	u64 gpa = 0;
+	u64 gva = 0;
+
+	if (!(vmcs_read(GUEST_CR4) & X86_CR4_VMXE)) {
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+		goto out;
+	}
+
+	const u64 required_feat = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
+	if ((nested->feat_ctl & required_feat) != required_feat) {
+		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+		goto out;
+	}
+
+	if (nested->current_vmxon) {
+		/* In root  */
+		vcpu_vm_fail_valid(vcpu, VMXERR_VMXON_IN_VMX_ROOT_OPERATION);
+		goto out;
+	}
+
+	gva = vcpu_read_vmx_addr(vcpu,
+				 vmcs_read(EXIT_QUALIFICATION),
+				 vmcs_read(VMX_INSTRUCTION_INFO),
+				 &gpa,
+				 PAGE_PRESENT);
+	if (!gva)
+		goto out;
+
+	struct vmcs *vmxon = (struct vmcs *)gva;
+	struct vmcs *ours = &vcpu->vmxon;
+	if (vmxon->revision_id != ours->revision_id) {
+		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+		goto out;
+	}
+
+	/* Mark them as inside root now  */
+	nested->vmxon_region = gpa;
+	nested->current_vmxon = gpa;
+	nested->vmxon = true;
+	vcpu_vm_succeed(vcpu);
+out:
+	vcpu_advance_rip(vcpu);
 	return true;
 }
 
@@ -1574,7 +1634,6 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 		addr &= 0xFFFFFFFF;
 
 	VCPU_DEBUG("GDT/IDT access, addr [%p] (%p, %d, %d)\n", addr, base, index, displacement);
-
 	VCPU_ENTER_GUEST();
 	struct gdtr *dt = (struct gdtr *)addr;
 	switch ((exit >> 28) & 3) {
@@ -1628,6 +1687,7 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 		addr = base + index + displacement;
 		if (((exit >> 7) & 7) == 1)
 			addr &= 0xFFFFFFFF;
+
 		VCPU_DEBUG("LDT/TR access, addr [%p] (%p, %d, %d)\n", addr, base, index, displacement);
 	}
 
@@ -1754,6 +1814,17 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_RDTSC] = vcpu_handle_rdtsc,
 	[EXIT_REASON_RSM] = vcpu_nop,
 	[EXIT_REASON_VMCALL] = vcpu_handle_vmcall,
+#ifdef NESTED_VMX
+	[EXIT_REASON_VMCLEAR] = vcpu_handle_vmclear,
+	[EXIT_REASON_VMLAUNCH] = vcpu_handle_vmlaunch,
+	[EXIT_REASON_VMPTRLD] = vcpu_handle_vmptrld,
+	[EXIT_REASON_VMPTRST] = vcpu_handle_vmx,
+	[EXIT_REASON_VMREAD] = vcpu_handle_vmread,
+	[EXIT_REASON_VMRESUME] = vcpu_handle_vmresume,
+	[EXIT_REASON_VMWRITE] = vcpu_handle_vmwrite,
+	[EXIT_REASON_VMOFF] = vcpu_handle_vmoff,
+	[EXIT_REASON_VMON] = vcpu_handle_vmon,
+#else
 	[EXIT_REASON_VMCLEAR] = vcpu_handle_vmx,
 	[EXIT_REASON_VMLAUNCH] = vcpu_handle_vmx,
 	[EXIT_REASON_VMPTRLD] = vcpu_handle_vmx,
@@ -1763,6 +1834,7 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_VMWRITE] = vcpu_handle_vmx,
 	[EXIT_REASON_VMOFF] = vcpu_handle_vmx,
 	[EXIT_REASON_VMON] = vcpu_handle_vmx,
+#endif
 	[EXIT_REASON_CR_ACCESS] = vcpu_handle_cr_access,
 	[EXIT_REASON_DR_ACCESS] = vcpu_handle_dr_access,
 	[EXIT_REASON_IO_INSTRUCTION] = vcpu_handle_io_port,
