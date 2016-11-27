@@ -131,18 +131,11 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		goto out;
 
 #ifdef ENABLE_ACPI
-	if (!NT_SUCCESS(status = register_power_callback(&g_dev_ext)))
-		goto out_exit;
+	if (NT_SUCCESS(status = register_power_callback(&g_dev_ext)))
+		goto out;
 #endif
-
-#ifndef DBG
-	/* This can cause a lot of violations.  */
-	if (NT_SUCCESS(status = kprotect_init()))
-#endif
-		return status;
 
 #ifdef ENABLE_ACPI
-out_exit:
 	ksm_exit();
 #endif
 out:
