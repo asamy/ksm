@@ -971,14 +971,19 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
 	 * VMCS).
 	 */
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
-	struct vmcs *vmcs = nested->vmcs;
+	uintptr_t vmcs = (uintptr_t)nested->vmcs;
 
 	/*
 	 * Mark it as left the nested hypervisor' guest, so we can know if the next
 	 * vm-exit came from it and not from it's guest.
 	*/
 	nested_leave(nested);
-	nested_prepare_hypervisor(vcpu, (uintptr_t)vmcs);
+	nested_prepare_hypervisor(vcpu, vmcs);
+
+	if (lapic_in_kernel() && (u16)exit_reason == EXIT_REASON_EXTERNAL_INTERRUPT &&
+	    __nested_vmcs_read(vmcs, VM_EXIT_CONTROLS) & VM_EXIT_ACK_INTR_ON_EXIT)
+		;/* FIXME  */
+
 	return true;
 }
 
@@ -1183,20 +1188,19 @@ out:
 static bool vcpu_handle_vmlaunch(struct vcpu *vcpu)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
-	if (!nested_is_root(vcpu))
-		goto out;
+	if (!nested_is_root(vcpu)) {
+		vcpu_advance_rip(vcpu);
+		return true;
+	}
 
 	if (nested->launch_state != VMCS_LAUNCH_STATE_CLEAR) {
 		/* must be clear prior to call to vmlaunch  */
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMLAUNCH_NONCLEAR_VMCS);
-		goto out;
+		vcpu_advance_rip(vcpu);
+		return true;
 	}
 
 	vcpu_enter_nested_guest(vcpu);
-	vcpu_vm_succeed(vcpu);
-
-out:
-	vcpu_advance_rip(vcpu);
 	return true;
 }
 
@@ -1342,20 +1346,20 @@ err:
 static bool vcpu_handle_vmresume(struct vcpu *vcpu)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
-	if (!nested_is_root(vcpu))
-		goto out;
+	if (!nested_is_root(vcpu)) {
+		vcpu_advance_rip(vcpu);
+		return true;
+	}
 
 	/* Must be launched prior to vmresume...  */
 	if (nested->launch_state != VMCS_LAUNCH_STATE_LAUNCHED) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMRESUME_NONLAUNCHED_VMCS);
-		goto out;
+		vcpu_advance_rip(vcpu);
+		return true;
 	}
 
 	vcpu_enter_nested_guest(vcpu);
 	vcpu_vm_succeed(vcpu);
-
-out:
-	vcpu_advance_rip(vcpu);
 	return true;
 }
 
