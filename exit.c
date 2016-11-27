@@ -1655,28 +1655,24 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 
 static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 {
-	u64 exit;
-	__vmx_vmread(VMX_INSTRUCTION_INFO, &exit);
+	size_t info = vmcs_read(VMX_INSTRUCTION_INFO);
+	size_t disp = vmcs_read(EXIT_QUALIFICATION);
+	size_t base = 0;
+	if (!((info >> 27) & 1))
+		base = ksm_read_reg(vcpu, (info >> 23) & 15);
 
-	u64 displacement;
-	__vmx_vmread(EXIT_QUALIFICATION, &displacement);
+	size_t index = 0;
+	if (!((info >> 22) & 1))
+		index = ksm_read_reg(vcpu, (info >> 18) & 15) << (info & 3);
 
-	uintptr_t base = 0;
-	if (!((exit >> 27) & 1))
-		base = ksm_read_reg(vcpu, (exit >> 23) & 15);
-
-	uintptr_t index = 0;
-	if (!((exit >> 22) & 1))
-		index = ksm_read_reg(vcpu, (exit >> 18) & 15) << (exit & 3);
-
-	uintptr_t addr = base + index + displacement;
-	if (((exit >> 7) & 7) == 1)
+	size_t addr = base + index + disp;
+	if (((info >> 7) & 7) == 1)
 		addr &= 0xFFFFFFFF;
 
-	VCPU_DEBUG("GDT/IDT access, addr [%p] (%p, %d, %d)\n", addr, base, index, displacement);
+	VCPU_DEBUG("GDT/IDT access, addr [%p] (%p, %d, %d)\n", addr, base, index, disp);
 	VCPU_ENTER_GUEST();
 	struct gdtr *dt = (struct gdtr *)addr;
-	switch ((exit >> 28) & 3) {
+	switch ((info >> 28) & 3) {
 	case 0:		/* sgdt  */
 		dt->limit = vmcs_read16(GUEST_GDTR_LIMIT);
 		dt->base = vmcs_read(GUEST_GDTR_BASE);
@@ -1703,37 +1699,34 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 
 static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 {
-	u64 exit;
-	__vmx_vmread(VMX_INSTRUCTION_INFO, &exit);
+	size_t info = vmcs_read(VMX_INSTRUCTION_INFO);
+	size_t disp = vmcs_read(EXIT_QUALIFICATION);
 
-	size_t displacement;
-	__vmx_vmread(EXIT_QUALIFICATION, &displacement);
-
-	uintptr_t addr;
-	if ((exit >> 10) & 1) {
+	size_t addr;
+	if ((info >> 10) & 1) {
 		// register
-		addr = (uintptr_t)ksm_reg(vcpu, (exit >> 3) & 15);
-		VCPU_DEBUG("LDT/TR access, addr %p\n", addr);
+		addr = (uintptr_t)ksm_reg(vcpu, (info >> 3) & 15);
+		VCPU_DEBUG("LDT/TR access, addr %p\n", info);
 	} else {
 		// base
-		uintptr_t base = 0;
-		if (!((exit >> 27) & 1))
-			base = ksm_read_reg(vcpu, (exit >> 23) & 15);
+		size_t base = 0;
+		if (!((info >> 27) & 1))
+			base = ksm_read_reg(vcpu, (info >> 23) & 15);
 
-		uintptr_t index = 0;
-		if (!((exit >> 22) & 1))
-			index = ksm_read_reg(vcpu, (exit >> 18) & 15) << (exit & 3);
+		size_t index = 0;
+		if (!((info >> 22) & 1))
+			index = ksm_read_reg(vcpu, (info >> 18) & 15) << (info & 3);
 
-		addr = base + index + displacement;
-		if (((exit >> 7) & 7) == 1)
+		addr = base + index + disp;
+		if (((info >> 7) & 7) == 1)
 			addr &= 0xFFFFFFFF;
 
-		VCPU_DEBUG("LDT/TR access, addr [%p] (%p, %d, %d)\n", addr, base, index, displacement);
+		VCPU_DEBUG("LDT/TR access, addr [%p] (%p, %d, %d)\n", addr, base, index, disp);
 	}
 
 	VCPU_ENTER_GUEST();
 	u16 *selector = (u16 *)addr;
-	switch ((exit >> 28) & 3) {
+	switch ((info >> 28) & 3) {
 	case 0:		/* sldt  */
 		*selector = vmcs_read16(GUEST_LDTR_SELECTOR);
 		break;

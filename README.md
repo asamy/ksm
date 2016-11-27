@@ -73,7 +73,6 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 - UEFI support
 - Intel TXT support
 - Nesting support (Partially implemented)
-- Interrupt queueing (currently if an injection fails, it will just ignore it, should be simple).
 
 ## Loading the driver
 
