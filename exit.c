@@ -835,6 +835,16 @@ out:
 }
 
 #ifdef NESTED_VMX
+static inline u64 gpa_to_hpa(struct vcpu *vcpu, u64 gpa)
+{
+	struct ept *ept = &vcpu->ept;
+	uintptr_t *epte = ept_pte(ept, EPT4(ept, vcpu_eptp_idx(vcpu)), gpa);
+	if (!(*epte & EPT_ACCESS_RW))
+		return 0;
+
+	return PAGE_PA(*epte);
+}
+
 static inline u64 nested_translate_gva(struct vcpu *vcpu, u64 gva, u64 *hpa, u64 mask)
 {
 	u32 ec = PGF_PRESENT;
@@ -858,12 +868,11 @@ static inline u64 nested_translate_gva(struct vcpu *vcpu, u64 gva, u64 *hpa, u64
 
 	if ((*pte & mask) == mask) {
 		u64 gpa = PAGE_PA(*pte);
-		struct ept *ept = &vcpu->ept;
-		uintptr_t *epte = ept_pte(ept, EPT4(ept, vcpu_eptp_idx(vcpu)), gpa);
-		if (!(*epte & EPT_ACCESS_RW))
+		u64 tmp = gpa_to_hpa(vcpu, gpa);
+		if (tmp == 0)
 			goto fault;
 
-		*hpa = PAGE_PA(*epte);
+		*hpa = tmp;
 		return gpa;
 	}
 
@@ -905,6 +914,16 @@ static inline uintptr_t vcpu_read_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst
 
 	*gpa = nested_translate_gva(vcpu, gva, hpa, mask);
 	return gva;
+}
+
+static inline bool nested_has_primary(const struct nested_vcpu *nested, u32 bits)
+{
+	return (__nested_vmcs_read((uintptr_t)nested->vmcs, CPU_BASED_VM_EXEC_CONTROL) & bits) == bits;
+}
+
+static inline bool nested_has_secondary(const struct nested_vcpu *nested, u32 bits)
+{
+	return (__nested_vmcs_read((uintptr_t)nested->vmcs, SECONDARY_VM_EXEC_CONTROL) & bits) == bits;
 }
 
 static inline void nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
@@ -2139,11 +2158,242 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_PCOMMIT] = vcpu_nop
 };
 
+static inline bool nested_can_handle_cr(const struct nested_vcpu *nested)
+{
+	/*
+	 * In the CR access, we need to check if the cr0/cr4
+	 * guest host mask matches their's, if so, then they handle it.
+	 *
+	 * For CR3, if any of the target cr3 values set match the one
+	 * being set, then that means they don't want it, otherwise see
+	 * if they have cr3-exiting.
+	 */
+	struct vcpu *vcpu = container_of(nested, struct vcpu, nested_vcpu);
+	u32 exit = vmcs_read(EXIT_QUALIFICATION);
+	uintptr_t vmcs = (uintptr_t)nested->vmcs;
+
+	switch ((exit >> 4) & 3) {
+	case 0:		/* mov to cr  */
+		switch (exit & 15) {
+		case 0:
+		{
+			u64 mask = __nested_vmcs_read(vmcs, CR0_GUEST_HOST_MASK);
+			u64 shadow = __nested_vmcs_read(vmcs, CR0_READ_SHADOW);
+			u64 val = ksm_read_reg(vcpu, (exit >> 8) & 15);
+			return mask & (val ^ shadow);
+		}
+		case 3:
+		{
+			u64 val = ksm_read_reg(vcpu, (exit >> 8) & 15);
+			u32 count = __nested_vmcs_read(vmcs, CR3_TARGET_COUNT);
+			for (u32 i = 0; i < count; i++)
+				if (__nested_vmcs_read(vmcs, CR3_TARGET_VALUE0 + i * 2) == val)
+					return false;
+
+			return nested_has_primary(nested, CPU_BASED_CR3_LOAD_EXITING);
+		}
+		case 4:
+		{
+			u64 mask = __nested_vmcs_read(vmcs, CR4_GUEST_HOST_MASK);
+			u64 shadow = __nested_vmcs_read(vmcs, CR4_READ_SHADOW);
+			u64 val = ksm_read_reg(vcpu, (exit >> 8) & 15);
+			return mask & (val ^ shadow);
+		}
+		case 8:
+			return nested_has_primary(nested, CPU_BASED_CR8_LOAD_EXITING);
+		}
+		break;
+	case 1:		/* mov from cr  */
+		switch (exit & 15) {
+		case 3:
+			return nested_has_primary(nested, CPU_BASED_CR3_STORE_EXITING);
+		case 8:
+			return nested_has_primary(nested, CPU_BASED_CR8_LOAD_EXITING);
+		}
+		break;
+	case 2:		/* clts  */
+	{
+		u64 mask = __nested_vmcs_read(vmcs, CR0_GUEST_HOST_MASK);
+		u64 shadow = __nested_vmcs_read(vmcs, CR0_READ_SHADOW);
+		return mask & X86_CR0_TS && shadow & X86_CR0_TS;
+	}
+	case 3:		/* msw  */
+	{
+		u64 mask = __nested_vmcs_read(vmcs, CR0_GUEST_HOST_MASK);
+		u64 shadow = __nested_vmcs_read(vmcs, CR0_READ_SHADOW);
+		u64 val = ksm_read_reg(vcpu, (exit >> 8) & 15);
+		return (mask & (X86_CR0_PE | X86_CR0_MP) & (val ^ shadow)) ||
+			(mask & X86_CR0_PE && !(shadow & X86_CR0_PE) && val & X86_CR0_PE);
+	}
+	}
+
+	return false;
+}
+
+static inline bool nested_can_handle_io(const struct nested_vcpu *nested)
+{
+	struct vcpu *vcpu = container_of(nested, struct vcpu, nested_vcpu);
+	uintptr_t vmcs = (uintptr_t)nested->vmcs;
+	u32 exit = vmcs_read32(EXIT_QUALIFICATION);
+	u16 port = exit;
+	u16 size = (exit & 7) + 1;
+	u64 bitmap = ~0ULL;
+	u64 last_bitmap = ~0ULL;
+	u8 byte = -1;
+
+	while (size > 0) {
+		if (port < 0x8000)
+			bitmap = __nested_vmcs_read(vmcs, IO_BITMAP_A);
+		else if (port < 0x10000)
+			bitmap = __nested_vmcs_read(vmcs, IO_BITMAP_B);
+		else
+			return true;
+
+		bitmap += (port & 0x7FFF) >> 3;
+		if (last_bitmap != bitmap) {
+			u64 hpa = gpa_to_hpa(vcpu, bitmap);
+			if (hpa == 0)
+				return false;
+
+			void *v = kmap(hpa, PAGE_SIZE);
+			if (!v)
+				return false;
+
+			byte = ((uintptr_t)v + bitmap & 0xFFF);
+			kunmap(v, PAGE_SIZE);
+		}
+
+		if (byte & (1 << (port & 7)))
+			return true;
+
+		last_bitmap = bitmap;
+		++port;
+		--size;
+	}
+
+	return false;
+}
+
+static inline bool nested_can_handle_msr(const struct nested_vcpu *nested, bool write)
+{
+	struct vcpu *vcpu = container_of(nested, struct vcpu, nested_vcpu);
+	u32 msr = ksm_read_reg32(vcpu, REG_CX);
+	u64 gpa = __nested_vmcs_read((uintptr_t)nested->vmcs, MSR_BITMAP);
+	u64 hpa = gpa_to_hpa(vcpu, gpa);
+	if (hpa == 0)
+		return false;
+
+	u64 bitmap = (u64)kmap(hpa, PAGE_SIZE);
+	if (!bitmap)
+		return false;
+
+	if (write)
+		bitmap += 2048;
+
+	if (msr >= 0xc0000000) {
+		msr -= 0xc0000000;
+		bitmap += 1024;
+	}
+
+	bool ret = (((u8)(bitmap + msr / 8)) >> (msr % 8)) & 1;
+	kunmap((void *)bitmap, PAGE_SIZE);
+	return ret;
+}
+
+static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_reason)
+{
+	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY)
+		return true;
+
+	/*
+	 * Here we check whether the nested hypervisor can actually handle
+	 * the exit (e.g. it was not set unconditionally by us), exit reasons
+	 * such as msr read/write, cr, io instr, etc...  are usually manipulated
+	 * by us, and the nested hypervisor has no idea, so we need to check if
+	 * we should be handling it on behalf or not.
+	 *
+	 * Unconditional exit reasons (cpuid, invd, triple fault, vm instructions, ...)
+	 * are always passed to the nested hypervisor.
+	 */
+	switch ((u16)exit_reason) {
+	case EXIT_REASON_TRIPLE_FAULT:
+	case EXIT_REASON_CPUID:
+	case EXIT_REASON_TASK_SWITCH:
+	case EXIT_REASON_INVD:
+	case EXIT_REASON_VMCALL:
+	case EXIT_REASON_VMCLEAR:
+	case EXIT_REASON_VMLAUNCH:
+	case EXIT_REASON_VMPTRLD:
+	case EXIT_REASON_VMPTRST:
+	case EXIT_REASON_VMRESUME:
+	case EXIT_REASON_VMWRITE:
+	case EXIT_REASON_VMOFF:
+	case EXIT_REASON_VMON:
+	case EXIT_REASON_INVEPT:
+	case EXIT_REASON_INVVPID:
+	case EXIT_REASON_APIC_WRITE:
+	case EXIT_REASON_EOI_INDUCED:
+		/* unconditional exit reasons always exit to nested  */
+		return true;
+	case EXIT_REASON_APIC_ACCESS:
+		return nested_has_secondary(nested, SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES);
+	case EXIT_REASON_TPR_BELOW_THRESHOLD:
+		return nested_has_primary(nested, CPU_BASED_TPR_SHADOW);
+	case EXIT_REASON_HLT:
+		return nested_has_primary(nested, CPU_BASED_HLT_EXITING);
+	case EXIT_REASON_PENDING_INTERRUPT:
+		return nested_has_primary(nested, CPU_BASED_VIRTUAL_INTR_PENDING);
+	case EXIT_REASON_NMI_WINDOW:
+		return nested_has_primary(nested, CPU_BASED_VIRTUAL_NMI_PENDING);
+	case EXIT_REASON_EXTERNAL_INTERRUPT:
+		return false;
+	case EXIT_REASON_INVLPG:
+		return nested_has_primary(nested, CPU_BASED_INVLPG_EXITING);
+	case EXIT_REASON_CR_ACCESS:
+		return nested_can_handle_cr(nested);
+	case EXIT_REASON_DR_ACCESS:
+		return nested_has_primary(nested, CPU_BASED_MOV_DR_EXITING);
+	case EXIT_REASON_IO_INSTRUCTION:
+		if (!nested_has_primary(nested, CPU_BASED_USE_IO_BITMAPS))
+			return nested_has_primary(nested, CPU_BASED_UNCOND_IO_EXITING);
+
+		return nested_can_handle_io(nested);
+	case EXIT_REASON_MSR_READ:
+	case EXIT_REASON_MSR_WRITE:
+		if (!nested_has_primary(nested, CPU_BASED_USE_MSR_BITMAPS))
+			return false;
+
+		return nested_can_handle_msr(nested, (u16)exit_reason == EXIT_REASON_MSR_WRITE);
+	case EXIT_REASON_RDPMC:
+		return nested_has_primary(nested, CPU_BASED_RDPMC_EXITING);
+	case EXIT_REASON_RDTSC:
+	case EXIT_REASON_RDTSCP:
+		return nested_has_primary(nested, CPU_BASED_RDTSC_EXITING);
+	case EXIT_REASON_PAUSE_INSTRUCTION:
+		return nested_has_primary(nested, CPU_BASED_PAUSE_EXITING) ||
+			nested_has_secondary(nested, SECONDARY_EXEC_PAUSE_LOOP_EXITING);
+	case EXIT_REASON_MCE_DURING_VMENTRY:
+	case EXIT_REASON_EPT_VIOLATION:
+	case EXIT_REASON_EPT_MISCONFIG:
+		return false;
+	case EXIT_REASON_WBINVD:
+		return nested_has_secondary(nested, SECONDARY_EXEC_WBINVD_EXITING);
+	case EXIT_REASON_MWAIT_INSTRUCTION:
+		return nested_has_primary(nested, CPU_BASED_MWAIT_EXITING);
+	case EXIT_REASON_MONITOR_TRAP_FLAG:
+		return nested_has_primary(nested, CPU_BASED_MONITOR_TRAP_FLAG);
+	case EXIT_REASON_MONITOR_INSTRUCTION:
+		return nested_has_primary(nested, CPU_BASED_MONITOR_EXITING);
+	}
+
+	return true;
+}
+
 bool vcpu_handle_exit(u64 *regs)
 {
 	struct vcpu *vcpu = ksm_current_cpu();
 	struct pending_irq *irq = &vcpu->irq;
-	bool ret = false;
+	bool ret = true;
 
 	vcpu->gp = regs;
 	vcpu->gp[REG_SP] = vmcs_read(GUEST_RSP);
@@ -2163,13 +2413,13 @@ bool vcpu_handle_exit(u64 *regs)
 	 * however, we need to do some checks first.
 	 */
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
-	if (nested_entered(nested)) {
-		vcpu_enter_nested_hypervisor(vcpu,
-					     exit_reason,
-					     vmcs_read(VM_EXIT_INTR_INFO),
-					     vmcs_read(EXIT_QUALIFICATION),
-					     exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY);
-		goto do_pending_irq;
+	if (nested_entered(nested) && nested_can_handle(nested, exit_reason)) {
+		if (vcpu_enter_nested_hypervisor(vcpu,
+						 exit_reason,
+						 vmcs_read(VM_EXIT_INTR_INFO),
+						 vmcs_read(EXIT_QUALIFICATION),
+						 exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY))
+			goto do_pending_irq;
 	}
 #endif
 

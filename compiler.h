@@ -41,6 +41,7 @@
 #pragma warning(disable:4221)		/* nonstandard extension used : 'identifier' : cannot be initialized using address of automatic variable  */
 #pragma warning(disable:4054)		/*  'conversion' : from function pointer 'type1' to data pointer 'type2'  */
 #pragma warning(disable:4057)		/* 'function' : 'unsigned int *' differs in indirection to slightly different base types from 'u32 *'  */
+#pragma warning(disable:4245)		/* 'initializing': conversion from 'int' to 'u8', signed/unsigned mismatch  */
 #else
 #define _In_
 #define _In_opt_
