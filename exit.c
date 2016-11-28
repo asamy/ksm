@@ -33,7 +33,6 @@ static u16 prev_handler = 0;
 
 #ifdef NESTED_VMX
 static const u32 nested_unsupported_secondary = SECONDARY_EXEC_ENABLE_VE | SECONDARY_EXEC_ENABLE_EPT |
-						SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_APIC_REGISTER_VIRT |
 						SECONDARY_EXEC_ENABLE_ENCLS_EXITING | SECONDARY_EXEC_ENABLE_PML |
 						SECONDARY_EXEC_ENABLE_VPID | SECONDARY_EXEC_ENABLE_VMFUNC;
 
@@ -276,6 +275,20 @@ static inline bool nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
 	uintptr_t f = vmcs + field_offset(field);
 	if (!field_supported(field))
 		return false;
+
+	switch (field) {
+	case HOST_ES_SELECTOR:
+	case HOST_CS_SELECTOR:
+	case HOST_SS_SELECTOR:
+	case HOST_DS_SELECTOR:
+	case HOST_FS_SELECTOR:
+	case HOST_GS_SELECTOR:
+	case HOST_TR_SELECTOR:
+		if (~value & 0xF8)
+			return false;
+
+		break;
+	}
 
 	switch (field_type(field)) {
 	case FIELD_U16:
@@ -950,7 +963,7 @@ static inline void nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 	__vmx_vmwrite(GUEST_DS_SELECTOR, __nested_vmcs_read(vmcs, HOST_DS_SELECTOR));
 	__vmx_vmwrite(GUEST_TR_SELECTOR, __nested_vmcs_read(vmcs, HOST_TR_SELECTOR));
 
-	__writedr(7, 0x400);
+	__vmx_vmwrite(GUEST_DR7, 0x400);
 	__vmx_vmwrite(GUEST_IA32_DEBUGCTL, 0);
 	__vmx_vmwrite(MSR_BITMAP, __nested_vmcs_read(vmcs, MSR_BITMAP));
 }
@@ -991,7 +1004,7 @@ static inline bool nested_is_root(struct vcpu *vcpu)
 {
 	/* Typical VMX checks, make sure we're inside the nested hypervisor's "root".  */
 	if (!vcpu->nested_vcpu.current_vmxon) {
-		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 		return false;
 	}
 
@@ -1346,20 +1359,25 @@ err:
 static bool vcpu_handle_vmresume(struct vcpu *vcpu)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
-	if (!nested_is_root(vcpu)) {
-		vcpu_advance_rip(vcpu);
-		return true;
+	if (!nested->vmxon) {
+		vcpu_vm_fail_valid(vcpu, VMXERR_VMRESUME_AFTER_VMXOFF);
+		goto out;
 	}
+
+	if (!nested_is_root(vcpu))
+		goto out;
 
 	/* Must be launched prior to vmresume...  */
 	if (nested->launch_state != VMCS_LAUNCH_STATE_LAUNCHED) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMRESUME_NONLAUNCHED_VMCS);
-		vcpu_advance_rip(vcpu);
-		return true;
+		goto out;
 	}
 
 	vcpu_enter_nested_guest(vcpu);
-	vcpu_vm_succeed(vcpu);
+	return true;
+
+out:
+	vcpu_advance_rip(vcpu);
 	return true;
 }
 
@@ -1443,7 +1461,7 @@ static bool vcpu_handle_vmon(struct vcpu *vcpu)
 	 * vcpu_handle_cr_access().
 	 */
 	if (vcpu->cr4_guest_host_mask & X86_CR4_VMXE) {
-		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 		goto out;
 	}
 
@@ -2052,8 +2070,13 @@ static bool vcpu_handle_ept_violation(struct vcpu *vcpu)
 	VCPU_TRACER_START();
 
 	if (!ept_handle_violation(vcpu)) {
-#ifndef DBG
-		if (vcpu_inject_ve(vcpu))
+#ifdef NESTED_VMX
+		if (nested_has_secondary(&vcpu->nested_vcpu, SECONDARY_EXEC_ENABLE_EPT) &&
+		    vcpu_enter_nested_hypervisor(vcpu,
+						 EXIT_REASON_EPT_VIOLATION,
+						 vmcs_read(VM_EXIT_INTR_INFO),
+						 vmcs_read(EXIT_QUALIFICATION),
+						 false))
 			return true;
 #endif
 
@@ -2075,8 +2098,8 @@ static bool vcpu_handle_ept_misconfig(struct vcpu *vcpu)
 	u64 gpa = vmcs_read(GUEST_PHYSICAL_ADDRESS);
 	u16 eptp = vcpu_eptp_idx(vcpu);
 
-	uintptr_t *pte = ept_pte(ept, EPT4(ept, eptp), gpa);
-	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, EPT_BUGCHECK_MISCONFIG, gpa, *pte);
+	uintptr_t *epte = ept_pte(ept, EPT4(ept, eptp), gpa);
+	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, EPT_BUGCHECK_MISCONFIG, gpa, *epte);
 	return false;
 }
 
@@ -2178,7 +2201,7 @@ static inline bool nested_can_handle_cr(const struct nested_vcpu *nested)
 		case 3:
 			return nested_has_primary(nested, CPU_BASED_CR3_STORE_EXITING);
 		case 8:
-			return nested_has_primary(nested, CPU_BASED_CR8_LOAD_EXITING);
+			return nested_has_primary(nested, CPU_BASED_CR8_STORE_EXITING);
 		}
 		break;
 	case 2:		/* clts  */
@@ -2233,7 +2256,7 @@ static inline bool nested_can_handle_io(const struct nested_vcpu *nested)
 			kunmap(v, PAGE_SIZE);
 		}
 
-		if (byte & (1 << (port & 7)))
+		if ((byte >> (port & 7)) & 1)
 			return true;
 
 		last_bitmap = bitmap;
@@ -2303,6 +2326,8 @@ static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_
 	case EXIT_REASON_INVVPID:
 	case EXIT_REASON_APIC_WRITE:
 	case EXIT_REASON_EOI_INDUCED:
+	case EXIT_REASON_INVALID_STATE:
+	case EXIT_REASON_MCE_DURING_VMENTRY:
 		/* unconditional exit reasons always exit to nested  */
 		return true;
 	case EXIT_REASON_APIC_ACCESS:
@@ -2342,7 +2367,6 @@ static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_
 	case EXIT_REASON_PAUSE_INSTRUCTION:
 		return nested_has_primary(nested, CPU_BASED_PAUSE_EXITING) ||
 			nested_has_secondary(nested, SECONDARY_EXEC_PAUSE_LOOP_EXITING);
-	case EXIT_REASON_MCE_DURING_VMENTRY:
 	case EXIT_REASON_EPT_VIOLATION:
 	case EXIT_REASON_EPT_MISCONFIG:
 		return false;
@@ -2354,6 +2378,10 @@ static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_
 		return nested_has_primary(nested, CPU_BASED_MONITOR_TRAP_FLAG);
 	case EXIT_REASON_MONITOR_INSTRUCTION:
 		return nested_has_primary(nested, CPU_BASED_MONITOR_EXITING);
+	case EXIT_REASON_ENCLS:
+		return nested_has_secondary(nested, SECONDARY_EXEC_ENABLE_ENCLS_EXITING);
+	case EXIT_REASON_GDT_IDT_ACCESS:
+		return nested_has_secondary(nested, SECONDARY_EXEC_DESC_TABLE_EXITING);
 	}
 
 	return true;
@@ -2466,14 +2494,13 @@ bool vcpu_handle_exit(u64 *regs)
 	 * however, we need to do some checks first.
 	 */
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
-	if (nested_entered(nested) && nested_can_handle(nested, exit_reason)) {
-		if (vcpu_enter_nested_hypervisor(vcpu,
-						 exit_reason,
-						 vmcs_read(VM_EXIT_INTR_INFO),
-						 vmcs_read(EXIT_QUALIFICATION),
-						 exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY))
-			goto do_pending_irq;
-	}
+	if (nested_entered(nested) && nested_can_handle(nested, exit_reason) &&
+	    vcpu_enter_nested_hypervisor(vcpu,
+					 exit_reason,
+					 vmcs_read(VM_EXIT_INTR_INFO),
+					 vmcs_read(EXIT_QUALIFICATION),
+					 exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY))
+		goto do_pending_irq;
 #endif
 
 	u64 eflags = vcpu->eflags;
@@ -2519,6 +2546,29 @@ do_pending_irq:
 	return ret;
 }
 
+static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *regs)
+{
+	VCPU_DEBUG("%p: ax=0x%016X  cx=0x%016X  dx=0x%016X\n"
+		   "    bx=0x%016X  sp=0x%016X  bp=0x%016X\n"
+		   "    si=0x%016X  di=0x%016X  r8=0x%016X\n"
+		   "    r9=0x%016X  r10=0x%016X r11=0x%016X\n"
+		   "    r12=0x%016X r13=0x%016X r14=0x%016X\n"
+		   "    r15=0x%016X\n rip=0x%016X"
+		   "    cs=0x%02X   ds=0x%02X   es=0x%02X\n"
+		   "    fs=0x%016X  gs=0x%016X\n"
+		   "    cr0=0x%016X cr3=0x%016X cr4=0x%016X\n",
+		   vcpu, regs->gp[REG_AX], regs->gp[REG_CX], regs->gp[REG_DX],
+		   regs->gp[REG_BX], vmcs_read(GUEST_RSP), regs->gp[REG_BP],
+		   regs->gp[REG_SI], regs->gp[REG_DI], regs->gp[REG_R8],
+		   regs->gp[REG_R9], regs->gp[REG_R10], regs->gp[REG_R11],
+		   regs->gp[REG_R12], regs->gp[REG_R13], regs->gp[REG_R14],
+		   regs->gp[REG_R15], vmcs_read(GUEST_RIP),
+		   vmcs_read(GUEST_CS_SELECTOR), vmcs_read(GUEST_DS_SELECTOR),
+		   vmcs_read(GUEST_ES_SELECTOR), vmcs_read(GUEST_FS_SELECTOR),
+		   vmcs_read(GUEST_GS_SELECTOR), vmcs_read(GUEST_CR0),
+		   vmcs_read(GUEST_CR3), vmcs_read(GUEST_CR4));
+}
+
 void vcpu_handle_fail(struct regs *regs)
 {
 	/*
@@ -2530,5 +2580,6 @@ void vcpu_handle_fail(struct regs *regs)
 	if (regs->eflags & X86_EFLAGS_ZF)
 		__vmx_vmread(VM_INSTRUCTION_ERROR, &err);
 
+	vcpu_dump_state(ksm_current_cpu(), regs);
 	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, err, curr_handler, prev_handler);
 }
