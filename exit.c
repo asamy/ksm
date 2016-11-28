@@ -1005,6 +1005,8 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
 	if (handler == EXIT_REASON_GDT_IDT_ACCESS || handler == EXIT_REASON_LDT_TR_ACCESS ||
 	    (handler >= EXIT_REASON_VMCLEAR && (u16)exit_reason <= EXIT_REASON_VMON))
 		nested_vmcs_write(vmcs, VMX_INSTRUCTION_INFO, vmcs_read(VMX_INSTRUCTION_INFO));
+
+	nested->current_vmxon = nested->vmxon;
 	return true;
 }
 
@@ -1136,6 +1138,7 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 	/* FIXME  */
 	nested_enter(nested);
 	prepare_nested_guest(vcpu, vmcs);
+	nested->current_vmxon = 0;
 	return true;
 }
 #endif
@@ -1522,6 +1525,62 @@ out:
 	vcpu_advance_rip(vcpu);
 	return true;
 }
+
+static bool vcpu_handle_invept(struct vcpu *vcpu)
+{
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	if (!nested_has_secondary(nested, SECONDARY_EXEC_ENABLE_EPT)) {
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+		goto out;
+	}
+
+	if (!nested_is_root(vcpu))
+		goto out;
+
+	u32 info = vmcs_read32(VMX_INSTRUCTION_INFO);
+	u32 type = ksm_read_reg32(vcpu, (info >> 28) & 15);
+	u32 avail = (__readmsr(MSR_IA32_VMX_EPT_VPID_CAP) >> VMX_EPT_EXTENT_SHIFT) & 6;
+
+	if (!(avail & (1 << type))) {
+		vcpu_vm_fail_valid(vcpu, VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
+		goto out;
+	}
+
+	/* what next?  load their EPT pointer and emulate the instruction?  */
+	vcpu_vm_succeed(vcpu);
+
+out:
+	vcpu_advance_rip(vcpu);
+	return true;
+}
+
+static bool vcpu_handle_invvpid(struct vcpu *vcpu)
+{
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	if (!nested_has_secondary(nested, SECONDARY_EXEC_ENABLE_VPID)) {
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+		goto out;
+	}
+
+	if (!nested_is_root(vcpu))
+		goto out;
+
+	u32 info = vmcs_read32(VMX_INSTRUCTION_INFO);
+	u32 type = ksm_read_reg32(vcpu, (info >> 28) & 15);
+	u32 avail = (__readmsr(MSR_IA32_VMX_EPT_VPID_CAP) >> 8) & 7;
+
+	if (!(avail & !(1 << type))) {
+		vcpu_vm_fail_valid(vcpu, VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
+		goto out;
+	}
+
+	/* what next?  flush TLB for this CPU?  */
+	vcpu_vm_succeed(vcpu);
+
+out:
+	vcpu_advance_rip(vcpu);
+	return true;
+}
 #endif
 
 static bool vcpu_handle_cr_access(struct vcpu *vcpu)
@@ -1863,11 +1922,7 @@ static bool vcpu_handle_msr_write(struct vcpu *vcpu)
 		break;
 	case MSR_IA32_FEATURE_CONTROL:
 #ifdef NESTED_VMX
-		if (val & ~(FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_LMCE |
-			    FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
-			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
-		else
-			vcpu->nested_vcpu.feat_ctl = val;
+		vcpu->nested_vcpu.feat_ctl = val;
 #else
 		if (val & (FEATURE_CONTROL_VMXON_ENABLED_INSIDE_SMX |
 			   FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
@@ -2425,6 +2480,8 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_VMWRITE] = vcpu_handle_vmwrite,
 	[EXIT_REASON_VMOFF] = vcpu_handle_vmoff,
 	[EXIT_REASON_VMON] = vcpu_handle_vmon,
+	[EXIT_REASON_INVEPT] = vcpu_handle_invept,
+	[EXIT_REASON_INVVPID] = vcpu_handle_invvpid,
 #else
 	[EXIT_REASON_VMCLEAR] = vcpu_handle_vmx,
 	[EXIT_REASON_VMLAUNCH] = vcpu_handle_vmx,
@@ -2435,6 +2492,8 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_VMWRITE] = vcpu_handle_vmx,
 	[EXIT_REASON_VMOFF] = vcpu_handle_vmx,
 	[EXIT_REASON_VMON] = vcpu_handle_vmx,
+	[EXIT_REASON_INVEPT] = vcpu_handle_vmx,
+	[EXIT_REASON_INVVPID] = vcpu_handle_vmx,
 #endif
 	[EXIT_REASON_CR_ACCESS] = vcpu_handle_cr_access,
 	[EXIT_REASON_DR_ACCESS] = vcpu_handle_dr_access,
@@ -2458,10 +2517,8 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_LDT_TR_ACCESS] = vcpu_handle_ldt_tr_access,
 	[EXIT_REASON_EPT_VIOLATION] = vcpu_handle_ept_violation,
 	[EXIT_REASON_EPT_MISCONFIG] = vcpu_handle_ept_misconfig,
-	[EXIT_REASON_INVEPT] = vcpu_handle_vmx,
 	[EXIT_REASON_RDTSCP] = vcpu_handle_rdtscp,
 	[EXIT_REASON_PREEMPTION_TIMER] = vcpu_nop,
-	[EXIT_REASON_INVVPID] = vcpu_handle_vmx,
 	[EXIT_REASON_WBINVD] = vcpu_handle_wbinvd,
 	[EXIT_REASON_XSETBV] = vcpu_handle_xsetbv,
 	[EXIT_REASON_APIC_WRITE] = vcpu_handle_apic_write,

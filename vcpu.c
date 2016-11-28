@@ -406,6 +406,10 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	if (!init_vmcs(&vcpu->vmcs))
 		goto out_off;
 
+#ifdef NESTED_VMX
+	vcpu->nested_vcpu.feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
+#endif
+
 	/*
 	 * Leave cr0 guest host mask empty, we support all.
 	 * Set VMXE bit in cr4 gurest host mask so they VM-exit to us when
