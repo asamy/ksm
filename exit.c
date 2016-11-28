@@ -997,6 +997,14 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
 	    __nested_vmcs_read(vmcs, VM_EXIT_CONTROLS) & VM_EXIT_ACK_INTR_ON_EXIT)
 		;/* FIXME  */
 
+	nested_vmcs_write(vmcs, VM_EXIT_REASON, exit_reason);
+	nested_vmcs_write(vmcs, VM_EXIT_INTR_INFO, intr_info);
+	nested_vmcs_write(vmcs, EXIT_QUALIFICATION, exit_qualification);
+
+	u16 handler = exit_reason;
+	if (handler == EXIT_REASON_GDT_IDT_ACCESS || handler == EXIT_REASON_LDT_TR_ACCESS ||
+	    (handler >= EXIT_REASON_VMCLEAR && (u16)exit_reason <= EXIT_REASON_VMON))
+		nested_vmcs_write(vmcs, VMX_INSTRUCTION_INFO, vmcs_read(VMX_INSTRUCTION_INFO));
 	return true;
 }
 
@@ -1804,8 +1812,6 @@ static bool vcpu_handle_msr_read(struct vcpu *vcpu)
 			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 #else
 			val = __readmsr(msr);
-			if (msr == MSR_IA32_VMX_PROCBASED_CTLS2)
-				val &= ~(nested_unsupported_secondary | vcpu->secondary_ctl);
 #endif
 		} else if (msr >= 0x800 && msr <= 0x83F) {
 			/* x2APIC  */
@@ -1823,7 +1829,7 @@ static bool vcpu_handle_msr_read(struct vcpu *vcpu)
 	}
 
 	ksm_write_reg32(vcpu, REG_AX, val);
-	ksm_write_reg32(vcpu, REG_CX, val >> 32);
+	ksm_write_reg32(vcpu, REG_DX, val >> 32);
 	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;
