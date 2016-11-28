@@ -63,9 +63,16 @@
     <ClCompile Include="..\..\tests\fail_entry.c" />
     <ClCompile Include="..\..\tests\go_vmx.c" />
     <ClCompile Include="..\..\tests\main.c" />
+    <ClCompile Include="..\..\tests\vmx_exit.c" />
+    <ClCompile Include="..\..\tests\vmx_setup.c" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="..\..\tests\export.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <MASM Include="..\..\tests\x64.asm">
+      <ExcludedFromBuild Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">false</ExcludedFromBuild>
+    </MASM>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

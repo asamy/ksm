@@ -1,7 +1,7 @@
 #include <ntddk.h>
 
-#include "export.h"
 #include "../compiler.h"
+#include "export.h"
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 {
@@ -11,6 +11,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	ret |= run_allgood();
 	ret |= run_fail_entry();
 	ret |= run_go_vmx();
+	ret |= run_ept();
 
 	/* Just return failure anyway  */
 	DbgPrint("Done running all tests: %d\n", ret);
