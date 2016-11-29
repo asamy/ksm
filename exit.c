@@ -33,8 +33,7 @@ static u16 prev_handler = 0;
 
 #ifdef NESTED_VMX
 static const u32 nested_unsupported_secondary = SECONDARY_EXEC_ENABLE_VE | SECONDARY_EXEC_ENABLE_EPT |
-						SECONDARY_EXEC_ENABLE_ENCLS_EXITING | SECONDARY_EXEC_ENABLE_PML |
-						SECONDARY_EXEC_ENABLE_VPID | SECONDARY_EXEC_ENABLE_VMFUNC;
+						SECONDARY_EXEC_ENABLE_ENCLS_EXITING | SECONDARY_EXEC_ENABLE_VMFUNC;
 
 static const u32 supported_fields[] = {
 	VIRTUAL_PROCESSOR_ID,
@@ -288,6 +287,11 @@ static inline bool nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
 			return false;
 
 		break;
+	case SECONDARY_VM_EXEC_CONTROL:
+		if (value & nested_unsupported_secondary)
+			return false;
+
+		break;
 	}
 
 	switch (field_type(field)) {
@@ -297,8 +301,7 @@ static inline bool nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
 	case FIELD_U32:
 		*(u32 *)f = value;
 		return true;
-	case FIELD_U64:
-	case FIELD_NATURAL:
+	default:
 		*(u64 *)f = value;
 		return true;
 	}
@@ -321,7 +324,7 @@ static inline u64 __nested_vmcs_read(uintptr_t vmcs, u32 field)
 
 static inline bool nested_vmcs_read(uintptr_t vmcs, u32 field, u64 *val)
 {
-	if (field > HOST_RIP)
+	if (!field_supported(field))
 		return false;
 
 	*val = __nested_vmcs_read(vmcs, field);
@@ -627,7 +630,8 @@ static bool vcpu_handle_rdtsc(struct vcpu *vcpu)
 
 static bool vcpu_handle_vmfunc(struct vcpu *vcpu)
 {
-	/* VM functions do not cause VM exit unless:
+	/*
+	 * VM functions do not cause VM exit unless:
 	 *	1) funciton is not supported
 	 *	2) EPTP index is too high.
 	 */
@@ -935,6 +939,11 @@ static inline uintptr_t vcpu_read_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst
 
 	*gpa = nested_translate_gva(vcpu, gva, hpa, mask);
 	return gva;
+}
+
+static inline bool nested_has_pin(const struct nested_vcpu *nested, u32 bits)
+{
+	return (__nested_vmcs_read((uintptr_t)nested->vmcs, PIN_BASED_VM_EXEC_CONTROL) & bits) == bits;
 }
 
 static inline bool nested_has_primary(const struct nested_vcpu *nested, u32 bits)
@@ -1885,6 +1894,11 @@ static bool vcpu_handle_msr_read(struct vcpu *vcpu)
 			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 #else
 			val = __readmsr(msr);
+			switch (msr) {
+			case MSR_IA32_VMX_PROCBASED_CTLS2:
+				val &= ~nested_unsupported_secondary;
+				break;
+			}
 #endif
 		} else if (msr >= 0x800 && msr <= 0x83F) {
 			/* x2APIC  */
@@ -1912,7 +1926,7 @@ static bool vcpu_handle_msr_write(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
-	u32 msr = ksm_read_reg(vcpu, REG_CX);
+	u32 msr = ksm_read_reg32(vcpu, REG_CX);
 	u64 val = ksm_combine_reg64(vcpu, REG_AX, REG_DX);
 
 	switch (msr) {
@@ -2416,7 +2430,8 @@ static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_
 	case EXIT_REASON_NMI_WINDOW:
 		return nested_has_primary(nested, CPU_BASED_VIRTUAL_NMI_PENDING);
 	case EXIT_REASON_EXTERNAL_INTERRUPT:
-		return false;
+		/* I think this requires special handling (e.g. via PIR)  */
+		return nested_has_pin(nested, PIN_BASED_EXT_INTR_MASK);
 	case EXIT_REASON_INVLPG:
 		return nested_has_primary(nested, CPU_BASED_INVLPG_EXITING);
 	case EXIT_REASON_CR_ACCESS:

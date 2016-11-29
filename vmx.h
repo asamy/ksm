@@ -505,16 +505,18 @@ static inline unsigned char __vmx_vmfunc(u32 eptp, u32 func)
 
 static inline u8 __invept(int ext, const invept_t *i)
 {
-	__asm __volatile(ASM_VMX_INVEPT "; ja 1f ; ud2 ; 1:\n"
-			 :: "d" (i), "c" (ext) : "cc", "memory");
-	return 0;
+	u8 error;
+	__asm __volatile(ASM_VMX_INVEPT "; setna %0"
+			 : "=q" (error) : "d" (i), "c" (ext) : "cc", "memory");
+	return error;
 }
 
 static inline u8 __invvpid(int ext, const invvpid_t *i)
 {
-	__asm __volatile(ASM_VMX_INVVPID "; ja 1f ; ud2 ; 1:"
-			 :: "d" (i), "c" (ext) : "cc", "memory");
-	return 0;
+	u8 error;
+	__asm __volatile(ASM_VMX_INVVPID "; setna %0"
+			 : "=q" (error): "d" (i), "c" (ext) : "cc", "memory");
+	return error;
 }
 #else
 extern u8 __invvpid(u32 type, const invvpid_t *i);
