@@ -130,6 +130,7 @@ static inline char *stpcpy(char *dst, const char *src)
 static inline void print_flush(void)
 {
 	char on_stack[PAGE_SIZE];
+	u32 len = 0;
 	KLOCK_QUEUE_HANDLE q;
 #ifdef ENABLE_FILEPRINT
 	IO_STATUS_BLOCK sblk;
@@ -139,6 +140,7 @@ static inline void print_flush(void)
 	char *printbuf = buf + ((next & 1) << PAGE_SHIFT);
 	char *p = stpcpy(on_stack, printbuf);
 	*p = '\0';
+	len = p - &on_stack[0];
 
 	head_use = buf + ((++next & 1) << PAGE_SHIFT);
 	next_use = head_use;
@@ -151,7 +153,7 @@ static inline void print_flush(void)
 #ifdef ENABLE_FILEPRINT
 	ExEnterCriticalRegionAndAcquireResourceExclusive(&resource);
 	ZwWriteFile(file, NULL, NULL, NULL,
-		    &sblk, on_stack, (u32)strlen(on_stack),
+		    &sblk, on_stack, len,
 		    NULL, NULL);
 	ExReleaseResourceAndLeaveCriticalRegion(&resource);
 #endif

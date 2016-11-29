@@ -827,17 +827,19 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 	case HYPERCALL_UIDT:
 		vcpu_adjust_rflags(vcpu, vcpu_unhook_idte(vcpu, (struct shadow_idt_entry *)arg));
 		break;
+#ifdef EPAGE_HOOK
 	case HYPERCALL_HOOK:
 		vcpu_adjust_rflags(vcpu, vcpu_handle_hook(vcpu, (struct page_hook_info *)arg));
 		break;
 	case HYPERCALL_UNHOOK:
 		vcpu_adjust_rflags(vcpu, vcpu_handle_unhook(vcpu, arg));
 		break;
-	case HYPERCALL_VMFUNC:
-		vcpu_adjust_rflags(vcpu, vcpu_emulate_vmfunc(vcpu, (struct h_vmfunc *)arg));
-		break;
 	case HYPERCALL_KPROTECT:
 		vcpu_adjust_rflags(vcpu, kprotect_init_eptp(vcpu, arg));
+		break;
+#endif
+	case HYPERCALL_VMFUNC:
+		vcpu_adjust_rflags(vcpu, vcpu_emulate_vmfunc(vcpu, (struct h_vmfunc *)arg));
 		break;
 	default:
 		VCPU_DEBUG("unsupported hypercall: %d\n", nr);
@@ -1489,8 +1491,10 @@ static bool vcpu_handle_vmoff(struct vcpu *vcpu)
 	nested->vmxon_region = 0;
 	nested->launch_state = VMCS_LAUNCH_STATE_NONE;
 	nested->feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
-	if (nested->vmcs)
+	if (nested->vmcs) {
 		kunmap(nested->vmcs, PAGE_SIZE);
+		nested->vmcs = NULL;
+	}
 
 	vcpu->cr4_guest_host_mask |= X86_CR4_VMXE;
 	__vmx_vmwrite(CR4_GUEST_HOST_MASK, vcpu->cr4_guest_host_mask);
@@ -1973,9 +1977,12 @@ static bool vcpu_handle_msr_write(struct vcpu *vcpu)
 #ifdef NESTED_VMX
 		vcpu->nested_vcpu.feat_ctl = val;
 #else
-		if (val & (FEATURE_CONTROL_VMXON_ENABLED_INSIDE_SMX |
+		if (val & (FEATURE_CONTROL_LOCKED |
+			   FEATURE_CONTROL_VMXON_ENABLED_INSIDE_SMX |
 			   FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
 			vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+		else
+			__writemsr(MSR_IA32_FEATURE_CONTROL, val);
 #endif
 		break;
 	default:

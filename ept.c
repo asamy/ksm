@@ -273,10 +273,10 @@ static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa, u64 gva, u16 ep
 			VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
 			return eptp_switch;
 		} else {
-#endif
 			return kprotect_select_eptp(ept, rip, ac);
-#ifdef EPAGE_HOOK
 		}
+#else
+		return EPT_MAX_EPTP_LIST;
 #endif
 	}
 
