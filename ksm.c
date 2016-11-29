@@ -84,10 +84,13 @@ static void init_msr_bitmap(struct ksm *k)
 
 static void init_io_bitmaps(struct ksm *k)
 {
+#if 0
+	/* This can be anonying  */
 	RTL_BITMAP bitmap_a;
 	RtlInitializeBitMap(&bitmap_a, (PULONG)k->io_bitmap_a, PAGE_SIZE * CHAR_BIT);
 	RtlSetBit(&bitmap_a, 0x60);	/* PS/2 Mice  */
 	RtlSetBit(&bitmap_a, 0x64);	/* PS/2 Mice and keyboard  */
+#endif
 }
 
 static NTSTATUS set_lock_bit(void)

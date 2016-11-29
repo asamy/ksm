@@ -224,14 +224,14 @@ static const u32 supported_fields[] = {
 	HOST_RIP,
 };
 
-static inline u32 field_offset(u32 field)
+static inline u16 field_offset(u32 field)
 {
 	/* Stolen from XEN  */
-	u32 index = (field >> 1) & 0x1F;
-	u32 type = (field >> 10) & 3;
-	u32 width = (field >> 12) & 3;
+	u16 index = (field >> 1) & 0x1F;
+	u16 type = (field >> 10) & 3;
+	u16 width = (field >> 12) & 3;
 
-	u32 offset = index | type << 5 | width << 7;
+	u16 offset = index | type << 5 | width << 7;
 	if (offset == 0)
 		return 0x3F;	/* VPID  */
 
@@ -894,16 +894,26 @@ fault:
 	return ~0ULL;
 }
 
+static inline bool is_canonical_addr(u64 gva)
+{
+	return gva >= 0x0000800000000000 && gva < 0xffff7fffffffffff;
+}
+
 static inline uintptr_t vcpu_read_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst,
 					   u64 *gpa, u64 *hpa, u32 mask)
 {
+	if ((inst >> 10) & 1) {
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+		return 0;
+	}
+
 	uintptr_t base = 0;
 	if (!((inst >> 27) & 1))
 		base = ksm_read_reg(vcpu, (inst >> 23) & 15);
 
 	uintptr_t index = 0;
 	if (!((inst >> 22) & 1))
-		index = ksm_read_reg(vcpu, (inst >> 18) & 15);
+		index = ksm_read_reg(vcpu, (inst >> 18) & 15) << (inst & 3);
 
 	/* Add segment base  */
 	uintptr_t gva = base + index + disp;
@@ -914,8 +924,12 @@ static inline uintptr_t vcpu_read_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst
 	if (((inst >> 7) & 7) == 1)
 		gva &= 0xFFFFFFFF;
 
-	if ((gva & (PAGE_SIZE - 1)) != 0 || (gva >> VA_BITS) != 0) {
-		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+	if (!is_canonical_addr(gva) || (gva & (PAGE_SIZE - 1)) != 0 || (gva >> VA_BITS) != 0) {
+		u8 vec = X86_TRAP_GP;
+		if (GUEST_ES_BASE + (seg_offset << 1) == GUEST_SS_BASE)
+			vec = X86_TRAP_SS;
+
+		vcpu_inject_hardirq(vcpu, vec, 0);
 		return 0;
 	}
 
@@ -1357,7 +1371,7 @@ static bool vcpu_handle_vmread(struct vcpu *vcpu)
 	if (!addr)
 		goto err;
 
-	memcpy(addr, &value, sizeof(value));
+	*(u64 *)addr = value;
 	kunmap(addr, PAGE_SIZE);
 
 out:
@@ -2517,8 +2531,10 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_LDT_TR_ACCESS] = vcpu_handle_ldt_tr_access,
 	[EXIT_REASON_EPT_VIOLATION] = vcpu_handle_ept_violation,
 	[EXIT_REASON_EPT_MISCONFIG] = vcpu_handle_ept_misconfig,
+	[EXIT_REASON_INVEPT] = vcpu_handle_vmx,
 	[EXIT_REASON_RDTSCP] = vcpu_handle_rdtscp,
 	[EXIT_REASON_PREEMPTION_TIMER] = vcpu_nop,
+	[EXIT_REASON_INVVPID] = vcpu_handle_vmx,
 	[EXIT_REASON_WBINVD] = vcpu_handle_wbinvd,
 	[EXIT_REASON_XSETBV] = vcpu_handle_xsetbv,
 	[EXIT_REASON_APIC_WRITE] = vcpu_handle_apic_write,
@@ -2611,15 +2627,17 @@ do_pending_irq:
 
 static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *regs)
 {
-	VCPU_DEBUG("%p: ax=0x%016X  cx=0x%016X  dx=0x%016X\n"
-		   "    bx=0x%016X  sp=0x%016X  bp=0x%016X\n"
-		   "    si=0x%016X  di=0x%016X  r8=0x%016X\n"
-		   "    r9=0x%016X  r10=0x%016X r11=0x%016X\n"
-		   "    r12=0x%016X r13=0x%016X r14=0x%016X\n"
-		   "    r15=0x%016X\n rip=0x%016X"
-		   "    cs=0x%02X   ds=0x%02X   es=0x%02X\n"
-		   "    fs=0x%016X  gs=0x%016X\n"
-		   "    cr0=0x%016X cr3=0x%016X cr4=0x%016X\n",
+	VCPU_DEBUG("%p: ax=0x%016X   cx=0x%016X  dx=0x%016X\n"
+		   "    bx=0x%016X   sp=0x%016X  bp=0x%016X\n"
+		   "    si=0x%016X   di=0x%016X  r08=0x%016X\n"
+		   "    r09=0x%016X  r10=0x%016X r11=0x%016X\n"
+		   "    r12=0x%016X  r13=0x%016X r14=0x%016X\n"
+		   "    r15=0x%016X  rip=0x%016X"
+		   "    cs=0x%02X    ds=0x%02X   es=0x%02X\n"
+		   "    fs=0x%016X   gs=0x%016X  kgs=0x%016X\n"
+		   "    cr0=0x%016X  cr3=0x%016X cr4=0x%016X\n"
+		   "	dr0=0x016X   dr1=0x%016X dr2=0x%016X\n"
+		   "	dr3=0x%016X  dr6=0x%016X dr7=0x%016X\n",
 		   vcpu, regs->gp[REG_AX], regs->gp[REG_CX], regs->gp[REG_DX],
 		   regs->gp[REG_BX], vmcs_read(GUEST_RSP), regs->gp[REG_BP],
 		   regs->gp[REG_SI], regs->gp[REG_DI], regs->gp[REG_R8],
@@ -2627,9 +2645,11 @@ static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *r
 		   regs->gp[REG_R12], regs->gp[REG_R13], regs->gp[REG_R14],
 		   regs->gp[REG_R15], vmcs_read(GUEST_RIP),
 		   vmcs_read(GUEST_CS_SELECTOR), vmcs_read(GUEST_DS_SELECTOR),
-		   vmcs_read(GUEST_ES_SELECTOR), vmcs_read(GUEST_FS_SELECTOR),
-		   vmcs_read(GUEST_GS_SELECTOR), vmcs_read(GUEST_CR0),
-		   vmcs_read(GUEST_CR3), vmcs_read(GUEST_CR4));
+		   vmcs_read(GUEST_ES_SELECTOR), vmcs_read(GUEST_FS_BASE),
+		   vmcs_read(GUEST_GS_BASE), __readmsr(MSR_IA32_KERNEL_GS_BASE),
+		   vmcs_read(GUEST_CR0), vmcs_read(GUEST_CR3), vmcs_read(GUEST_CR4),
+		   __readdr(0), __readdr(1), __readdr(2),
+		   __readdr(3), __readdr(6), vmcs_read(GUEST_DR7));
 }
 
 void vcpu_handle_fail(struct regs *regs)
