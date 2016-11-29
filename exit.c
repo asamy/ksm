@@ -1016,7 +1016,8 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
 	nested_leave(nested);
 	nested_prepare_hypervisor(vcpu, vmcs);
 
-	if (lapic_in_kernel() && (u16)exit_reason == EXIT_REASON_EXTERNAL_INTERRUPT &&
+	u16 handler = exit_reason;
+	if (lapic_in_kernel() && handler == EXIT_REASON_EXTERNAL_INTERRUPT &&
 	    __nested_vmcs_read(vmcs, VM_EXIT_CONTROLS) & VM_EXIT_ACK_INTR_ON_EXIT)
 		;/* FIXME  */
 
@@ -1024,9 +1025,8 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
 	nested_vmcs_write(vmcs, VM_EXIT_INTR_INFO, intr_info);
 	nested_vmcs_write(vmcs, EXIT_QUALIFICATION, exit_qualification);
 
-	u16 handler = exit_reason;
 	if (handler == EXIT_REASON_GDT_IDT_ACCESS || handler == EXIT_REASON_LDT_TR_ACCESS ||
-	    (handler >= EXIT_REASON_VMCLEAR && (u16)exit_reason <= EXIT_REASON_VMON))
+	    (handler >= EXIT_REASON_VMCLEAR && handler <= EXIT_REASON_VMON))
 		nested_vmcs_write(vmcs, VMX_INSTRUCTION_INFO, vmcs_read(VMX_INSTRUCTION_INFO));
 
 	nested->current_vmxon = nested->vmxon;
@@ -1158,7 +1158,6 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 		return false;
 	}
 
-	/* FIXME  */
 	nested_enter(nested);
 	prepare_nested_guest(vcpu, vmcs);
 	nested->current_vmxon = 0;
@@ -1472,11 +1471,33 @@ static bool vcpu_handle_vmoff(struct vcpu *vcpu)
 	u64 gva = 0;
 
 	/* can only be executed from root  */
-	if (nested_is_root(vcpu))
-		vcpu_vm_succeed(vcpu);
-	else
+	if (!nested_is_root(vcpu)) {
 		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+		goto out;
+	}
 
+	if (!nested->current_vmxon || !nested->vmxon) {
+		/* Somehow they are inside root but vmxon hasn't
+		 * been done or there is no current VMXON region,
+		 * this is a bug.  */
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+		goto out;
+	}
+
+	nested->vmcs_region = 0;
+	nested->vmxon = false;
+	nested->vmxon_region = 0;
+	nested->launch_state = VMCS_LAUNCH_STATE_NONE;
+	nested->feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
+	if (nested->vmcs)
+		kunmap(nested->vmcs, PAGE_SIZE);
+
+	vcpu->cr4_guest_host_mask |= X86_CR4_VMXE;
+	__vmx_vmwrite(CR4_GUEST_HOST_MASK, vcpu->cr4_guest_host_mask);
+	__vmx_vmwrite(CR4_READ_SHADOW, vmcs_read(GUEST_CR4) & ~vcpu->cr4_guest_host_mask);
+	vcpu_vm_succeed(vcpu);
+
+out:
 	vcpu_advance_rip(vcpu);
 	return true;
 }
