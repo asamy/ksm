@@ -185,10 +185,10 @@ static inline void *pte_to_va(uintptr_t *pte)
 	return (void *)__pte_to_va(pte);
 }
 
-static inline u16 addr_offset(uintptr_t va)
+static inline u16 addr_offset(uintptr_t addr)
 {
 	/* Get the lower 12 bits which represent the offset  */
-	return va & (PAGE_SIZE - 1);
+	return addr & (PAGE_SIZE - 1);
 }
 
 static inline uintptr_t va_to_pa(uintptr_t va)
