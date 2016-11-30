@@ -315,15 +315,16 @@ static inline bool nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
 		break;
 	}
 
-	u64 *out = (u64 *)(vmcs + field_offset(field));
-	u64 v = *out;
+	u64 *s = (u64 *)vmcs;
+	u16 off = field_offset(field);
+	u64 v = s[off];
 	switch (field_width(field)) {
 	case FIELD_U16:
 		v = value & 0xFFFF;
-		return true;
+		break;
 	case FIELD_U32:
 		v = value & 0xFFFFFFFF;
-		return true;
+		break;
 	case FIELD_U64:
 		if (field & 1) {
 			v &= 0xFFFFFFFF;
@@ -337,13 +338,14 @@ static inline bool nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
 		break;
 	}
 
-	*out = v;
+	s[off] = v;
 	return true;
 }
 
 static inline u64 __nested_vmcs_read(uintptr_t vmcs, u32 field)
 {
-	u64 v = *(u64 *)(vmcs + field_offset(field));
+	u64 *s = (u64 *)vmcs;
+	u64 v = s[field_offset(field)];
 	switch (field_width(field)) {
 	case FIELD_U16:
 		v &= 0xFFFF;
@@ -988,7 +990,13 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
 
 static inline bool nested_is_root(struct vcpu *vcpu)
 {
-	/* Typical VMX checks, make sure we're inside the nested hypervisor's "root".  */
+	/* Make sure they are able to execute a VMX instruction:  */
+	if (!(vmcs_read(GUEST_CR0) & X86_CR0_PE) ||
+	    vcpu->cr4_guest_host_mask & X86_CR4_VMXE) {
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+		return false;
+	}
+
 	if (!vcpu->nested_vcpu.current_vmxon) {
 		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 		return false;
@@ -1483,6 +1491,10 @@ static bool vcpu_handle_vmwrite(struct vcpu *vcpu)
 		__debugbreak();
 		goto out;
 	}
+
+	u64 out = __nested_vmcs_read(vmcs, field);
+	if (out != value)
+		__debugbreak();
 
 	vcpu_vm_succeed(vcpu);
 out:
