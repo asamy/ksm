@@ -748,12 +748,14 @@ static inline void vcpu_vm_fail_invalid(struct vcpu *vcpu)
 	vcpu->eflags &= ~(X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_ZF | X86_EFLAGS_SF | X86_EFLAGS_OF);
 }
 
+#ifdef NESTED_VMX
 static inline void vcpu_vm_fail_valid(struct vcpu *vcpu, size_t err)
 {
 	vcpu->eflags |= X86_EFLAGS_ZF;
 	vcpu->eflags &= ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_SF | X86_EFLAGS_OF);
 	nested_vmcs_write((uintptr_t)&vcpu->nested_vcpu.vmcs, VM_INSTRUCTION_ERROR, err);
 }
+#endif
 
 static inline void vcpu_adjust_rflags(struct vcpu *vcpu, bool success)
 {
@@ -2716,7 +2718,7 @@ static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *r
 		   "    cs=0x%02X    ds=0x%02X   es=0x%02X\n"
 		   "    fs=0x%016X   gs=0x%016X  kgs=0x%016X\n"
 		   "    cr0=0x%016X  cr3=0x%016X cr4=0x%016X\n"
-		   "	dr0=0x016X   dr1=0x%016X dr2=0x%016X\n"
+		   "	dr0=0x%016X  dr1=0x%016X dr2=0x%016X\n"
 		   "	dr3=0x%016X  dr6=0x%016X dr7=0x%016X\n",
 		   vcpu, regs->gp[REG_AX], regs->gp[REG_CX], regs->gp[REG_DX],
 		   regs->gp[REG_BX], vmcs_read(GUEST_RSP), regs->gp[REG_BP],
