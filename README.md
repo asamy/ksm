@@ -11,6 +11,8 @@ A really simple and lightweight x64 hypervisor written in C for Intel processors
 - IDT Shadowing
 - EPT violation #VE (if not available natively, it will keep using VM-Exit instead)
 - EPTP switching VMFUNC (if not available natively, it will be emulated using a VMCALL)
+- APIC virtualization
+- VMX Nesting
 
 ## Why not other hypervisors?
 
@@ -26,23 +28,22 @@ technique that I can relay on.
 
 ## Requirements
 
-- An Intel processor
+- An Intel processor (with VT-x and EPT support)
 - A working C compiler (GCC or CLang or Microsoft compiler (CL)).  You can use VS 2015.
-
-## Compiling under MinGW
-
-Simply `make C=1` (if cross compiling under Linux) or `mingw32-make` (under MinGW).
 
 ## Unsupported features (hardware, etc.)
 
 - UEFI
 - Intel TXT
-- VT-x nesting (i.e. having a vm running inside it not the other way around!)
 
 ## Debugging and/or testing
 
 Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it, you can now test under VMs with
 emulation for VMFUNC.
+
+	`if you're live debugging then, you may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in secondary controls,
+	otherwise it makes WinDBG go *maniac*.  I have not investigated the root cause, but it keeps loading GDT and LDT all the time,
+	which is _insane_.`
 
 ## Supported Kernels
 
@@ -67,12 +68,24 @@ Contributions are really appreciated and can be submitted by one of the followin
 
 It'd be appreciated if you use a separate branch for your submissions (other than master, that is).
 
-## TODO / In consideration
+## TODO / In development
 
 - APIC virtualization (Partially implemented)
 - UEFI support
 - Intel TXT support
 - Nesting support (Partially implemented)
+- More documentation
+
+## Building
+
+### Compiling under MinGW
+
+Simply `make C=1` (if cross compiling under Linux) or `mingw32-make` (under native).
+
+### Compiling under MSVC
+
+The solution under `ksm/` directory is a VS 2015 solution, you can use it to build, you'll
+also need the Windows Driver Development Kit.
 
 ## Loading the driver
 
@@ -82,7 +95,7 @@ In commandline as administrator:
 2. `sc start ksm`
 
 Unloading:
-`sc stop ksm`
+- `sc stop ksm`
 
 You can also use [kload](https://github.com/asamy/kload)
 

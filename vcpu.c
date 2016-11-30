@@ -177,6 +177,7 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 
 	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID |
+		/* NB: Desc table exiting makes windbg go maniac mode.  */
 		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES |
 #ifndef EMULATE_VMFUNC
 		SECONDARY_EXEC_ENABLE_VMFUNC
@@ -423,7 +424,8 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	/*
 	 * setup_vmcs()/vcpu_launch() failed if we got here, we had already overwritten the
 	 * IDT entry for #VE (X86_TRAP_VE), restore it now otherwise PatchGuard is gonna
-	 * notice and BSOD us.  */
+	 * notice and BSOD us.
+	 */
 	__lidt(&vcpu->g_idt);
 
 out_off:

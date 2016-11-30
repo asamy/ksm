@@ -173,8 +173,8 @@
 #endif
 
 struct regs {
-	u64 gp[REG_MAX];
-	u64 eflags;
+	uintptr_t gp[REG_MAX];
+	uintptr_t eflags;
 };
 
 struct shadow_idt_entry {
@@ -263,21 +263,35 @@ struct nested_vcpu {
 	u32 launch_state;
 	u64 feat_ctl;
 	bool inside_guest;
-	struct vmcs *vmcs;
+	__align(PAGE_SIZE) struct vmcs vmcs;
 };
 
 static inline void nested_enter(struct nested_vcpu *nested)
 {
+	/*
+	 * About to enter nested guest due to a vmlaunch /
+	 * vmresume done by the nested hypervisor.
+	 */
 	nested->inside_guest = true;
 }
 
 static inline void nested_leave(struct nested_vcpu *nested)
 {
+	/*
+	 * About to leave nested guest to enter nested hypervisor
+	 * to process an event coming from the nested guest.
+	 */
 	nested->inside_guest = false;
 }
 
 static inline bool nested_entered(const struct nested_vcpu *nested)
 {
+	/*
+	 * If this value is false, then it means the event came from
+	 * the nested hypervisor and therefore needs to be processed
+	 * by us, otherwise, it came from the nested guest and we should
+	 * probably exit to the nested hypervisor, see exit.c
+	 */
 	return nested->inside_guest;
 }
 #endif
@@ -437,6 +451,7 @@ extern NTSTATUS ksm_hook_idt(unsigned n, void *h);
 extern NTSTATUS ksm_free_idt(unsigned n);
 extern struct vcpu *ksm_current_cpu(void);
 
+#ifdef EPAGE_HOOK
 /* page.c  */
 extern NTSTATUS ksm_hook_epage(void *original, void *redirect);
 extern NTSTATUS ksm_unhook_page(void *original);
@@ -449,6 +464,7 @@ extern NTSTATUS kprotect_init(void);
 extern NTSTATUS kprotect_exit(void);
 extern u16 kprotect_select_eptp(struct ept *ept, u64 rip, u8 ac);
 extern bool kprotect_init_eptp(struct vcpu *vcpu, uintptr_t gpa);
+#endif
 
 /* ept.c  */
 extern bool ept_check_capabilitiy(void);
