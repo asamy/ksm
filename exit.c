@@ -26,7 +26,6 @@
 #include <intrin.h>
 
 #include "ksm.h"
-#include "apic.h"
 
 static u16 curr_handler = 0;
 static u16 prev_handler = 0;

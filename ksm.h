@@ -22,8 +22,6 @@
 #include "compiler.h"
 #include "x86.h"
 #include "vmx.h"
-#include "asm.h"
-#include "segment.h"
 #include "mm.h"
 #include "htable.h"
 

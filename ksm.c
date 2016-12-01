@@ -21,7 +21,6 @@
 
 #include "ksm.h"
 #include "dpc.h"
-#include "apic.h"
 
 struct ksm ksm = {
 	.active_vcpus = 0,

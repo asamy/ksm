@@ -81,7 +81,6 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\acpi.c" />
-    <ClCompile Include="..\..\ept.c" />
     <ClCompile Include="..\..\exit.c" />
     <ClCompile Include="..\..\htable.c" />
     <ClCompile Include="..\..\kprotect.c" />
@@ -92,16 +91,12 @@
     <ClCompile Include="..\..\vcpu.c" />
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\apic.h" />
-    <ClInclude Include="..\..\asm.h" />
     <ClInclude Include="..\..\compiler.h" />
     <ClInclude Include="..\..\dpc.h" />
     <ClInclude Include="..\..\htable.h" />
-    <ClInclude Include="..\..\segment.h" />
     <ClInclude Include="..\..\ksm.h" />
     <ClInclude Include="..\..\mm.h" />
     <ClInclude Include="..\..\pe.h" />
-    <ClInclude Include="..\..\types.h" />
     <ClInclude Include="..\..\vmx.h" />
     <ClInclude Include="..\..\x86.h" />
   </ItemGroup>

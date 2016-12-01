@@ -27,9 +27,6 @@
     <ClCompile Include="..\..\acpi.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\ept.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\exit.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -56,9 +53,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\asm.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\dpc.h">
       <Filter>Header Files</Filter>
     </ClInclude>
@@ -74,19 +68,10 @@
     <ClInclude Include="..\..\pe.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="..\..\types.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\vmx.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\x86.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\segment.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
-    <ClInclude Include="..\..\apic.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="..\..\compiler.h">

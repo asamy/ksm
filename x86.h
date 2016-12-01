@@ -3,6 +3,13 @@
 #ifndef __X86_H
 #define __X86_H
 
+#if !defined(_AMD64_) && !defined(__x86_64) && !defined(_M_AMD64) && !defined(__M_X64)
+#error only 64-bit is supported
+#endif
+
+#include "compiler.h"
+#include "mm.h"
+
 #define bit(b) 			(1 << (b))
 #define _BITUL(bit)		(1ul << (bit))
 
@@ -1169,5 +1176,589 @@ complete list. */
 #define MSR_VM_CR                       0xc0010114
 #define MSR_VM_IGNNE                    0xc0010115
 #define MSR_VM_HSAVE_PA                 0xc0010117
+
+#define __cli()			_disable()
+#define __sti()			_enable()
+#ifndef _MSC_VER
+#define __return_addr()		__builtin_return_address(0)
+#define cpu_relax()		__asm __volatile("pause\n\t" ::: "memory")
+#define barrier() 		__asm __volatile("lock orq $0, 0(%%rsp)" ::: "memory")
+#else
+#define __return_addr()		_ReturnAddress()
+#define cpu_relax()		_mm_pause()
+#define barrier() 		_ReadWriteBarrier()
+#endif
+
+#ifndef _MSC_VER
+#define __writedr(dr, val)					\
+	__asm __volatile("movq	%[Val], %%dr" #dr		\
+			 : : [Val] "r" ((val)))
+
+#define __readdr(dr) __extension__ ({			\
+	unsigned long long val;				\
+	__asm __volatile("movq	%%dr" #dr ", %[Val]"	\
+			 : [Val] "=r" (val));		\
+	val;						\
+})
+
+static inline void _xsetbv(u32 index, u64 value)
+{
+	u32 eax = value;
+	u32 edx = value >> 32;
+
+	__asm __volatile(".byte 0x0f,0x01,0xd1"
+			 :: "a" (eax), "d" (edx), "c" (index));
+}
+
+static inline void __cpuidex(int *ret, int func, int subf)
+{
+	u32 eax, ebx, ecx, edx;
+	__asm __volatile("cpuid"
+			 : "=a" (eax), "=D" (ebx), "=c" (ecx), "=d" (edx)
+			 : "a" (func), "c" (subf));
+	ret[0] = eax;
+	ret[1] = ebx;
+	ret[2] = ecx;
+	ret[3] = edx;
+}
+
+static inline u64 __lar(u64 sel)
+{
+	u64 ar;
+	__asm __volatile("lar %[sel], %[ar]"
+			 : [ar] "=r" (ar)
+			 : [sel] "r" (sel));
+	return ar;
+}
+
+#define __wbinvd()	__asm __volatile("wbinvd")
+#define __invd() 	__asm __volatile("invd")
+#define __halt() 	__asm __volatile("hlt")
+#define __invlpg(addr)	__asm __volatile("invlpg (%0)" :: "r" (addr) : "memory")
+#define __readeflags()	({							\
+	u64 rflags;								\
+	__asm __volatile("pushfq\n\tpopq %[rf]" : [rf] "=r" (rflags));		\
+	rflags;									\
+})
+
+#define DEFINE_SEL_READER(name, instr)				\
+	static inline u16 name(void)				\
+	{							\
+		u16 tmp;					\
+		__asm __volatile(instr : "=r" (tmp));		\
+		return tmp;					\
+	}
+
+DEFINE_SEL_READER(__sldt, "sldt %0")
+DEFINE_SEL_READER(__str, "str %0")
+DEFINE_SEL_READER(__readcs, "movw %%cs, %0")
+DEFINE_SEL_READER(__readds, "movw %%ds, %0")
+DEFINE_SEL_READER(__reades, "movw %%es, %0")
+DEFINE_SEL_READER(__readfs, "movw %%fs, %0")
+DEFINE_SEL_READER(__readgs, "movw %%gs, %0")
+DEFINE_SEL_READER(__readss, "movw %%ss, %0")
+
+#else
+extern void __lgdt(const void *);
+extern void __sgdt(void *);
+
+extern void __lldt(u16);
+extern u16 __sldt(void);
+
+extern void __ltr(u16);
+extern u16 __str(void);
+
+extern u16 __reades(void);
+extern u16 __readcs(void);
+extern u16 __readss(void);
+extern u16 __readds(void);
+extern u16 __readfs(void);
+extern u16 __readgs(void);
+
+extern uintptr_t __lar(uintptr_t);
+extern void __invd(void);
+#endif
+
+static inline bool test_bit(u64 bits, u64 bs)
+{
+	return (bits & bs) == bs;
+}
+
+/* avoid declared inside parameter list  */
+struct vcpu;
+
+extern bool __vmx_vminit(struct vcpu *);
+extern void __vmx_entrypoint(void);
+extern void __ept_violation(void);
+extern void __writecr2(uintptr_t);
+
+/*
+ * Helper functions for segmentation (IDT, GDT, LDT, etc.)
+ */
+#include <pshpack1.h>
+struct gdtr {
+	u16 limit;
+	uintptr_t base;
+} __packed;
+
+struct tss {
+	u32 reserved1;
+	u64 sp0;
+	u64 sp1;
+	u64 sp2;
+	u64 reserved2;
+	u64 ist[7];
+	u32 reserved3;
+	u32 reserved4;
+	u16 reserved5;
+	u16 io_bitmap_base;
+	u64 io_bitmap[PAGE_SIZE*2 + 1];
+} __packed;
+
+typedef union __packed {
+	u64 i;
+	struct {
+		u16 lo;
+		u16 sel;
+		u8 ist : 3;
+		u8 zero : 5;
+		u8 type : 5;
+		u8 dpl : 2;
+		u8 p : 1;
+		u16 mid;
+	};
+} kidt_entry_t;
+
+struct kidt_entry64 {
+	kidt_entry_t e32;
+	u32 hi;
+	u32 zero;
+} __packed;
+#include <poppack.h>
+
+#ifndef _MSC_VER
+static inline void __sidt(struct gdtr *idt)
+{
+	__asm __volatile("sidt %0" : "=m" (*idt));
+}
+
+static inline void __lidt(const struct gdtr *idt)
+{
+	__asm __volatile("lidt %0" :: "m" (*idt));
+}
+
+static inline void __lgdt(const struct gdtr *gdt)
+{
+	__asm __volatile("lgdt %0" :: "m" (*gdt));
+}
+
+static inline void __sgdt(struct gdtr *gdt)
+{
+	__asm __volatile("sgdt %0" : "=m" (*gdt));
+}
+#endif
+
+#define LOW_U16_U64(x) ((u64)(x) & 0xFFFF)
+#define MID_U16_U64(x) (((u64)(x) >> 16) & 0xFFFF)
+#define HIGH_U32_U64(x) ((u64)(x) >> 32)
+
+static inline bool idte_present(const struct kidt_entry64 *e)
+{
+	return e->e32.p;
+}
+
+static inline u16 idte_sel(const struct kidt_entry64 *e)
+{
+	return e->e32.sel;
+}
+
+static inline u64 idte_addr(const struct kidt_entry64 *e)
+{
+	const kidt_entry_t *e32 = &e->e32;
+	return (u64)e->hi << 32 | ((u32)e32->mid << 16 | e32->lo);
+}
+
+static inline struct kidt_entry64 *idt_entry(uintptr_t base, unsigned n)
+{
+	struct kidt_entry64 *table = (struct kidt_entry64 *)base;
+	return &table[n];
+}
+
+static inline void pack_entry(struct kidt_entry64 *entry, u16 selector, uintptr_t addr)
+{
+	entry->hi = HIGH_U32_U64(addr);
+	entry->zero = 0;
+
+	kidt_entry_t *e = &entry->e32;
+	e->lo = LOW_U16_U64(addr);
+	e->sel = selector;
+	e->ist = 0;
+	e->zero = 0;
+	e->type = GATE_INTERRUPT;
+	e->dpl = 0;
+	e->p = 1;
+	e->mid = MID_U16_U64(addr);
+}
+
+static inline void put_entry(uintptr_t base, unsigned n, struct kidt_entry64 *entry)
+{
+	memcpy(idt_entry(base, n), entry, sizeof(*entry));
+}
+
+static inline void __set_intr_gate(unsigned n, u16 selector, uintptr_t base, uintptr_t addr)
+{
+	struct kidt_entry64 entry;
+	pack_entry(&entry, selector, addr);
+	put_entry(base, n, &entry);
+}
+
+static inline void set_intr_gate(unsigned n, u16 selector, uintptr_t base, void *addr)
+{
+	NT_ASSERT(n <= 0xFF);
+	return __set_intr_gate(n, selector, base, (uintptr_t)addr);
+}
+
+typedef union {
+	u64 all;
+	struct {
+		u64 limit_low : 16;
+		u64 base_low : 16;
+		u64 base_mid : 8;
+		u64 type : 4;
+		u64 system : 1;
+		u64 dpl : 2;
+		u64 present : 1;
+		u64 limit_high : 4;
+		u64 avl : 1;
+		u64 l : 1;
+		u64 db : 1;
+		u64 gran : 1;
+		u64 base_high : 8;
+	};
+} segmentdesc_t;
+
+typedef struct {
+	segmentdesc_t d32;
+	u32 base_upper32;
+	u32 reserved;
+} segmentdesc64_t;
+
+static inline segmentdesc_t *segment_desc(uintptr_t gdt, u16 sel)
+{
+	return (segmentdesc_t *)(gdt + (sel & ~3));
+}
+
+static uintptr_t segment_desc_base(segmentdesc_t *desc)
+{
+	uintptr_t base = (desc->base_high << 24 | desc->base_mid << 16 | desc->base_low) & MAXULONG;
+	if (!desc->system)
+		base |= (uintptr_t)(((segmentdesc64_t *)desc)->base_upper32) << 32;
+
+	return base;
+}
+
+static uintptr_t __segmentbase(uintptr_t gdt, u16 sel)
+{
+	if (!sel)
+		return 0;
+
+	/* If it's an LDT segment, load the LDT, we deal with GDT mostly here,
+	 * it's very unlikely that this will branch...  See calls down below in setup_vmcs().
+ 	 * in vcpu.c  (Hence parameter name "gdt")  */
+	if (sel & 4) {
+		segmentdesc_t *ldt = segment_desc(gdt, __sldt());
+		uintptr_t ldt_base = segment_desc_base(ldt);
+		return segment_desc_base(segment_desc(ldt_base, sel));
+	}
+
+	return segment_desc_base(segment_desc(gdt, sel));
+}
+
+static inline struct tss *get_tss(u16 sel)
+{
+	struct gdtr gdt;
+	__sgdt(&gdt);
+
+	return (struct tss *)__segmentbase(gdt.base, sel);
+}
+
+static inline struct tss *current_tss(void)
+{
+	return get_tss(__str());
+}
+
+/*
+ *
+ * Taken from the Linux kernel
+ * 	arch/x86/include/asm/apicdef.h
+ *
+ * Constants for various Intel APICs. (local APIC, IOAPIC, etc.)
+ *
+ * Alan Cox <Alan.Cox@linux.org>, 1995.
+ * Ingo Molnar <mingo@redhat.com>, 1999, 2000
+ */
+
+#define IO_APIC_DEFAULT_PHYS_BASE	0xfec00000
+#define	APIC_DEFAULT_PHYS_BASE		0xfee00000
+
+/*
+ * This is the IO-APIC register space as specified
+ * by Intel docs:
+ */
+#define IO_APIC_SLOT_SIZE		1024
+
+#define	APIC_ID		0x20
+
+#define	APIC_LVR	0x30
+#define	APIC_LVR_MASK		0xFF00FF
+#define	APIC_LVR_DIRECTED_EOI	(1 << 24)
+#define	GET_APIC_VERSION(x)	((x) & 0xFFu)
+#define	GET_APIC_MAXLVT(x)	(((x) >> 16) & 0xFFu)
+#define	APIC_INTEGRATED(x)	(1)
+#define	APIC_XAPIC(x)		((x) >= 0x14)
+#define	APIC_EXT_SPACE(x)	((x) & 0x80000000)
+#define	APIC_TASKPRI	0x80
+#define	APIC_TPRI_MASK		0xFFu
+#define	APIC_ARBPRI	0x90
+#define	APIC_ARBPRI_MASK	0xFFu
+#define	APIC_PROCPRI	0xA0
+#define	APIC_EOI	0xB0
+#define	APIC_EOI_ACK		0x0 /* Docs say 0 for future compat. */
+#define	APIC_RRR	0xC0
+#define	APIC_LDR	0xD0
+#define	APIC_LDR_MASK		(0xFFu << 24)
+#define	GET_APIC_LOGICAL_ID(x)	(((x) >> 24) & 0xFFu)
+#define	SET_APIC_LOGICAL_ID(x)	(((x) << 24))
+#define	APIC_ALL_CPUS		0xFFu
+#define	APIC_DFR	0xE0
+#define	APIC_DFR_CLUSTER		0x0FFFFFFFul
+#define	APIC_DFR_FLAT			0xFFFFFFFFul
+#define	APIC_SPIV	0xF0
+#define	APIC_SPIV_DIRECTED_EOI		(1 << 12)
+#define	APIC_SPIV_FOCUS_DISABLED	(1 << 9)
+#define	APIC_SPIV_APIC_ENABLED		(1 << 8)
+#define	APIC_ISR	0x100
+#define	APIC_ISR_NR     0x8     /* Number of 32 bit ISR registers. */
+#define	APIC_TMR	0x180
+#define	APIC_IRR	0x200
+#define	APIC_ESR	0x280
+#define	APIC_ESR_SEND_CS	0x00001
+#define	APIC_ESR_RECV_CS	0x00002
+#define	APIC_ESR_SEND_ACC	0x00004
+#define	APIC_ESR_RECV_ACC	0x00008
+#define	APIC_ESR_SENDILL	0x00020
+#define	APIC_ESR_RECVILL	0x00040
+#define	APIC_ESR_ILLREGA	0x00080
+#define APIC_LVTCMCI	0x2f0
+#define	APIC_ICR	0x300
+#define	APIC_DEST_SELF		0x40000
+#define	APIC_DEST_ALLINC	0x80000
+#define	APIC_DEST_ALLBUT	0xC0000
+#define	APIC_ICR_RR_MASK	0x30000
+#define	APIC_ICR_RR_INVALID	0x00000
+#define	APIC_ICR_RR_INPROG	0x10000
+#define	APIC_ICR_RR_VALID	0x20000
+#define	APIC_INT_LEVELTRIG	0x08000
+#define	APIC_INT_ASSERT		0x04000
+#define	APIC_ICR_BUSY		0x01000
+#define	APIC_DEST_LOGICAL	0x00800
+#define	APIC_DEST_PHYSICAL	0x00000
+#define	APIC_DM_FIXED		0x00000
+#define	APIC_DM_FIXED_MASK	0x00700
+#define	APIC_DM_LOWEST		0x00100
+#define	APIC_DM_SMI		0x00200
+#define	APIC_DM_REMRD		0x00300
+#define	APIC_DM_NMI		0x00400
+#define	APIC_DM_INIT		0x00500
+#define	APIC_DM_STARTUP		0x00600
+#define	APIC_DM_EXTINT		0x00700
+#define	APIC_VECTOR_MASK	0x000FF
+#define	APIC_ICR2	0x310
+#define	GET_APIC_DEST_FIELD(x)	(((x) >> 24) & 0xFF)
+#define	SET_APIC_DEST_FIELD(x)	((x) << 24)
+#define	APIC_LVTT	0x320
+#define	APIC_LVTTHMR	0x330
+#define	APIC_LVTPC	0x340
+#define	APIC_LVT0	0x350
+#define	APIC_LVT_TIMER_BASE_MASK	(0x3 << 18)
+#define	GET_APIC_TIMER_BASE(x)		(((x) >> 18) & 0x3)
+#define	SET_APIC_TIMER_BASE(x)		(((x) << 18))
+#define	APIC_TIMER_BASE_CLKIN		0x0
+#define	APIC_TIMER_BASE_TMBASE		0x1
+#define	APIC_TIMER_BASE_DIV		0x2
+#define	APIC_LVT_TIMER_ONESHOT		(0 << 17)
+#define	APIC_LVT_TIMER_PERIODIC		(1 << 17)
+#define	APIC_LVT_TIMER_TSCDEADLINE	(2 << 17)
+#define	APIC_LVT_MASKED			(1 << 16)
+#define	APIC_LVT_LEVEL_TRIGGER		(1 << 15)
+#define	APIC_LVT_REMOTE_IRR		(1 << 14)
+#define	APIC_INPUT_POLARITY		(1 << 13)
+#define	APIC_SEND_PENDING		(1 << 12)
+#define	APIC_MODE_MASK			0x700
+#define	GET_APIC_DELIVERY_MODE(x)	(((x) >> 8) & 0x7)
+#define	SET_APIC_DELIVERY_MODE(x, y)	(((x) & ~0x700) | ((y) << 8))
+#define	APIC_MODE_FIXED		0x0
+#define	APIC_MODE_NMI		0x4
+#define	APIC_MODE_EXTINT	0x7
+#define	APIC_LVT1	0x360
+#define	APIC_LVTERR	0x370
+#define	APIC_TMICT	0x380
+#define	APIC_TMCCT	0x390
+#define	APIC_TDCR	0x3E0
+#define APIC_SELF_IPI	0x3F0
+#define	APIC_TDR_DIV_TMBASE	(1 << 2)
+#define	APIC_TDR_DIV_1		0xB
+#define	APIC_TDR_DIV_2		0x0
+#define	APIC_TDR_DIV_4		0x1
+#define	APIC_TDR_DIV_8		0x2
+#define	APIC_TDR_DIV_16		0x3
+#define	APIC_TDR_DIV_32		0x8
+#define	APIC_TDR_DIV_64		0x9
+#define	APIC_TDR_DIV_128	0xA
+#define	APIC_EFEAT	0x400
+#define	APIC_ECTRL	0x410
+#define APIC_EILVTn(n)	(0x500 + 0x10 * n)
+#define	APIC_EILVT_NR_AMD_K8	1	/* # of extended interrupts */
+#define	APIC_EILVT_NR_AMD_10H	4
+#define	APIC_EILVT_NR_MAX	APIC_EILVT_NR_AMD_10H
+#define	APIC_EILVT_LVTOFF(x)	(((x) >> 4) & 0xF)
+#define	APIC_EILVT_MSG_FIX	0x0
+#define	APIC_EILVT_MSG_SMI	0x2
+#define	APIC_EILVT_MSG_NMI	0x4
+#define	APIC_EILVT_MSG_EXT	0x7
+#define	APIC_EILVT_MASKED	(1 << 16)
+
+#define MAX_IO_APICS 128
+#define MAX_LOCAL_APIC 32768
+
+/*
+ * All x86-64 systems are xAPIC compatible.
+ * In the following, "apicid" is a physical APIC ID.
+ */
+#define XAPIC_DEST_CPUS_SHIFT	4
+#define XAPIC_DEST_CPUS_MASK	((1u << XAPIC_DEST_CPUS_SHIFT) - 1)
+#define XAPIC_DEST_CLUSTER_MASK	(XAPIC_DEST_CPUS_MASK << XAPIC_DEST_CPUS_SHIFT)
+#define APIC_CLUSTER(apicid)	((apicid) & XAPIC_DEST_CLUSTER_MASK)
+#define APIC_CLUSTERID(apicid)	(APIC_CLUSTER(apicid) >> XAPIC_DEST_CPUS_SHIFT)
+#define APIC_CPUID(apicid)	((apicid) & XAPIC_DEST_CPUS_MASK)
+
+enum ioapic_dest {
+	IOAPIC_FIXED_DEST = 0,
+	IOAPIC_LOWEST_PRIO = 1,
+	IOAPIC_DEST_SMI = 2,
+	IOAPIC_DEST_RSVD = 3,
+	IOAPIC_DEST_NMI = 4,
+	IOAPIC_DEST_INIT = 5,
+	IOAPIC_DEST_RSVD2 = 6,
+	IOAPIC_DEST_EXTINTR = 7,
+};
+
+static inline bool lapic_in_kernel(void)
+{
+	return __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_ENABLE;
+}
+
+static inline bool x2apic_enabled(void)
+{
+	return __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_X2APIC;
+}
+
+static inline bool lapic_is_bsp(void)
+{
+	return __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BSP;
+}
+
+static inline u64 lapic_base_phys(void)
+{
+	return __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE;
+}
+
+static inline bool cpu_has_x2apic(void)
+{
+	int tmp[4];
+	__cpuid(tmp, 1);
+
+	return tmp[2] & (1 << (X86_FEATURE_X2APIC & 31));
+}
+
+#define IOAPIC_REGSEL		0x00
+#define IOAPIC_WIN		0x10
+
+#define IOAPIC_ID		0x00
+#define IOAPIC_VER		0x01
+#define IOAPIC_ARB		0x02
+#define IOAPIC_REDTBL		0x10
+
+static inline void ioapic_write(u64 base, u8 reg, u32 val)
+{
+	*(volatile u32 *)(base + IOAPIC_REGSEL) = reg;
+	*(volatile u32 *)(base + IOAPIC_WIN) = val;
+}
+
+static inline u32 ioapic_read(u64 base, u8 reg)
+{
+	*(volatile u32 *)(base + IOAPIC_REGSEL) = reg;
+	return *(volatile u32 *)(base + IOAPIC_WIN);
+}
+
+static inline void ioapic_set_entry(u64 base, u8 index, u64 data)
+{
+	ioapic_write(base, IOAPIC_REDTBL + index * 2, data);
+	ioapic_write(base, IOAPIC_REDTBL + index * 2 + 1, data >> 32);
+}
+
+static inline u32 ioapic_count(u64 base)
+{
+	return ((ioapic_read(base, IOAPIC_VER) >> 16) & 0xFF) + 1;
+}
+
+static inline void __lapic_write(u64 base, u32 reg, u32 val)
+{
+	*(volatile u32 *)(base + reg) = val;
+}
+
+static inline void __lapic_write64(u64 base, u32 reg, u64 val)
+{
+	/* XXX:  x2APIC case:  see exit.c (vcpu_handle_msr_write).  */
+	*(volatile u64 *)(base + reg) = val;
+}
+
+static inline u32 __lapic_read(u64 base, u32 reg)
+{
+	return *(volatile u32 *)(base + reg);
+}
+
+static inline u64 __lapic_read64(u64 base, u32 reg)
+{
+	return *(volatile u64 *)(base + reg);
+}
+
+static inline bool lapic_write(u32 reg, u32 val)
+{
+	void *base = kmap(lapic_base_phys(), PAGE_SIZE);
+	if (!base)
+		return false;
+
+	__lapic_write((u64)base, reg, val);
+	kunmap(base, PAGE_SIZE);
+	return true;
+}
+
+static inline u32 lapic_read(u32 reg)
+{
+	void *base = kmap(lapic_base_phys(), PAGE_SIZE);
+	if (!base)
+		return false;
+
+	u32 val = __lapic_read((u64)base, reg);
+	kunmap(base, PAGE_SIZE);
+	return val;
+}
+
+static inline void lapic_send_self_ipi(u8 vector)
+{
+	u32 icr = vector | APIC_DEST_SELF | APIC_DM_FIXED | APIC_DEST_PHYSICAL;
+	lapic_write(APIC_ICR, icr);
+}
 
 #endif
