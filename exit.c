@@ -911,11 +911,25 @@ static inline bool nested_has_secondary(const struct nested_vcpu *nested, u32 bi
 	return (__nested_vmcs_read((uintptr_t)&nested->vmcs, SECONDARY_VM_EXEC_CONTROL) & bits) == bits;
 }
 
+static inline u32 nested_build_ar_bytes(u32 type, u32 s, u32 dpl, u32 present, u32 avl, u32 l, u32 db, u32 g)
+{
+	return type | (s << 4) | (dpl << 5) | (present << 7) |
+		(avl << 12) | (l << 13) | (db << 14) | (g << 15);
+}
+
 static inline void nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 {
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	bool secondary = nested_has_primary(nested, CPU_BASED_ACTIVATE_SECONDARY_CONTROLS);
+
 	__vmx_vmwrite(GUEST_RIP, __nested_vmcs_read(vmcs, HOST_RIP));
 	__vmx_vmwrite(GUEST_RSP, __nested_vmcs_read(vmcs, HOST_RSP));
 	__vmx_vmwrite(GUEST_RFLAGS, X86_EFLAGS_FIXED);
+
+	__vmx_vmwrite(CR0_GUEST_HOST_MASK, vcpu->cr0_guest_host_mask);
+	__vmx_vmwrite(CR4_GUEST_HOST_MASK, vcpu->cr4_guest_host_mask);
+	__vmx_vmwrite(CR0_READ_SHADOW, __nested_vmcs_read(vmcs, HOST_CR0) & ~vcpu->cr0_guest_host_mask);
+	__vmx_vmwrite(CR4_READ_SHADOW, __nested_vmcs_read(vmcs, HOST_CR4) & ~vcpu->cr4_guest_host_mask);
 
 	__vmx_vmwrite(GUEST_CR0, __nested_vmcs_read(vmcs, HOST_CR0));
 	__vmx_vmwrite(GUEST_CR4, __nested_vmcs_read(vmcs, HOST_CR4));
@@ -924,13 +938,6 @@ static inline void nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 	__vmx_vmwrite(GUEST_SYSENTER_CS, __nested_vmcs_read(vmcs, HOST_IA32_SYSENTER_CS));
 	__vmx_vmwrite(GUEST_SYSENTER_EIP, __nested_vmcs_read(vmcs, HOST_IA32_SYSENTER_EIP));
 	__vmx_vmwrite(GUEST_SYSENTER_ESP, __nested_vmcs_read(vmcs, HOST_IA32_SYSENTER_ESP));
-
-	__vmx_vmwrite(GUEST_IDTR_BASE, __nested_vmcs_read(vmcs, HOST_IDTR_BASE));
-	__vmx_vmwrite(GUEST_GDTR_BASE, __nested_vmcs_read(vmcs, HOST_GDTR_BASE));
-
-	__vmx_vmwrite(GUEST_FS_BASE, __nested_vmcs_read(vmcs, HOST_FS_BASE));
-	__vmx_vmwrite(GUEST_GS_BASE, __nested_vmcs_read(vmcs, HOST_GS_BASE));
-	__vmx_vmwrite(GUEST_TR_BASE, __nested_vmcs_read(vmcs, HOST_TR_BASE));
 
 	__vmx_vmwrite(GUEST_ES_SELECTOR, __nested_vmcs_read(vmcs, HOST_ES_SELECTOR));
 	__vmx_vmwrite(GUEST_CS_SELECTOR, __nested_vmcs_read(vmcs, HOST_CS_SELECTOR));
@@ -941,9 +948,47 @@ static inline void nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 	__vmx_vmwrite(GUEST_DS_SELECTOR, __nested_vmcs_read(vmcs, HOST_DS_SELECTOR));
 	__vmx_vmwrite(GUEST_TR_SELECTOR, __nested_vmcs_read(vmcs, HOST_TR_SELECTOR));
 
-	__vmx_vmwrite(GUEST_DR7, 0x400);
+	__vmx_vmwrite(GUEST_IDTR_BASE, __nested_vmcs_read(vmcs, HOST_IDTR_BASE));
+	__vmx_vmwrite(GUEST_GDTR_BASE, __nested_vmcs_read(vmcs, HOST_GDTR_BASE));
+
+	__vmx_vmwrite(GUEST_CS_BASE, 0);
+	__vmx_vmwrite(GUEST_CS_LIMIT, 0xFFFFFFFF);
+	if (__nested_vmcs_read(vmcs, VM_EXIT_CONTROLS) & VM_EXIT_HOST_ADDR_SPACE_SIZE)
+		__vmx_vmwrite(GUEST_CS_AR_BYTES, nested_build_ar_bytes(11, 1, 0, 1, 0, 1, 0, 1));
+	else
+		__vmx_vmwrite(GUEST_CS_AR_BYTES, nested_build_ar_bytes(11, 1, 0, 1, 0, 0, 1, 0));
+	
+	const u32 ar = nested_build_ar_bytes(3, 1, 0, 1, 0, 0, 1, 1);
+	__vmx_vmwrite(GUEST_ES_LIMIT, 0xFFFFFFFF);
+	__vmx_vmwrite(GUEST_ES_BASE, 0);
+	__vmx_vmwrite(GUEST_ES_AR_BYTES, ar);
+
+	__vmx_vmwrite(GUEST_DS_LIMIT, 0xFFFFFFFF);
+	__vmx_vmwrite(GUEST_DS_BASE, 0);
+	__vmx_vmwrite(GUEST_DS_AR_BYTES, ar);
+
+	__vmx_vmwrite(GUEST_SS_LIMIT, 0xFFFFFFFF);
+	__vmx_vmwrite(GUEST_SS_BASE, 0);
+	__vmx_vmwrite(GUEST_SS_AR_BYTES, ar);
+
+	__vmx_vmwrite(GUEST_FS_LIMIT, 0xFFFFFFFF);
+	__vmx_vmwrite(GUEST_FS_BASE, __nested_vmcs_read(vmcs, HOST_FS_BASE));
+	__vmx_vmwrite(GUEST_FS_AR_BYTES, ar);
+
+	__vmx_vmwrite(GUEST_GS_LIMIT, 0xFFFFFFFF);
+	__vmx_vmwrite(GUEST_GS_BASE, __nested_vmcs_read(vmcs, HOST_GS_BASE));
+	__vmx_vmwrite(GUEST_GS_AR_BYTES, ar);
+
+	const u32 tar = nested_build_ar_bytes(11, 0, 0, 1, 0, 0, 0, 0);
+	__vmx_vmwrite(GUEST_TR_AR_BYTES, tar);
+	__vmx_vmwrite(GUEST_TR_LIMIT, 0x67);
+	__vmx_vmwrite(GUEST_TR_BASE, __nested_vmcs_read(vmcs, HOST_TR_BASE));
+
+	__vmx_vmwrite(GUEST_DR7, DR7_FIXED_1);
 	__vmx_vmwrite(GUEST_IA32_DEBUGCTL, 0);
-	__vmx_vmwrite(MSR_BITMAP, __nested_vmcs_read(vmcs, MSR_BITMAP));
+
+	if (nested_has_primary(nested, CPU_BASED_USE_MSR_BITMAPS))
+		__vmx_vmwrite(MSR_BITMAP, __nested_vmcs_read(vmcs, MSR_BITMAP));
 }
 
 static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
@@ -984,7 +1029,7 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
 	   (handler >= EXIT_REASON_VMCLEAR && handler <= EXIT_REASON_VMON))
 		nested_vmcs_write(vmcs, VMX_INSTRUCTION_INFO, vmcs_read(VMX_INSTRUCTION_INFO));
 
-	nested->current_vmxon = nested->vmxon;
+	nested->current_vmxon = nested->vmxon_region;
 	return true;
 }
 
@@ -1357,16 +1402,29 @@ static bool vcpu_handle_vmptrld(struct vcpu *vcpu)
 	}
 
 	if (gpa == nested->vmxon_region) {
-		vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_VMXON_POINTER);
 		__debugbreak();
+		vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_VMXON_POINTER);
+		goto out;
+	}
+
+	char *tmp = kmap(hpa, PAGE_SIZE);
+	if (!tmp) {
+		__debugbreak();
+		vcpu_vm_fail_invalid(vcpu);
+		goto out;
+	}
+
+	bool match = *(u32 *)tmp == (u32)__readmsr(MSR_IA32_VMX_BASIC);
+	kunmap(tmp, PAGE_SIZE);
+	if (!match) {
+		__debugbreak();
+		vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_INCORRECT_VMCS_REVISION_ID);
 		goto out;
 	}
 
 	__debugbreak();
 	nested->vmcs_region = gpa;
 	vcpu_vm_succeed(vcpu);
-	vcpu_advance_rip(vcpu);
-	return true;
 
 out:
 	vcpu_advance_rip(vcpu);
@@ -1579,7 +1637,20 @@ static bool vcpu_handle_vmon(struct vcpu *vcpu)
 	    !vcpu_read_vmx_addr(vcpu, gva, &gpa) ||
 	    !gpa_to_hpa(vcpu, gpa, &hpa)) {
 		__debugbreak();
-		vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_INVALID_ADDRESS);
+		goto out;
+	}
+
+	char *tmp = kmap(hpa, PAGE_SIZE);
+	if (!tmp) {
+		__debugbreak();
+		vcpu_vm_fail_invalid(vcpu);
+		goto out;
+	}
+
+	bool match = *(u32 *)tmp == (u32)__readmsr(MSR_IA32_VMX_BASIC);
+	kunmap(tmp, PAGE_SIZE);
+	if (!match) {
+		vcpu_vm_fail_invalid(vcpu);
 		goto out;
 	}
 
@@ -2413,7 +2484,7 @@ static inline bool nested_can_handle_io(const struct nested_vcpu *nested)
 			if (!v)
 				return false;
 
-			byte = *(u8 *)(v + bitmap & 0xFFF);
+			byte = *(u8 *)(v + addr_offset(bitmap));
 			kunmap(v, PAGE_SIZE);
 		}
 

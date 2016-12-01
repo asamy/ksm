@@ -1,8 +1,4 @@
 # ksm [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm)
-<a href="https://scan.coverity.com/projects/asamy-ksm">
-  <img alt="Coverity Scan Build Status"
-       src="https://scan.coverity.com/projects/10823/badge.svg"/>
-</a>
 
 A really simple and lightweight x64 hypervisor written in C for Intel processors.
 
@@ -41,9 +37,9 @@ technique that I can relay on.
 Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it, you can now test under VMs with
 emulation for VMFUNC.
 
-	`if you're live debugging then, you may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in secondary controls,
+	if you're live debugging then you may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in secondary controls,
 	otherwise it makes WinDBG go *maniac*.  I have not investigated the root cause, but it keeps loading GDT and LDT all the time,
-	which is _insane_.`
+	which is _insane_.
 
 ## Supported Kernels
 
