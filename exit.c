@@ -2409,11 +2409,11 @@ static inline bool nested_can_handle_io(const struct nested_vcpu *nested)
 			if (!gpa_to_hpa(vcpu, bitmap, &hpa))
 				return false;
 
-			void *v = kmap(hpa, PAGE_SIZE);
+			char *v = kmap(hpa, PAGE_SIZE);
 			if (!v)
 				return false;
 
-			byte = ((uintptr_t)v + bitmap & 0xFFF);
+			byte = *(u8 *)(v + bitmap & 0xFFF);
 			kunmap(v, PAGE_SIZE);
 		}
 
@@ -2449,7 +2449,7 @@ static inline bool nested_can_handle_msr(const struct nested_vcpu *nested, bool 
 		bitmap += 1024;
 	}
 
-	bool ret = (((u8)(bitmap + msr / 8)) >> (msr % 8)) & 1;
+	bool ret = ((*(u8 *)(bitmap + msr / 8)) >> (msr % 8)) & 1;
 	kunmap((void *)bitmap, PAGE_SIZE);
 	return ret;
 }
