@@ -404,6 +404,19 @@ static inline except_class_t exception_class(u8 vec)
 	return EXCEPTION_BENIGN;
 }
 
+static inline void vcpu_pack_irq(struct pending_irq *pirq, size_t instr_len, u16 intr_type,
+				 u8 vector, bool has_err, u32 ec)
+{
+	u32 irq = vector | intr_type | INTR_INFO_VALID_MASK;
+	if (has_err)
+		irq |= INTR_INFO_DELIVER_CODE_MASK;
+
+	pirq->pending = true;
+	pirq->err = ec;
+	pirq->instr_len = instr_len;
+	pirq->bits = irq & ~INTR_INFO_RESVD_BITS_MASK;
+}
+
 static inline void vcpu_inject_irq(struct vcpu *vcpu, size_t instr_len, u16 intr_type,
 				   u8 vector, bool has_err, u32 ec)
 {
@@ -423,22 +436,12 @@ static inline void vcpu_inject_irq(struct vcpu *vcpu, size_t instr_len, u16 intr
 		except_class_t lhs = exception_class(prev_vec);
 		except_class_t rhs = exception_class(vector);
 		if ((lhs == EXCEPTION_CONTRIBUTORY && rhs == EXCEPTION_CONTRIBUTORY) ||
-		    (lhs == EXCEPTION_PAGE_FAULT && rhs != EXCEPTION_BENIGN)) {
-			/* Double fault  */
-			vector = X86_TRAP_DF;
-			has_err = true;
-			ec = 0;
-		}
+		    (lhs == EXCEPTION_PAGE_FAULT && rhs != EXCEPTION_BENIGN))
+			return vcpu_pack_irq(pirq, instr_len, INTR_TYPE_HARD_EXCEPTION,
+					     X86_TRAP_DF, true, 0);
 	}
 
-	u32 irq = vector | intr_type | INTR_INFO_VALID_MASK;
-	if (has_err)
-		irq |= INTR_INFO_DELIVER_CODE_MASK;
-
-	pirq->pending = true;
-	pirq->err = ec;
-	pirq->instr_len = instr_len;
-	pirq->bits = irq & ~INTR_INFO_RESVD_BITS_MASK;
+	return vcpu_pack_irq(pirq, instr_len, intr_type, vector, has_err, ec);
 }
 
 static inline void vcpu_inject_hardirq_noerr(struct vcpu *vcpu, u8 vector)
@@ -910,7 +913,8 @@ static inline bool nested_has_secondary(const struct nested_vcpu *nested, u32 bi
 	return (__nested_vmcs_read((uintptr_t)&nested->vmcs, SECONDARY_VM_EXEC_CONTROL) & bits) == bits;
 }
 
-static inline u32 nested_build_ar_bytes(u32 type, u32 s, u32 dpl, u32 present, u32 avl, u32 l, u32 db, u32 g)
+static inline u32 nested_build_ar_bytes(u32 type, u32 s, u32 dpl, u32 present,
+					u32 avl, u32 l, u32 db, u32 g)
 {
 	return type | (s << 4) | (dpl << 5) | (present << 7) |
 		(avl << 12) | (l << 13) | (db << 14) | (g << 15);
@@ -1077,8 +1081,8 @@ static void prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 	bool secondary = nested_has_primary(nested, CPU_BASED_ACTIVATE_SECONDARY_CONTROLS);
 
 	if (secondary && nested_has_secondary(nested, SECONDARY_EXEC_ENABLE_VPID)) {
-		/* FIXME: TLB Flushing!  */
 		nested_copy(vmcs, VIRTUAL_PROCESSOR_ID);
+		__invvpid_all();
 	}
 
 #if 0
@@ -1128,7 +1132,6 @@ static void prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 		nested_copy(vmcs, GUEST_IA32_DEBUGCTL);
 	}
 
-#if 0
 	/* FIXME: We need to preserve our settings...  */
 	if (nested_has_primary(nested, CPU_BASED_USE_MSR_BITMAPS))
 		nested_copy(vmcs, MSR_BITMAP);
@@ -1137,7 +1140,6 @@ static void prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 		nested_copy(vmcs, IO_BITMAP_A);
 		nested_copy(vmcs, IO_BITMAP_B);
 	}
-#endif
 
 	if (secondary && nested_has_secondary(nested, SECONDARY_EXEC_ENABLE_EPT)) {
 		nested_copy(vmcs, EPT_POINTER);
@@ -1493,13 +1495,13 @@ static bool vcpu_handle_vmresume(struct vcpu *vcpu)
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 
 	__debugbreak();
+	if (!nested_is_root(vcpu))
+		goto out;
+
 	if (!nested->vmxon) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMRESUME_AFTER_VMXOFF);
 		goto out;
 	}
-
-	if (!nested_is_root(vcpu))
-		goto out;
 
 	/* Must be launched prior to vmresume...  */
 	if (nested->launch_state != VMCS_LAUNCH_STATE_LAUNCHED) {
@@ -1572,25 +1574,17 @@ static bool vcpu_handle_vmoff(struct vcpu *vcpu)
 	u64 gva = 0;
 
 	/* can only be executed from root  */
+	__debugbreak();
 	if (!nested_is_root(vcpu))
 		goto out;
-
-	if (!nested->current_vmxon) {
-		/* Somehow they are inside root but vmxon hasn't
-		 * been done or there is no current VMXON region,
-		 * this is a bug.  */
-		__debugbreak();
-		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
-		goto out;
-	}
 
 	nested->vmcs_region = 0;
 	nested->vmxon = false;
 	nested->vmxon_region = 0;
 	nested->launch_state = VMCS_LAUNCH_STATE_NONE;
 	nested->feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
+	nested_leave(nested);
 
-	__debugbreak();
 	vcpu->cr4_guest_host_mask |= X86_CR4_VMXE;
 	__vmx_vmwrite(CR4_GUEST_HOST_MASK, vcpu->cr4_guest_host_mask);
 	__vmx_vmwrite(CR4_READ_SHADOW, vmcs_read(GUEST_CR4) & ~vcpu->cr4_guest_host_mask);
