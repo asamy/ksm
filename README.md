@@ -120,10 +120,10 @@ We use 3 EPT pointers, one for executable pages, one for readwrite pages, and la
 relevant bits VE and VMFUNC in secondary processor control.
 
 - `x64.asm` (or `x64.S` for GCC): which contains the `#VE` handler (`__ept_violation`) then does the usual interrupt handling and then calls
-	`__ept_handle_violation` (`ept.c`) where it actually does what it needs to do.
-- `ept.c`: in `__ept_handle_violation` (`#VE` handler *not* `VM-exit`), usually the processor will do the `#VE` handler instead of
+	`__ept_handle_violation` (`vcpu.c`) where it actually does what it needs to do.
+- `vcpu.c`: in `__ept_handle_violation` (`#VE` handler *not* `VM-exit`), usually the processor will do the `#VE` handler instead of
 	the VM-exit route, but sometimes it won't do so if it's delivering another exception.  This is very rare.
-- `ept.c`: while handling the violation via `#VE`, we call `vmfunc` only when we detect that the faulting address is one of
+- `vcpu.c`: while handling the violation via `#VE`, we call `vmfunc` only when we detect that the faulting address is one of
 	our interest (e.g. a hooked page), then we determine which `EPTP` we want and execute `VMFUNC` with that EPTP index.
 
 ### Hooking executable pages
@@ -143,8 +143,7 @@ Since we use 3 EPT pointers, and since the page needs to be read and written to 
 
 You can define one or more of the following:
 
-- `EPAGE_HOOK` - Enables executable page shadow hook (hooks MmMapIoSpace as an
-						      example, see `main.c`)
+- `EPAGE_HOOK` - Enables executable page shadow hook
 - `ENABLE_PML` - Enables Page Modification Log if supported.
 - `EMULATE_VMFUNC` - Forces emulation of VMFUNC even if CPU supports it.
 - `EPT_SUPPRESS_VE` - Force suppress VE bit in EPT.
