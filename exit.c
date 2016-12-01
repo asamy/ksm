@@ -1035,6 +1035,11 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
 static inline bool nested_is_root(struct vcpu *vcpu)
 {
 	/* Make sure they are able to execute a VMX instruction:  */
+	if (!vcpu_probe_cpl(0)) {
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+		return false;
+	}
+
 	if (!(vmcs_read(GUEST_CR0) & X86_CR0_PE) ||
 	    vcpu->cr4_guest_host_mask & X86_CR4_VMXE) {
 		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
@@ -1603,6 +1608,11 @@ static bool vcpu_handle_vmon(struct vcpu *vcpu)
 	u64 gpa = 0;
 	u64 gva = 0;
 	u64 hpa = 0;
+
+	if (!vcpu_probe_cpl(0)) {
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+		goto out;
+	}
 
 	/*
 	 * If CR4 guest-host mask has VMXE set, then it means
