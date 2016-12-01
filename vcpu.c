@@ -199,7 +199,7 @@ static inline void setup_eptp(uintptr_t *ptr, uintptr_t pml4_pfn)
 	*ptr |= pml4_pfn << PAGE_SHIFT;
 }
 
-bool ept_init(struct ept *ept)
+static inline bool ept_init(struct ept *ept)
 {
 	for_each_eptp(i) {
 		uintptr_t **pml4 = &EPT4(ept, i);
@@ -230,7 +230,7 @@ err_pml4_list:
 	return false;
 }
 
-void ept_exit(struct ept *ept)
+static inline void ept_exit(struct ept *ept)
 {
 	ept_free_prealloc(ept);
 	ept_free_pml4_list(ept);

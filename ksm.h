@@ -464,20 +464,16 @@ extern u16 kprotect_select_eptp(struct ept *ept, u64 rip, u8 ac);
 extern bool kprotect_init_eptp(struct vcpu *vcpu, uintptr_t gpa);
 #endif
 
-/* ept.c  */
-extern bool ept_check_capabilitiy(void);
-extern bool ept_init(struct ept *ept);
-extern void ept_exit(struct ept *ept);
-extern uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uintptr_t phys);
-extern uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys);
-extern bool ept_handle_violation(struct vcpu *vcpu);
-extern void __ept_handle_violation(u64 cs, uintptr_t rip);
-
 /* vcpu.c  */
 extern void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip);
 extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_set_mtf(bool enable);
 extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
+extern bool ept_check_capabilitiy(void);
+extern uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uintptr_t phys);
+extern uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys);
+extern bool ept_handle_violation(struct vcpu *vcpu);
+extern void __ept_handle_violation(u64 cs, uintptr_t rip);
 
 struct h_vmfunc {
 	u32 eptp;
