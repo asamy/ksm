@@ -172,7 +172,7 @@ __vmx_vminit:
 	PUSH_REGS
 
 	movq	%rsp, %rdx
-	movq	$do_resume, %r8
+	movabs	$do_resume, %r8
 	call	vcpu_init
 
 	/* If we get here, we failed  */
