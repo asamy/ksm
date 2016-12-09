@@ -287,7 +287,15 @@ void do_print(const char *fmt, ...)
 
 		/* Acquire lock to update head:  */
 		KeAcquireInStackQueuedSpinLock(&lock, &q);
+
+		size_t len = strlen(buffer);
+		size_t pos = (size_t)next_use - (size_t)head_use;
+		if (pos + len >= PRINT_BUF_STRIDE)
+			return KeReleaseInStackQueuedSpinLock(&q);
+
 		next_use = stpcpy(next_use, buffer);
+		*next_use = '\0';
+
 		/* Make sure print_thread() will see the update:  */
 		barrier();
 		KeReleaseInStackQueuedSpinLock(&q);
