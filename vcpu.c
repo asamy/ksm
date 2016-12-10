@@ -469,10 +469,11 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 
 	u32 apicv = 0;
 	if (lapic_in_kernel()) {
-		apicv |= SECONDARY_EXEC_APIC_REGISTER_VIRT | SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES |
-			SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY;
-		if (cpu_has_x2apic() && x2apic_enabled())
+		apicv |= SECONDARY_EXEC_APIC_REGISTER_VIRT | SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES;
+		if (cpu_has_x2apic() && x2apic_enabled()) {
 			apicv |= SECONDARY_EXEC_VIRTUALIZE_X2APIC_MODE;
+			apicv &= ~SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES;
+		}
 	}
 
 	u32 msr_off = 0;

@@ -2577,8 +2577,7 @@ static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_
 	case EXIT_REASON_NMI_WINDOW:
 		return nested_has_primary(nested, CPU_BASED_VIRTUAL_NMI_PENDING);
 	case EXIT_REASON_EXTERNAL_INTERRUPT:
-		/* I think this requires special handling (e.g. via PIR)  */
-		return nested_has_pin(nested, PIN_BASED_EXT_INTR_MASK);
+		return true;
 	case EXIT_REASON_INVLPG:
 		return nested_has_primary(nested, CPU_BASED_INVLPG_EXITING);
 	case EXIT_REASON_CR_ACCESS:
