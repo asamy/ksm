@@ -33,6 +33,12 @@ else
 	CROSS_LIB ?=
 endif
 
+ifeq ("$(origin V)", "command line")
+	VERBOSE=$(V)
+else
+	VERBOSE=0
+endif
+
 CC = $(CROSS_BUILD)gcc
 STRIP = $(CROSS_BUILD)strip
 OBJCOPY = $(CROSS_BUILD)objcopy --only-keep-debug
@@ -68,6 +74,18 @@ OBJ += $(ASM:%.S=$(OBJ_DIR)/%.o)
 TARGET = $(BIN_DIR)/ksm.sys
 SYMBOL = $(BIN_DIR)/ksm.dbg
 
+ifeq ($(VERBOSE), 1)
+	PREPEND ?=
+	CEXTRA ?=
+	AEXTRA ?=
+	LEXTRA ?=
+else
+	PREPEND ?= @
+	CEXTRA ?= @echo "  CC $@"
+	AEXTRA ?= @echo "  AS $@"
+	LEXTRA ?= @echo "  LD $@"
+endif
+
 .PHONY: all clean
 .PRECIOUS: $(DEP_DIR)/%.d
 
@@ -76,15 +94,18 @@ clean:
 	$(RM) $(TARGET) $(SYMBOL) $(OBJ) $(DEP)
 
 $(TARGET): $(BIN_DIR) $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
-	$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LIBS)
-	$(OBJCOPY) $@ $(SYMBOL)
-	$(STRIP) $@
+	$(PREPEND)$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LIBS)
+	$(PREPEND)$(OBJCOPY) $@ $(SYMBOL)
+	$(PREPEND)$(STRIP) $@
+	$(LEXTRA)
 
 $(OBJ_DIR)/%.o: %.c $(DEP_DIR)/%.d
-	$(CC) -c $(CFLAGS) $(DEPFLAGS) -o $@ $<
+	$(PREPEND)$(CC) -c $(CFLAGS) $(DEPFLAGS) -o $@ $<
+	$(CEXTRA)
 
 $(OBJ_DIR)/%.o: %.S
-	$(CC) -c $(CFLAGS) -o $@ $<
+	$(PREPEND)$(CC) -c $(CFLAGS) -o $@ $<
+	$(AEXTRA)
 
 -include $(DEP)
 $(DEP_DIR)/%.d: ;
