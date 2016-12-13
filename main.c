@@ -128,7 +128,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 #endif
 
 	if (!NT_SUCCESS(status = ksm_init()))
-		goto out;
+		goto err;
 
 #ifdef ENABLE_ACPI
 	if (NT_SUCCESS(status = register_power_callback(&g_dev_ext)))
@@ -138,7 +138,13 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 #ifdef ENABLE_ACPI
 	ksm_exit();
 #endif
+err:
+#ifdef DBG
+	print_exit();
+#endif
+#ifdef ENABLE_ACPI
 out:
+#endif
 	VCPU_DEBUG("ret: 0x%08X\n", status);
 	return status;
 }

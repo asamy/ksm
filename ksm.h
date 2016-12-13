@@ -254,14 +254,13 @@ struct ept {
 #define VMCS_LAUNCH_STATE_LAUNCHED	2
 
 struct nested_vcpu {
-	bool vmxon;
-	uintptr_t vmxon_region;
-	uintptr_t vmcs_region;
-	uintptr_t current_vmxon;
-	u32 launch_state;
-	u64 feat_ctl;
-	bool inside_guest;
-	__align(PAGE_SIZE) struct vmcs vmcs;
+	uintptr_t vmcs;			/* mapped via gpa->hpa (vmcs_region)  */
+	uintptr_t vmcs_region;		/* gpa  */
+	uintptr_t vmxon_region;		/* gpa  */
+	uintptr_t current_vmxon;	/* gpa (set if nested in root)  */
+	u32 launch_state;		/* vmcs launch state  */
+	u64 feat_ctl;			/* MSR_IA32_FEATURE_CONTROL  */
+	bool inside_guest;		/* set if inside nested's guest  */
 };
 
 static inline void nested_enter(struct nested_vcpu *nested)
@@ -291,6 +290,19 @@ static inline bool nested_entered(const struct nested_vcpu *nested)
 	 * probably exit to the nested hypervisor, see exit.c
 	 */
 	return nested->inside_guest;
+}
+
+static inline bool nested_has_vmcs(const struct nested_vcpu *nested)
+{
+	return nested->vmcs != 0;
+}
+
+static inline void nested_free_vmcs(struct nested_vcpu *nested)
+{
+	if (nested->vmcs != 0) {
+		kunmap((void *)nested->vmcs, PAGE_SIZE);
+		nested->vmcs = 0;
+	}
 }
 #endif
 
