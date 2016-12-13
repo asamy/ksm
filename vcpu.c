@@ -20,6 +20,10 @@
 
 #include "ksm.h"
 
+#ifdef NESTED_VMX
+extern u32 nested_unsupported_secondary;
+#endif
+
 static uintptr_t *ept_alloc_entry(struct ept *ept)
 {
 	if (ept) {
@@ -335,12 +339,6 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 		vcpu_vmfunc(eptp, 0);
 }
 
-bool ept_check_capabilitiy(void)
-{
-	u64 vpid = __readmsr(MSR_IA32_VMX_EPT_VPID_CAP);
-	return (vpid & EPT_VPID_CAP_REQUIRED) == EPT_VPID_CAP_REQUIRED;
-}
-
 static inline bool enter_vmx(struct vmcs *vmxon)
 {
 	/*
@@ -434,7 +432,7 @@ static inline unsigned char debug_vmx_vmwrite(const char *name, size_t field, si
 	__vmx_vmwrite(field, value)
 #endif
 
-static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t stack_base)
+static bool setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 {
 	struct gdtr gdtr;
 	__sgdt(&gdtr);
@@ -498,8 +496,7 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 
 	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID |
-		/* NB: Desc table exiting makes windbg go maniac mode.  */
-		SECONDARY_EXEC_DESC_TABLE_EXITING | SECONDARY_EXEC_XSAVES |
+		SECONDARY_EXEC_XSAVES |
 #ifndef EMULATE_VMFUNC
 		SECONDARY_EXEC_ENABLE_VMFUNC
 #endif
@@ -516,6 +513,16 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 #endif
 		;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
+
+#ifdef NESETD_VMX
+	u64 tmp = __Readmsr(MSR_IA32_VMX_PROCBASED_CTLS2);
+	nested_unsupported_secondary |= ~((u32)(tmp >> 32));
+#endif
+
+	if (!KD_DEBUGGER_ENABLED || KD_DEBUGGER_NOT_PRESENT) {
+		/* NB: Desc table exiting makes windbg go maniac mode.  */
+		vm_2ndctl |= SECONDARY_EXEC_DESC_TABLE_EXITING;
+	}
 
 	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
 		CPU_BASED_USE_IO_BITMAPS;
@@ -646,8 +653,8 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= DEBUG_VMX_VMWRITE(GUEST_GDTR_BASE, gdtr.base);
 	err |= DEBUG_VMX_VMWRITE(GUEST_IDTR_BASE, vcpu->idt.base);
 	err |= DEBUG_VMX_VMWRITE(GUEST_DR7, __readdr(7));
-	err |= DEBUG_VMX_VMWRITE(GUEST_RSP, sp);
-	err |= DEBUG_VMX_VMWRITE(GUEST_RIP, ip);
+	err |= DEBUG_VMX_VMWRITE(GUEST_RSP, gsp);
+	err |= DEBUG_VMX_VMWRITE(GUEST_RIP, gip);
 	err |= DEBUG_VMX_VMWRITE(GUEST_RFLAGS, __readeflags());
 	err |= DEBUG_VMX_VMWRITE(GUEST_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
 	err |= DEBUG_VMX_VMWRITE(GUEST_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
@@ -671,32 +678,10 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip, uintptr_t 
 	err |= DEBUG_VMX_VMWRITE(HOST_IA32_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
 	err |= DEBUG_VMX_VMWRITE(HOST_IA32_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
 	err |= DEBUG_VMX_VMWRITE(HOST_IA32_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
-	err |= DEBUG_VMX_VMWRITE(HOST_RSP, stack_base);
+	err |= DEBUG_VMX_VMWRITE(HOST_RSP, (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE);
 	err |= DEBUG_VMX_VMWRITE(HOST_RIP, (uintptr_t)__vmx_entrypoint);
 
 	return err == 0;
-}
-
-static inline void vcpu_launch(void)
-{
-	/*
-	 * Actually launch the VM, returning to guest on success
-	 * or returning here on failure.
-	 *
-	 * The return to guest address is determined by __vmx_vminit in x64.asm
-	 * which is do_resume label, which then returns to the original
-	 * caller, usually __ksm_init_cpu in ksm.c
-	 */
-	size_t vmerr;
-	uint8_t err = __vmx_vmread(VM_INSTRUCTION_ERROR, &vmerr);
-	if (err)
-		VCPU_DEBUG("VM_INSTRUCTION_ERROR: %zd\n", vmerr);
-
-	err = __vmx_vmlaunch();
-	if (err) {
-		__vmx_vmread(VM_INSTRUCTION_ERROR, &vmerr);
-		VCPU_DEBUG("__vmx_vmlaunch(): failed %d %d\n", err, vmerr);
-	}
 }
 
 void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
@@ -739,11 +724,21 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 */
 	vcpu->cr0_guest_host_mask = 0;
 	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;
-	if (setup_vmcs(vcpu, sp, ip, (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE))
-		vcpu_launch();
+	if (setup_vmcs(vcpu, sp, ip)) {
+		size_t vmerr;
+		uint8_t err = __vmx_vmread(VM_INSTRUCTION_ERROR, &vmerr);
+		if (err)
+			VCPU_DEBUG("VM_INSTRUCTION_ERROR: %zd\n", vmerr);
+
+		err = __vmx_vmlaunch();
+		if (err) {
+			__vmx_vmread(VM_INSTRUCTION_ERROR, &vmerr);
+			VCPU_DEBUG("__vmx_vmlaunch(): failed %d %d\n", err, vmerr);
+		}
+	}
 
 	/*
-	 * setup_vmcs()/vcpu_launch() failed if we got here, we had already overwritten the
+	 * setup_vmcs()/__vmx_vmlaunch() failed if we got here, we had already overwritten the
 	 * IDT entry for #VE (X86_TRAP_VE), restore it now otherwise PatchGuard is gonna
 	 * notice and BSOD us.
 	 */
@@ -792,4 +787,10 @@ void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 	__vmx_vmwrite(EPT_POINTER, EPTP(&vcpu->ept, index));
 	/* We have to invalidate, we just switched to a new paging hierarchy  */
 	__invept_all();
+}
+
+bool ept_check_capabilitiy(void)
+{
+	u64 vpid = __readmsr(MSR_IA32_VMX_EPT_VPID_CAP);
+	return (vpid & EPT_VPID_CAP_REQUIRED) == EPT_VPID_CAP_REQUIRED;
 }

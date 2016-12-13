@@ -139,7 +139,6 @@ static inline void print_flush(void)
 	KeAcquireInStackQueuedSpinLock(&lock, &q);
 	char *printbuf = buf + ((next & 1) << PAGE_SHIFT);
 	char *p = stpcpy(on_stack, printbuf);
-	*p = '\0';
 	len = p - &on_stack[0];
 
 	head_use = buf + ((++next & 1) << PAGE_SHIFT);

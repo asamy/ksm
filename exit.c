@@ -30,9 +30,21 @@
 static u16 curr_handler = 0;
 static u16 prev_handler = 0;
 
+#ifdef DBG
+static inline void dbgbreak(void)
+{
+	if (!KD_DEBUGGER_NOT_PRESENT)
+		__debugbreak();
+}
+#else
+static inline void dbgbreak(void)
+{
+	(void)0;
+}
+#endif
+
 #ifdef NESTED_VMX
-static const u32 nested_unsupported_secondary = SECONDARY_EXEC_ENABLE_VE | SECONDARY_EXEC_ENABLE_EPT |
-						SECONDARY_EXEC_ENABLE_ENCLS_EXITING | SECONDARY_EXEC_ENABLE_VMFUNC;
+u32 nested_unsupported_secondary = SECONDARY_EXEC_ENABLE_VE | SECONDARY_EXEC_ENABLE_VMFUNC;
 
 static const u32 supported_fields[] = {
 	VIRTUAL_PROCESSOR_ID,
@@ -1011,6 +1023,7 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
 	 */
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	uintptr_t vmcs = (uintptr_t)&nested->vmcs;
+	dbgbreak();
 
 	/*
 	 * Mark it as left the nested hypervisor' guest, so we can know if the next
@@ -1189,9 +1202,8 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	uintptr_t vmcs = (uintptr_t)&nested->vmcs;
 
-	u64 link = __nested_vmcs_read(vmcs, VMCS_LINK_POINTER);
-	if (link != -1ULL) {
-		__debugbreak();
+	dbgbreak();
+	if (__nested_vmcs_read(vmcs, VMCS_LINK_POINTER) != -1ULL) {
 		vcpu_enter_nested_hypervisor(vcpu,
 					     EXIT_REASON_INVALID_STATE,
 					     0/*???*/,
@@ -1201,7 +1213,6 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 	}
 
 	if (__nested_vmcs_read(vmcs, VM_ENTRY_INTR_INFO_FIELD) & INTR_INFO_RESVD_BITS_MASK) {
-		__debugbreak();
 		vcpu_enter_nested_hypervisor(vcpu,
 					     EXIT_REASON_INVALID_STATE,
 					     0,
@@ -1268,14 +1279,12 @@ static inline bool vcpu_parse_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst, u6
 {
 	if ((inst >> 10) & 1) {
 		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
-		__debugbreak();
 		return false;
 	}
 
 	u64 seg_offset = (inst >> 15) & 7;
 	if (seg_offset > 5) {
 		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
-		__debugbreak();
 		return false;
 	}
 
@@ -1346,7 +1355,6 @@ static bool vcpu_handle_vmclear(struct vcpu *vcpu)
 	if (!vcpu_parse_vmx_addr(vcpu, disp, inst, &gva) ||
 	    !vcpu_read_vmx_addr(vcpu, gva, &gpa) ||
 	    !gpa_to_hpa(vcpu, gpa, &hpa)) {
-		__debugbreak();
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMCLEAR_INVALID_ADDRESS);
 		goto out;
 	}
@@ -1373,7 +1381,6 @@ static bool vcpu_handle_vmlaunch(struct vcpu *vcpu)
 		return true;
 	}
 
-	__debugbreak();
 	if (nested->launch_state != VMCS_LAUNCH_STATE_CLEAR) {
 		/* must be clear prior to call to vmlaunch  */
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMLAUNCH_NONCLEAR_VMCS);
@@ -1402,20 +1409,17 @@ static bool vcpu_handle_vmptrld(struct vcpu *vcpu)
 	if (!vcpu_parse_vmx_addr(vcpu, disp, inst, &gva) ||
 	    !vcpu_read_vmx_addr(vcpu, gva, &gpa) ||
 	    !gpa_to_hpa(vcpu, gpa, &hpa)) {
-		__debugbreak();
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_INVALID_ADDRESS);
 		goto out;
 	}
 
 	if (gpa == nested->vmxon_region) {
-		__debugbreak();
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_VMXON_POINTER);
 		goto out;
 	}
 
 	char *tmp = kmap(hpa, PAGE_SIZE);
 	if (!tmp) {
-		__debugbreak();
 		vcpu_vm_fail_invalid(vcpu);
 		goto out;
 	}
@@ -1423,12 +1427,10 @@ static bool vcpu_handle_vmptrld(struct vcpu *vcpu)
 	bool match = *(u32 *)tmp == (u32)__readmsr(MSR_IA32_VMX_BASIC);
 	kunmap(tmp, PAGE_SIZE);
 	if (!match) {
-		__debugbreak();
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_INCORRECT_VMCS_REVISION_ID);
 		goto out;
 	}
 
-	__debugbreak();
 	nested->vmcs_region = gpa;
 	vcpu_vm_succeed(vcpu);
 
@@ -1465,7 +1467,6 @@ static bool vcpu_handle_vmread(struct vcpu *vcpu)
 	uintptr_t vmcs = (uintptr_t)&nested->vmcs;
 	u64 gva = 0;
 
-	__debugbreak();
 	if (!nested_is_root(vcpu) || vmcs == 0)
 		goto err;
 
@@ -1494,7 +1495,6 @@ static bool vcpu_handle_vmresume(struct vcpu *vcpu)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 
-	__debugbreak();
 	if (!nested_is_root(vcpu))
 		goto out;
 
@@ -1532,7 +1532,6 @@ static bool vcpu_handle_vmwrite(struct vcpu *vcpu)
 	u32 field = ksm_read_reg(vcpu, (inst >> 28) & 15);
 	if (field_ro(field)) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMWRITE_READ_ONLY_VMCS_COMPONENT);
-		__debugbreak();
 		goto out;
 	}
 
@@ -1544,21 +1543,14 @@ static bool vcpu_handle_vmwrite(struct vcpu *vcpu)
 		/* memory address  */
 		u64 disp = vmcs_read(EXIT_QUALIFICATION);
 		if (!vcpu_parse_vmx_addr(vcpu, disp, inst, &gva) ||
-		    !vcpu_read_vmx_addr(vcpu, gva, &value)) {
-			__debugbreak();
+		    !vcpu_read_vmx_addr(vcpu, gva, &value))
 			goto out;
-		}
 	}
 
 	if (!nested_vmcs_write(vmcs, field, value)) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_UNSUPPORTED_VMCS_COMPONENT);
-		__debugbreak();
 		goto out;
 	}
-
-	u64 out = __nested_vmcs_read(vmcs, field);
-	if (out != value)
-		__debugbreak();
 
 	vcpu_vm_succeed(vcpu);
 out:
@@ -1574,7 +1566,6 @@ static bool vcpu_handle_vmoff(struct vcpu *vcpu)
 	u64 gva = 0;
 
 	/* can only be executed from root  */
-	__debugbreak();
 	if (!nested_is_root(vcpu))
 		goto out;
 
@@ -1621,7 +1612,6 @@ static bool vcpu_handle_vmon(struct vcpu *vcpu)
 	/*
 	 * We currently don't have a way to detect TXT, so we just have outside-smx treatment
 	 * See if emulated feature control has the required bits set:
-	 *	(BIOS lock + VMXON Outside SMX)
 	*/
 	const u64 required_feat = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
 	if ((nested->feat_ctl & required_feat) != required_feat) {
@@ -1638,14 +1628,11 @@ static bool vcpu_handle_vmon(struct vcpu *vcpu)
 	u32 inst = vmcs_read(VMX_INSTRUCTION_INFO);
 	if (!vcpu_parse_vmx_addr(vcpu, disp, inst, &gva) ||
 	    !vcpu_read_vmx_addr(vcpu, gva, &gpa) ||
-	    !gpa_to_hpa(vcpu, gpa, &hpa)) {
-		__debugbreak();
+	    !gpa_to_hpa(vcpu, gpa, &hpa))
 		goto out;
-	}
 
 	char *tmp = kmap(hpa, PAGE_SIZE);
 	if (!tmp) {
-		__debugbreak();
 		vcpu_vm_fail_invalid(vcpu);
 		goto out;
 	}
@@ -1662,7 +1649,6 @@ static bool vcpu_handle_vmon(struct vcpu *vcpu)
 	nested->current_vmxon = gpa;
 	nested->vmxon = true;
 	vcpu_vm_succeed(vcpu);
-	__debugbreak();
 
 out:
 	vcpu_advance_rip(vcpu);
@@ -1695,7 +1681,6 @@ static bool vcpu_handle_invept(struct vcpu *vcpu)
 	}
 
 	/* ???  */
-	__debugbreak();
 	__invept(type, &ept);
 	vcpu_vm_succeed(vcpu);
 
@@ -1728,7 +1713,6 @@ static bool vcpu_handle_invvpid(struct vcpu *vcpu)
 	}
 
 	/* ???  */
-	__debugbreak();
 	__invvpid(type, &vpid);
 	vcpu_vm_succeed(vcpu);
 
@@ -2093,11 +2077,9 @@ static bool vcpu_handle_msr_write(struct vcpu *vcpu)
 #ifdef NESTED_VMX
 		vcpu->nested_vcpu.feat_ctl = val;
 #else
-		if (val & (FEATURE_CONTROL_LOCKED |
-			   FEATURE_CONTROL_VMXON_ENABLED_INSIDE_SMX |
-			   FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
-			vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
-		else
+		if (val & ~(FEATURE_CONTROL_LOCKED |
+			    FEATURE_CONTROL_VMXON_ENABLED_INSIDE_SMX |
+			    FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
 			__writemsr(MSR_IA32_FEATURE_CONTROL, val);
 #endif
 		break;
@@ -2530,7 +2512,6 @@ static inline bool nested_can_handle_msr(const struct nested_vcpu *nested, bool 
 
 static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_reason)
 {
-	__debugbreak();
 	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY)
 		return true;
 

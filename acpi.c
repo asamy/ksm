@@ -25,9 +25,9 @@ static void power_callback(PDEV_EXT ctx, void *arg0, void *arg1)
 		return;
 
 	if (!arg1)
-		ksm_exit();
+		ksm_unsubvert();
 	else
-		ksm_init();
+		ksm_subvert();
 }
 
 NTSTATUS register_power_callback(PDEV_EXT ext)

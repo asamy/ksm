@@ -140,16 +140,33 @@ static NTSTATUS __ksm_init_cpu(struct ksm *k)
 static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT change_ctx, PNTSTATUS op_status)
 {
 	/* CPU Hotplug callback, a CPU just came online.  */
-	if (change_ctx->State == KeProcessorAddCompleteNotify) {
-		VCPU_DEBUG_RAW("New processor\n");
+	GROUP_AFFINITY affinity;
+	GROUP_AFFINITY prev;
+	PPROCESSOR_NUMBER pnr;
+	NTSTATUS status;
 
-		NTSTATUS status = __ksm_init_cpu(&ksm);
+	if (change_ctx->State == KeProcessorAddCompleteNotify) {
+		pnr = &change_ctx->ProcNumber;
+		affinity.Group = pnr->Group;
+		affinity.Mask = 1ULL << pnr->Number;
+		KeSetSystemGroupAffinityThread(&affinity, &prev);
+
+		VCPU_DEBUG_RAW("New processor\n");
+		status = __ksm_init_cpu(&ksm);
 		if (!NT_SUCCESS(status))
 			*op_status = status;
+
+		KeRevertToUserGroupAffinityThread(&prev);
 	}
 }
 
 STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
+NTSTATUS ksm_subvert(void)
+{
+	STATIC_CALL_DPC(__call_init, &ksm);
+	return STATIC_DPC_RET();
+}
+
 NTSTATUS ksm_init(void)
 {
 	NTSTATUS status = STATUS_UNSUCCESSFUL;
@@ -180,8 +197,7 @@ NTSTATUS ksm_init(void)
 	init_msr_bitmap(&ksm);
 	init_io_bitmaps(&ksm);
 
-	STATIC_CALL_DPC(__call_init, &ksm);
-	if (!NT_SUCCESS(status = STATIC_DPC_RET()))
+	if (!NT_SUCCESS(status = ksm_subvert()))
 		KeDeregisterProcessorChangeCallback(ksm.hotplug_cpu);
 	
 	return status;
@@ -213,13 +229,18 @@ static NTSTATUS __ksm_exit_cpu(struct ksm *k)
 }
 
 STATIC_DEFINE_DPC(__call_exit, __ksm_exit_cpu, ctx);
+NTSTATUS ksm_unsubvert(void)
+{
+	STATIC_CALL_DPC(__call_exit, &ksm);
+	return STATIC_DPC_RET();
+}
+
 NTSTATUS ksm_exit(void)
 {
 	if (ksm.hotplug_cpu)
 		KeDeregisterProcessorChangeCallback(ksm.hotplug_cpu);
 
-	STATIC_CALL_DPC(__call_exit, &ksm);
-	return STATIC_DPC_RET();
+	return ksm_unsubvert();
 }
 
 STATIC_DEFINE_DPC(__call_idt_hook, __vmx_vmcall, HYPERCALL_IDT, ctx);

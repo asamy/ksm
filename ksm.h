@@ -445,6 +445,8 @@ extern void do_print(const char *fmt, ...);
 /* ksm.c  */
 extern NTSTATUS ksm_init(void);
 extern NTSTATUS ksm_exit(void);
+extern NTSTATUS ksm_subvert(void);
+extern NTSTATUS ksm_unsubvert(void);
 extern NTSTATUS ksm_hook_idt(unsigned n, void *h);
 extern NTSTATUS ksm_free_idt(unsigned n);
 extern struct vcpu *ksm_current_cpu(void);

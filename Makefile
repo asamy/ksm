@@ -36,7 +36,7 @@ endif
 ifeq ("$(origin V)", "command line")
 	VERBOSE=$(V)
 else
-	VERBOSE=0
+	VERBOSE=1
 endif
 
 CC = $(CROSS_BUILD)gcc
