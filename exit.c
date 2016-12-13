@@ -30,21 +30,14 @@
 static u16 curr_handler = 0;
 static u16 prev_handler = 0;
 
-#ifdef DBG
 static inline void dbgbreak(void)
 {
-	if (!KD_DEBUGGER_NOT_PRESENT)
+	if (KD_DEBUGGER_ENABLED && !KD_DEBUGGER_NOT_PRESENT)
 		__debugbreak();
 }
-#else
-static inline void dbgbreak(void)
-{
-	(void)0;
-}
-#endif
 
 #ifdef NESTED_VMX
-u32 nested_unsupported_secondary = SECONDARY_EXEC_ENABLE_VE | SECONDARY_EXEC_ENABLE_VMFUNC;
+u32 nested_unsupported_secondary = SECONDARY_EXEC_ENABLE_VMFUNC;
 
 static const u32 supported_fields[] = {
 	VIRTUAL_PROCESSOR_ID,
@@ -492,7 +485,19 @@ static inline void vcpu_advance_rip(struct vcpu *vcpu)
 		      interruptibility & ~(GUEST_INTR_STATE_MOV_SS | GUEST_INTR_STATE_STI));
 }
 
-static inline void vcpu_inject_ve(struct vcpu *vcpu)
+#ifdef NESTED_VMX
+static inline bool gpa_to_hpa(struct vcpu *vcpu, u64 gpa, u64 *hpa)
+{
+	struct ept *ept = &vcpu->ept;
+	uintptr_t *epte = ept_pte(ept, EPT4(ept, vcpu_eptp_idx(vcpu)), gpa);
+	if (!(*epte & EPT_ACCESS_RW))
+		return false;
+
+	*hpa = PAGE_PA(*epte);
+	return true;
+}
+
+static inline bool nested_inject_ve(struct vcpu *vcpu)
 {
 	/*
 	 * Shouldn't really call this function at all unless
@@ -501,18 +506,22 @@ static inline void vcpu_inject_ve(struct vcpu *vcpu)
 	 *
 	 * See if we support #VE handling.
 	 */
-	if (!(vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VE))
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	uintptr_t vmcs = (uintptr_t)&nested->vmcs;
+	u32 secondary_ctl = __nested_vmcs_read(vmcs, SECONDARY_VM_EXEC_CONTROL);
+	if (!(secondary_ctl & SECONDARY_EXEC_ENABLE_VE))
 		return false;
 
-	/* Make sure there is an IDT entry for #VE  */
-	if (!idte_present(idt_entry(vcpu->idt.base, X86_TRAP_VE))) {
-		VCPU_DEBUG("Trying to inject #VE into a non-existent IDT entry.\n");
+	uintptr_t ve_info_addr = __nested_vmcs_read(vmcs, VE_INFO_ADDRESS);
+	u64 hpa;
+	if (!gpa_to_hpa(vcpu, ve_info_addr, &hpa))
+		return false;
+
+	struct ve_except_info *info = kmap(hpa, PAGE_SIZE);
+	if (!info || info->except_mask == 0) {
+		VCPU_DEBUG("Trying to inject #VE but guest opted-out.\n");
 		return false;
 	}
-
-	struct ve_except_info *info = &vcpu->ve;
-	if (info->except_mask != 0)	/* Just warn  */
-		VCPU_DEBUG("Trying to inject #VE but guest opted-out.\n");
 
 	/* Set appropriate data in VE structure  */
 	info->eptp = vcpu_eptp_idx(vcpu);
@@ -521,9 +530,10 @@ static inline void vcpu_inject_ve(struct vcpu *vcpu)
 	__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &info->gpa);
 	__vmx_vmread(GUEST_LINEAR_ADDRESS, &info->gla);
 	__vmx_vmread(EXIT_QUALIFICATION, &info->exit);
-
-	return vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_VE);
+	vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_VE);
+	return true;
 }
+#endif
 
 static inline void vcpu_inject_pf(struct vcpu *vcpu, u64 gla, u32 ec)
 {
@@ -1224,17 +1234,6 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 	nested_enter(nested);
 	prepare_nested_guest(vcpu, vmcs);
 	nested->current_vmxon = 0;
-	return true;
-}
-
-static inline bool gpa_to_hpa(struct vcpu *vcpu, u64 gpa, u64 *hpa)
-{
-	struct ept *ept = &vcpu->ept;
-	uintptr_t *epte = ept_pte(ept, EPT4(ept, vcpu_eptp_idx(vcpu)), gpa);
-	if (!(*epte & EPT_ACCESS_RW))
-		return false;
-
-	*hpa = PAGE_PA(*epte);
 	return true;
 }
 
@@ -2288,13 +2287,15 @@ static bool vcpu_handle_ept_violation(struct vcpu *vcpu)
 #ifdef NESTED_VMX
 		struct nested_vcpu *nested = &vcpu->nested_vcpu;
 		if (nested->launch_state == VMCS_LAUNCH_STATE_LAUNCHED &&
-		    nested_has_secondary(&vcpu->nested_vcpu, SECONDARY_EXEC_ENABLE_EPT) &&
-		    vcpu_enter_nested_hypervisor(vcpu,
-						 EXIT_REASON_EPT_VIOLATION,
-						 vmcs_read(VM_EXIT_INTR_INFO),
-						 vmcs_read(EXIT_QUALIFICATION),
-						 false))
-			return true;
+		    nested_has_secondary(&vcpu->nested_vcpu, SECONDARY_EXEC_ENABLE_EPT)) {
+			if (nested_inject_ve(vcpu) ||
+			    vcpu_enter_nested_hypervisor(vcpu,
+							 EXIT_REASON_EPT_VIOLATION,
+							 vmcs_read(VM_EXIT_INTR_INFO),
+							 vmcs_read(EXIT_QUALIFICATION),
+							 false))
+						     return true;
+		}
 #endif
 
 		VCPU_BUGCHECK(EPT_BUGCHECK_CODE,
@@ -2311,6 +2312,7 @@ static bool vcpu_handle_ept_misconfig(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
+	/* TODO: Inject to nested if not ours!  */
 	struct ept *ept = &vcpu->ept;
 	u64 gpa = vmcs_read(GUEST_PHYSICAL_ADDRESS);
 	u16 eptp = vcpu_eptp_idx(vcpu);

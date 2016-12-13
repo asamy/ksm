@@ -502,7 +502,7 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 #endif
 		| SECONDARY_EXEC_ENABLE_VE
 		| /* apic virtualization  */ apicv
-#if _WIN32_WINNT == 0x0A00
+#if _WIN32_WINNT == 0x0A00	/* w10 required features  */
 		| SECONDARY_EXEC_RDTSCP
 #endif
 #ifdef ENABLE_PML
@@ -515,7 +515,7 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
 
 #ifdef NESETD_VMX
-	u64 tmp = __Readmsr(MSR_IA32_VMX_PROCBASED_CTLS2);
+	u64 tmp = __readmsr(MSR_IA32_VMX_PROCBASED_CTLS2);
 	nested_unsupported_secondary |= ~((u32)(tmp >> 32));
 #endif
 
