@@ -566,9 +566,9 @@ static inline bool nested_inject_ve(struct vcpu *vcpu)
 	info->eptp = vcpu_eptp_idx(vcpu);
 	info->except_mask = ~0UL;
 	info->reason = EXIT_REASON_EPT_VIOLATION;
-	__vmx_vmread(GUEST_PHYSICAL_ADDRESS, &info->gpa);
-	__vmx_vmread(GUEST_LINEAR_ADDRESS, &info->gla);
-	__vmx_vmread(EXIT_QUALIFICATION, &info->exit);
+	info->gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
+	info->gla = vmcs_read(GUEST_LINEAR_ADDRESS);
+	info->exit = vmcs_read(EXIT_QUALIFICATION);
 	vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_VE);
 	return true;
 }
