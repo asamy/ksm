@@ -102,9 +102,8 @@
 #define VCPU_TRACER_END()
 #endif
 
-#define VCPU_ENTER_GUEST()	\
-	uintptr_t __g_cr3;		\
-	__vmx_vmread(GUEST_CR3, &__g_cr3);	\
+#define VCPU_ENTER_GUEST()				\
+	uintptr_t __g_cr3 = vmcs_read(GUEST_CR3);	\
 	uintptr_t __save_cr3 = __readcr3();		\
 	__writecr3(__g_cr3)
 

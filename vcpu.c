@@ -729,21 +729,20 @@ void vcpu_free(struct vcpu *vcpu)
 void vcpu_set_mtf(bool enable)
 {
 	/* BAD BAD BAD!  Do not use.  */
-	u64 vm_cpuctl;
-	__vmx_vmread(CPU_BASED_VM_EXEC_CONTROL, &vm_cpuctl);
-
+	u64 vm_cpuctl = vmcs_read32(CPU_BASED_VM_EXEC_CONTROL);
 	if (enable)
 		vm_cpuctl |= CPU_BASED_MONITOR_TRAP_FLAG;
 	else
 		vm_cpuctl &= ~CPU_BASED_MONITOR_TRAP_FLAG;
-	__vmx_vmwrite(CPU_BASED_VM_EXEC_CONTROL, vm_cpuctl);
+
+	vmcs_write32(CPU_BASED_VM_EXEC_CONTROL, vm_cpuctl);
 }
 
 void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 {
 	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VE) {
 		/* Native  */
-		__vmx_vmwrite(EPTP_INDEX, index);
+		vmcs_write16(EPTP_INDEX, index);
 	} else {
 		/* Emulated  */
 		struct ve_except_info *ve = &vcpu->ve;
@@ -751,7 +750,7 @@ void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 	}
 
 	/* Update EPT pointer  */
-	__vmx_vmwrite(EPT_POINTER, EPTP(&vcpu->ept, index));
+	vmcs_write64(EPT_POINTER, EPTP(&vcpu->ept, index));
 	/* We have to invalidate, we just switched to a new paging hierarchy  */
 	__invept_all();
 }
