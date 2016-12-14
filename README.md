@@ -66,10 +66,10 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 
 ## TODO / In development
 
-- APIC virtualization (Partially implemented)
+- APIC virtualization (Partially implemented, needs testing)
 - UEFI support
 - Intel TXT support
-- Nesting support (Partially implemented)
+- Nesting support (Some fixes needed and support for minor features)
 - More documentation
 
 ## Building

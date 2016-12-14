@@ -296,11 +296,8 @@ static inline bool field_supported(u32 field)
 	return false;
 }
 
-static inline bool nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
+static inline bool __nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
 {
-	if (!field_supported(field))
-		return false;
-
 	switch (field) {
 	case HOST_ES_SELECTOR:
 	case HOST_CS_SELECTOR:
@@ -345,6 +342,14 @@ static inline bool nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
 
 	s[off] = v;
 	return true;
+}
+
+static inline bool nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
+{
+	if (!field_supported(field))
+		return false;
+
+	return __nested_vmcs_write(vmcs, field, value);
 }
 
 static inline u64 __nested_vmcs_read(uintptr_t vmcs, u32 field)
@@ -780,7 +785,10 @@ static inline void vcpu_vm_fail_valid(struct vcpu *vcpu, size_t err)
 {
 	vcpu->eflags |= X86_EFLAGS_ZF;
 	vcpu->eflags &= ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_SF | X86_EFLAGS_OF);
-	nested_vmcs_write((uintptr_t)&vcpu->nested_vcpu.vmcs, VM_INSTRUCTION_ERROR, err);
+
+	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	if (nested_has_vmcs(nested))
+		__nested_vmcs_write(nested->vmcs, VM_INSTRUCTION_ERROR, err);
 }
 #endif
 
@@ -996,7 +1004,6 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
 	*/
 	nested_leave(nested);
 
-	dbgbreak();
 	if (!nested_prepare_hypervisor(vcpu, vmcs))
 		return false;
 
@@ -1005,13 +1012,16 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu,
 	    __nested_vmcs_read(vmcs, VM_EXIT_CONTROLS) & VM_EXIT_ACK_INTR_ON_EXIT)
 		;/* FIXME  */
 
-	nested_vmcs_write(vmcs, VM_EXIT_REASON, exit_reason);
-	nested_vmcs_write(vmcs, VM_EXIT_INTR_INFO, intr_info);
-	nested_vmcs_write(vmcs, EXIT_QUALIFICATION, exit_qualification);
+	__nested_vmcs_write(vmcs, VM_EXIT_REASON, exit_reason);
+	__nested_vmcs_write(vmcs, VM_EXIT_INTR_INFO, intr_info);
+	__nested_vmcs_write(vmcs, EXIT_QUALIFICATION, exit_qualification);
 
 	if (handler == EXIT_REASON_GDT_IDT_ACCESS || handler == EXIT_REASON_LDT_TR_ACCESS ||
 	   (handler >= EXIT_REASON_VMCLEAR && handler <= EXIT_REASON_VMON))
-		nested_vmcs_write(vmcs, VMX_INSTRUCTION_INFO, vmcs_read(VMX_INSTRUCTION_INFO));
+		__nested_vmcs_write(vmcs, VMX_INSTRUCTION_INFO, vmcs_read(VMX_INSTRUCTION_INFO));
+
+	__nested_vmcs_write(vmcs, GUEST_LINEAR_ADDRESS, vmcs_read(GUEST_LINEAR_ADDRESS));
+	__nested_vmcs_write(vmcs, GUEST_PHYSICAL_ADDRESS, vmcs_read(GUEST_PHYSICAL_ADDRESS));
 	return true;
 }
 #endif
@@ -1253,7 +1263,6 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	uintptr_t vmcs = nested->vmcs;
 
-	dbgbreak();
 	if (__nested_vmcs_read(vmcs, VMCS_LINK_POINTER) != -1ULL) {
 		vcpu_enter_nested_hypervisor(vcpu,
 					     EXIT_REASON_INVALID_STATE,
@@ -1735,8 +1744,9 @@ static bool vcpu_handle_invvpid(struct vcpu *vcpu)
 	u64 disp = vmcs_read(EXIT_QUALIFICATION);
 	u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
 	if (!vcpu_parse_vmx_addr(vcpu, disp, inst, &gva) ||
-	    !vcpu_read_vmx_addr(vcpu, gva, &vpid))
+	    !vcpu_read_vmx_addr(vcpu, gva, &vpid)) {
 		goto out;
+	}
 
 	u32 info = vmcs_read32(VMX_INSTRUCTION_INFO);
 	u32 type = ksm_read_reg32(vcpu, (info >> 28) & 15);
@@ -2179,7 +2189,6 @@ static bool vcpu_handle_tpr_threshold(struct vcpu *vcpu)
 {
 	/* should maybe congratulate them or something.  */
 	VCPU_DEBUG("!!! TPR below threshold\n");
-	dbgbreak();
 	return true;
 }
 
@@ -2625,8 +2634,6 @@ static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_
 		return nested_has_primary(nested, CPU_BASED_PAUSE_EXITING) ||
 			nested_has_secondary(nested, SECONDARY_EXEC_PAUSE_LOOP_EXITING);
 	case EXIT_REASON_EPT_VIOLATION:
-		/* We have to see if that address is one of our interest first.  */
-		return false;
 	case EXIT_REASON_EPT_MISCONFIG:
 		return true;
 	case EXIT_REASON_WBINVD:
