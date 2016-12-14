@@ -165,7 +165,6 @@
  * Defines x86 CPU feature bits
  */
 #define NCAPINTS	18	/* N 32-bit words worth of info */
-#define NBUGINTS	1	/* N 32-bit bug flags */
 
 /*
  * Note: If the comment begins with a quoted string, that string is used
@@ -293,18 +292,6 @@
 #define X86_FEATURE_RDRAND	( 4*32+30) /* The RDRAND instruction */
 #define X86_FEATURE_HYPERVISOR	( 4*32+31) /* Running on a hypervisor */
 
-/* VIA/Cyrix/Centaur-defined CPU features, CPUID level 0xC0000001, word 5 */
-#define X86_FEATURE_XSTORE	( 5*32+ 2) /* "rng" RNG present (xstore) */
-#define X86_FEATURE_XSTORE_EN	( 5*32+ 3) /* "rng_en" RNG enabled */
-#define X86_FEATURE_XCRYPT	( 5*32+ 6) /* "ace" on-CPU crypto (xcrypt) */
-#define X86_FEATURE_XCRYPT_EN	( 5*32+ 7) /* "ace_en" on-CPU crypto enabled */
-#define X86_FEATURE_ACE2	( 5*32+ 8) /* Advanced Cryptography Engine v2 */
-#define X86_FEATURE_ACE2_EN	( 5*32+ 9) /* ACE v2 enabled */
-#define X86_FEATURE_PHE		( 5*32+10) /* PadLock Hash Engine */
-#define X86_FEATURE_PHE_EN	( 5*32+11) /* PHE enabled */
-#define X86_FEATURE_PMM		( 5*32+12) /* PadLock Montgomery Multiplier */
-#define X86_FEATURE_PMM_EN	( 5*32+13) /* PMM enabled */
-
 /* More extended AMD flags: CPUID level 0x80000001, ecx, word 6 */
 #define X86_FEATURE_LAHF_LM	( 6*32+ 0) /* LAHF/SAHF in long mode */
 #define X86_FEATURE_CMP_LEGACY	( 6*32+ 1) /* If yes HyperThreading not valid */
@@ -339,7 +326,6 @@
  *
  * Reuse free bits when adding new feature flags!
  */
-
 #define X86_FEATURE_CPB		( 7*32+ 2) /* AMD Core Performance Boost */
 #define X86_FEATURE_EPB		( 7*32+ 3) /* IA32_ENERGY_PERF_BIAS support */
 
@@ -348,17 +334,7 @@
 
 #define X86_FEATURE_INTEL_PT	( 7*32+15) /* Intel Processor Trace */
 
-/* Virtualization flags: Linux defined, word 8 */
-#define X86_FEATURE_TPR_SHADOW  ( 8*32+ 0) /* Intel TPR Shadow */
-#define X86_FEATURE_VNMI        ( 8*32+ 1) /* Intel Virtual NMI */
-#define X86_FEATURE_FLEXPRIORITY ( 8*32+ 2) /* Intel FlexPriority */
-#define X86_FEATURE_EPT         ( 8*32+ 3) /* Intel Extended Page Table */
-#define X86_FEATURE_VPID        ( 8*32+ 4) /* Intel Virtual Processor ID */
-
-#define X86_FEATURE_VMMCALL     ( 8*32+15) /* Prefer vmmcall to vmcall */
-#define X86_FEATURE_XENPV       ( 8*32+16) /* "" Xen paravirtual guest */
-
-/* Intel-defined CPU features, CPUID level 0x00000007:0 (ebx), word 9 */
+ /* Intel-defined CPU features, CPUID level 0x00000007:0 (ebx), word 9 */
 #define X86_FEATURE_FSGSBASE	( 9*32+ 0) /* {RD/WR}{FS/GS}BASE instructions*/
 #define X86_FEATURE_TSC_ADJUST	( 9*32+ 1) /* TSC adjustment MSR 0x3b */
 #define X86_FEATURE_BMI1	( 9*32+ 3) /* 1st group bit manipulation extensions */
@@ -436,54 +412,6 @@
 #define X86_FEATURE_OVERFLOW_RECOV (17*32+0) /* MCA overflow recovery support */
 #define X86_FEATURE_SUCCOR	(17*32+1) /* Uncorrectable error containment and recovery */
 #define X86_FEATURE_SMCA	(17*32+3) /* Scalable MCA */
-
-/*
- * BUG word(s)
- */
-#define X86_BUG(x)		(NCAPINTS*32 + (x))
-
-#define X86_BUG_F00F		X86_BUG(0) /* Intel F00F */
-#define X86_BUG_FDIV		X86_BUG(1) /* FPU FDIV */
-#define X86_BUG_COMA		X86_BUG(2) /* Cyrix 6x86 coma */
-#define X86_BUG_AMD_TLB_MMATCH	X86_BUG(3) /* "tlb_mmatch" AMD Erratum 383 */
-#define X86_BUG_AMD_APIC_C1E	X86_BUG(4) /* "apic_c1e" AMD Erratum 400 */
-#define X86_BUG_11AP		X86_BUG(5) /* Bad local APIC aka 11AP */
-#define X86_BUG_FXSAVE_LEAK	X86_BUG(6) /* FXSAVE leaks FOP/FIP/FOP */
-#define X86_BUG_CLFLUSH_MONITOR	X86_BUG(7) /* AAI65, CLFLUSH required before MONITOR */
-#define X86_BUG_SYSRET_SS_ATTRS	X86_BUG(8) /* SYSRET doesn't fix up SS attrs */
-#ifdef CONFIG_X86_32
-/*
- * 64-bit kernels don't use X86_BUG_ESPFIX.  Make the define conditional
- * to avoid confusion.
- */
-#define X86_BUG_ESPFIX		X86_BUG(9) /* "" IRET to 16-bit SS corrupts ESP/RSP high bits */
-#endif
-#define X86_BUG_NULL_SEG	X86_BUG(10) /* Nulling a selector preserves the base */
-#define X86_BUG_SWAPGS_FENCE	X86_BUG(11) /* SWAPGS without input dep on GS */
-#define X86_BUG_MONITOR		X86_BUG(12) /* IPI required to wake up remote CPU */
-
- /*
- * AMD and Transmeta use MSRs for configuration; see <asm/msr-index.h>
- */
-
- /*
- *      NSC/Cyrix CPU configuration register indexes
- */
-#define CX86_PCR0	0x20
-#define CX86_GCR	0xb8
-#define CX86_CCR0	0xc0
-#define CX86_CCR1	0xc1
-#define CX86_CCR2	0xc2
-#define CX86_CCR3	0xc3
-#define CX86_CCR4	0xe8
-#define CX86_CCR5	0xe9
-#define CX86_CCR6	0xea
-#define CX86_CCR7	0xeb
-#define CX86_PCR1	0xf0
-#define CX86_DIR0	0xfe
-#define CX86_DIR1	0xff
-#define CX86_ARR_BASE	0xc4
-#define CX86_RCR_BASE	0xdc
 
 /* x86-64 specific MSRs */
 #define MSR_EFER		0xc0000080 /* extended feature register */
@@ -619,19 +547,6 @@
 #define MSR_IA32_MC0_STATUS		0x00000401
 #define MSR_IA32_MC0_ADDR		0x00000402
 #define MSR_IA32_MC0_MISC		0x00000403
-
-/* C-state Residency Counters */
-#define MSR_PKG_C3_RESIDENCY		0x000003f8
-#define MSR_PKG_C6_RESIDENCY		0x000003f9
-#define MSR_PKG_C7_RESIDENCY		0x000003fa
-#define MSR_CORE_C3_RESIDENCY		0x000003fc
-#define MSR_CORE_C6_RESIDENCY		0x000003fd
-#define MSR_CORE_C7_RESIDENCY		0x000003fe
-#define MSR_KNL_CORE_C6_RESIDENCY	0x000003ff
-#define MSR_PKG_C2_RESIDENCY		0x0000060d
-#define MSR_PKG_C8_RESIDENCY		0x00000630
-#define MSR_PKG_C9_RESIDENCY		0x00000631
-#define MSR_PKG_C10_RESIDENCY		0x00000632
 
 /* Interrupt Response Limit */
 #define MSR_PKGC3_IRTL			0x0000060a
@@ -788,96 +703,6 @@ complete list. */
 #define MSR_AMD64_IBSOPDATA4		0xc001103d
 #define MSR_AMD64_IBS_REG_COUNT_MAX	8 /* includes MSR_AMD64_IBSBRTARGET */
 
-/* Fam 17h MSRs */
-#define MSR_F17H_IRPERF			0xc00000e9
-
-/* Fam 16h MSRs */
-#define MSR_F16H_L2I_PERF_CTL		0xc0010230
-#define MSR_F16H_L2I_PERF_CTR		0xc0010231
-#define MSR_F16H_DR1_ADDR_MASK		0xc0011019
-#define MSR_F16H_DR2_ADDR_MASK		0xc001101a
-#define MSR_F16H_DR3_ADDR_MASK		0xc001101b
-#define MSR_F16H_DR0_ADDR_MASK		0xc0011027
-
-/* Fam 15h MSRs */
-#define MSR_F15H_PERF_CTL		0xc0010200
-#define MSR_F15H_PERF_CTR		0xc0010201
-#define MSR_F15H_NB_PERF_CTL		0xc0010240
-#define MSR_F15H_NB_PERF_CTR		0xc0010241
-#define MSR_F15H_PTSC			0xc0010280
-#define MSR_F15H_IC_CFG			0xc0011021
-
-/* Fam 10h MSRs */
-#define MSR_FAM10H_MMIO_CONF_BASE	0xc0010058
-#define FAM10H_MMIO_CONF_ENABLE		(1<<0)
-#define FAM10H_MMIO_CONF_BUSRANGE_MASK	0xf
-#define FAM10H_MMIO_CONF_BUSRANGE_SHIFT 2
-#define FAM10H_MMIO_CONF_BASE_MASK	0xfffffffULL
-#define FAM10H_MMIO_CONF_BASE_SHIFT	20
-#define MSR_FAM10H_NODE_ID		0xc001100c
-
-/* K8 MSRs */
-#define MSR_K8_TOP_MEM1			0xc001001a
-#define MSR_K8_TOP_MEM2			0xc001001d
-#define MSR_K8_SYSCFG			0xc0010010
-#define MSR_K8_INT_PENDING_MSG		0xc0010055
-/* C1E active bits in int pending message */
-#define K8_INTP_C1E_ACTIVE_MASK		0x18000000
-#define MSR_K8_TSEG_ADDR		0xc0010112
-#define MSR_K8_TSEG_MASK		0xc0010113
-#define K8_MTRRFIXRANGE_DRAM_ENABLE	0x00040000 /* MtrrFixDramEn bit    */
-#define K8_MTRRFIXRANGE_DRAM_MODIFY	0x00080000 /* MtrrFixDramModEn bit */
-#define K8_MTRR_RDMEM_WRMEM_MASK	0x18181818 /* Mask: RdMem|WrMem    */
-
-/* K7 MSRs */
-#define MSR_K7_EVNTSEL0			0xc0010000
-#define MSR_K7_PERFCTR0			0xc0010004
-#define MSR_K7_EVNTSEL1			0xc0010001
-#define MSR_K7_PERFCTR1			0xc0010005
-#define MSR_K7_EVNTSEL2			0xc0010002
-#define MSR_K7_PERFCTR2			0xc0010006
-#define MSR_K7_EVNTSEL3			0xc0010003
-#define MSR_K7_PERFCTR3			0xc0010007
-#define MSR_K7_CLK_CTL			0xc001001b
-#define MSR_K7_HWCR			0xc0010015
-#define MSR_K7_FID_VID_CTL		0xc0010041
-#define MSR_K7_FID_VID_STATUS		0xc0010042
-
-/* K6 MSRs */
-#define MSR_K6_WHCR			0xc0000082
-#define MSR_K6_UWCCR			0xc0000085
-#define MSR_K6_EPMR			0xc0000086
-#define MSR_K6_PSOR			0xc0000087
-#define MSR_K6_PFIR			0xc0000088
-
-/* Centaur-Hauls/IDT defined MSRs. */
-#define MSR_IDT_FCR1			0x00000107
-#define MSR_IDT_FCR2			0x00000108
-#define MSR_IDT_FCR3			0x00000109
-#define MSR_IDT_FCR4			0x0000010a
-
-#define MSR_IDT_MCR0			0x00000110
-#define MSR_IDT_MCR1			0x00000111
-#define MSR_IDT_MCR2			0x00000112
-#define MSR_IDT_MCR3			0x00000113
-#define MSR_IDT_MCR4			0x00000114
-#define MSR_IDT_MCR5			0x00000115
-#define MSR_IDT_MCR6			0x00000116
-#define MSR_IDT_MCR7			0x00000117
-#define MSR_IDT_MCR_CTRL		0x00000120
-
-/* VIA Cyrix defined MSRs*/
-#define MSR_VIA_FCR			0x00001107
-#define MSR_VIA_LONGHAUL		0x0000110a
-#define MSR_VIA_RNG			0x0000110b
-#define MSR_VIA_BCR2			0x00001147
-
-/* Transmeta defined MSRs */
-#define MSR_TMTA_LONGRUN_CTRL		0x80868010
-#define MSR_TMTA_LONGRUN_FLAGS		0x80868011
-#define MSR_TMTA_LRTI_READOUT		0x80868018
-#define MSR_TMTA_LRTI_VOLT_MHZ		0x8086801a
-
 /* Intel defined MSRs. */
 #define MSR_IA32_P5_MC_ADDR		0x00000000
 #define MSR_IA32_P5_MC_TYPE		0x00000001
@@ -1027,19 +852,6 @@ complete list. */
 
 #define MSR_IA32_TSC_DEADLINE		0x000006E0
 
-/* P4/Xeon+ specific */
-#define MSR_IA32_MCG_EAX		0x00000180
-#define MSR_IA32_MCG_EBX		0x00000181
-#define MSR_IA32_MCG_ECX		0x00000182
-#define MSR_IA32_MCG_EDX		0x00000183
-#define MSR_IA32_MCG_ESI		0x00000184
-#define MSR_IA32_MCG_EDI		0x00000185
-#define MSR_IA32_MCG_EBP		0x00000186
-#define MSR_IA32_MCG_ESP		0x00000187
-#define MSR_IA32_MCG_EFLAGS		0x00000188
-#define MSR_IA32_MCG_EIP		0x00000189
-#define MSR_IA32_MCG_RESERVED		0x0000018a
-
 /* Pentium IV performance counter MSRs */
 #define MSR_P4_BPU_PERFCTR0		0x00000300
 #define MSR_P4_BPU_PERFCTR1		0x00000301
@@ -1136,9 +948,6 @@ complete list. */
 #define MSR_CORE_PERF_GLOBAL_CTRL	0x0000038f
 #define MSR_CORE_PERF_GLOBAL_OVF_CTRL	0x00000390
 
-/* Geode defined MSRs */
-#define MSR_GEODE_BUSCONT_CONF0		0x00001900
-
 /* Intel VT MSRs */
 #define MSR_IA32_VMX_BASIC              0x00000480
 #define MSR_IA32_VMX_PINBASED_CTLS      0x00000481
@@ -1171,8 +980,8 @@ complete list. */
 /* MSR_IA32_VMX_MISC bits */
 #define MSR_IA32_VMX_MISC_VMWRITE_SHADOW_RO_FIELDS (1ULL << 29)
 #define MSR_IA32_VMX_MISC_PREEMPTION_TIMER_SCALE   0x1F
-/* AMD-V MSRs */
 
+/* AMD-V MSRs */
 #define MSR_VM_CR                       0xc0010114
 #define MSR_VM_IGNNE                    0xc0010115
 #define MSR_VM_HSAVE_PA                 0xc0010117
@@ -1257,7 +1066,6 @@ DEFINE_SEL_READER(__reades, "movw %%es, %0")
 DEFINE_SEL_READER(__readfs, "movw %%fs, %0")
 DEFINE_SEL_READER(__readgs, "movw %%gs, %0")
 DEFINE_SEL_READER(__readss, "movw %%ss, %0")
-
 #else
 extern void __lgdt(const void *);
 extern void __sgdt(void *);

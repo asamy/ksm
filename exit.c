@@ -1363,6 +1363,9 @@ static inline bool vcpu_read_vmx_addr(struct vcpu *vcpu, u64 gva, u64 *value)
 	if (!nested_translate_gva(vcpu, gva, PAGE_PRESENT, &gpa, &hpa))
 		return false;
 
+	if (!same_page(gva, gva + sizeof(value)))
+		return false;
+
 	char *v = kmap(hpa, PAGE_SIZE);
 	if (!v)
 		return false;
@@ -1376,6 +1379,9 @@ static inline bool vcpu_write_vmx_addr(struct vcpu *vcpu, u64 gva, u64 value)
 {
 	u64 gpa, hpa;
 	if (!nested_translate_gva(vcpu, gva, PAGE_PRESENT | PAGE_WRITE, &gpa, &hpa))
+		return false;
+
+	if (!same_page(gva, gva + sizeof(value)))
 		return false;
 
 	char *v = kmap(hpa, PAGE_SIZE);
@@ -1710,10 +1716,8 @@ static bool vcpu_handle_invept(struct vcpu *vcpu)
 	u64 disp = vmcs_read(EXIT_QUALIFICATION);
 	u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
 	if (!vcpu_parse_vmx_addr(vcpu, disp, inst, &gva) ||
-	    !vcpu_read_vmx_addr(vcpu, gva, &ept)) {
-		vcpu_vm_fail_valid(vcpu, VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
+	    !vcpu_read_vmx_addr(vcpu, gva, &ept))
 		goto out;
-	}
 
 	u32 info = vmcs_read32(VMX_INSTRUCTION_INFO);
 	u32 type = ksm_read_reg32(vcpu, (info >> 28) & 15);
@@ -1723,8 +1727,16 @@ static bool vcpu_handle_invept(struct vcpu *vcpu)
 		goto out;
 	}
 
-	/* ???  */
-	__invept(type, &ept);
+	if (nested_has_vmcs(nested) &&
+	    nested_has_primary(nested, CPU_BASED_ACTIVATE_SECONDARY_CONTROLS) &&
+	    nested_has_secondary(nested, SECONDARY_EXEC_ENABLE_EPT)) {
+		u64 eptp;
+		__vmx_vmread(EPT_POINTER, &eptp);
+		__vmx_vmwrite(EPT_POINTER, __nested_vmcs_read(nested->vmcs, EPT_POINTER));
+		__invept(type, &ept);
+		__vmx_vmwrite(EPT_POINTER, eptp);
+	}
+
 	vcpu_vm_succeed(vcpu);
 
 out:
@@ -1744,9 +1756,8 @@ static bool vcpu_handle_invvpid(struct vcpu *vcpu)
 	u64 disp = vmcs_read(EXIT_QUALIFICATION);
 	u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
 	if (!vcpu_parse_vmx_addr(vcpu, disp, inst, &gva) ||
-	    !vcpu_read_vmx_addr(vcpu, gva, &vpid)) {
+	    !vcpu_read_vmx_addr(vcpu, gva, &vpid))
 		goto out;
-	}
 
 	u32 info = vmcs_read32(VMX_INSTRUCTION_INFO);
 	u32 type = ksm_read_reg32(vcpu, (info >> 28) & 15);
@@ -1756,10 +1767,16 @@ static bool vcpu_handle_invvpid(struct vcpu *vcpu)
 		goto out;
 	}
 
-	/* ???  */
-	__invvpid(type, &vpid);
-	vcpu_vm_succeed(vcpu);
+	if (nested_has_vmcs(nested) &&
+	    nested_has_primary(nested, CPU_BASED_ACTIVATE_SECONDARY_CONTROLS) &&
+	    nested_has_secondary(nested, SECONDARY_EXEC_ENABLE_VPID)) {
+		u16 old = vmcs_read(VIRTUAL_PROCESSOR_ID);
+		__vmx_vmwrite(VIRTUAL_PROCESSOR_ID, __nested_vmcs_read(nested->vmcs, VIRTUAL_PROCESSOR_ID));
+		__invvpid(type, &vpid);
+		__vmx_vmwrite(VIRTUAL_PROCESSOR_ID, old);
+	}
 
+	vcpu_vm_succeed(vcpu);
 out:
 	vcpu_advance_rip(vcpu);
 	return true;
@@ -2634,6 +2651,7 @@ static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_
 		return nested_has_primary(nested, CPU_BASED_PAUSE_EXITING) ||
 			nested_has_secondary(nested, SECONDARY_EXEC_PAUSE_LOOP_EXITING);
 	case EXIT_REASON_EPT_VIOLATION:
+		return false;
 	case EXIT_REASON_EPT_MISCONFIG:
 		return true;
 	case EXIT_REASON_WBINVD:

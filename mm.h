@@ -104,6 +104,12 @@ static uintptr_t pte_top = 0xFFFFF6FFFFFFFFFFULL;
 
 #define __pa(va)		(uintptr_t)MmGetPhysicalAddress((void *)(va)).QuadPart
 #define __va(pa)		(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (pa) })
+#define page_align(addr)	(addr & ~(PAGE_SIZE - 1))
+
+static inline bool same_page(uintptr_t a1, uintptr_t a2)
+{
+	return page_align(a1) == page_align(a2);
+}
 
 static inline uintptr_t *page_addr(uintptr_t *page)
 {
