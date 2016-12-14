@@ -91,6 +91,7 @@
     <ClCompile Include="..\..\vcpu.c" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="..\..\bitmap.h" />
     <ClInclude Include="..\..\compiler.h" />
     <ClInclude Include="..\..\dpc.h" />
     <ClInclude Include="..\..\htable.h" />

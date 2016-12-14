@@ -1087,11 +1087,6 @@ extern uintptr_t __lar(uintptr_t);
 extern void __invd(void);
 #endif
 
-static inline bool test_bit(u64 bits, u64 bs)
-{
-	return (bits & bs) == bs;
-}
-
 /* avoid declared inside parameter list  */
 struct vcpu;
 

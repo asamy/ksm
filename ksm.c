@@ -21,6 +21,7 @@
 
 #include "ksm.h"
 #include "dpc.h"
+#include "bitmap.h"
 
 struct ksm ksm = {
 	.active_vcpus = 0,
@@ -41,54 +42,34 @@ static void init_msr_bitmap(struct ksm *k)
 	 *
 	 * There are 4 things here:
 	 *	- Read bitmap low (aka MSR indices of 0 to 1FFFH)
+	 *		offset: +0
 	 *	- Read bitmap high (aka MSR indices of 0xC0000000 to 0xC0001FFFH)
+	 *		offset; +1024
 	 *	- Write bitmap low (same thing as read)
+	 *		offset: +2048
 	 *	- Write bitmap high (same thing as read)
+	 *		offset: +3072
 	 *
 	 * To opt-in for an MSR vm-exit, simply set the bit of it.
 	 * Note: for high msrs, subtract it with 0xC0000000.
 	 */
-	u8 *bitmap_read_lo = k->msr_bitmap;
-	RTL_BITMAP bitmap_read_lo_hdr;
-	RtlInitializeBitMap(&bitmap_read_lo_hdr, (PULONG)bitmap_read_lo, 1024 * CHAR_BIT);
-	RtlSetBit(&bitmap_read_lo_hdr, MSR_IA32_FEATURE_CONTROL);
+	bitmap_t *read_lo = (bitmap_t *)k->msr_bitmap;
+	set_bit(read_lo, MSR_IA32_FEATURE_CONTROL);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
-		RtlSetBit(&bitmap_read_lo_hdr, msr);
+		set_bit(read_lo, msr);
 
-#if 0 
-	if (lapic_in_kernel() && x2apic_enabled())
-		RtlSetBits(&bitmap_read_lo_hdr, 0x800, 0x100);
-#endif
-
-	u8 *bitmap_read_hi = bitmap_read_lo + 1024;
-	RTL_BITMAP bitmap_read_hi_hdr;
-	RtlInitializeBitMap(&bitmap_read_hi_hdr, (PULONG)bitmap_read_hi, 1024 * CHAR_BIT);
-
-	u8 *bitmap_write_lo = bitmap_read_hi + 1024;
-	RTL_BITMAP bitmap_write_lo_hdr;
-	RtlInitializeBitMap(&bitmap_write_lo_hdr, (PULONG)bitmap_write_lo, 1024 * CHAR_BIT);
-	RtlSetBit(&bitmap_write_lo_hdr, MSR_IA32_FEATURE_CONTROL);
+	bitmap_t *write_lo = (bitmap_t *)(k->msr_bitmap + 2048);
+	set_bit(write_lo, MSR_IA32_FEATURE_CONTROL);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
-		RtlSetBit(&bitmap_write_lo_hdr, msr);
-
-#if 0
-	if (lapic_in_kernel() && x2apic_enabled())
-		RtlSetBits(&bitmap_write_lo_hdr, 0x800, 0x100);
-#endif
-
-	u8 *bitmap_write_hi = bitmap_write_lo + 1024;
-	RTL_BITMAP bitmap_write_hi_hdr;
-	RtlInitializeBitMap(&bitmap_write_hi_hdr, (PULONG)bitmap_write_hi, 1024 * CHAR_BIT);
+		set_bit(write_lo, msr);
 }
 
 static void init_io_bitmaps(struct ksm *k)
 {
-#if 0
-	/* This can be anonying  */
-	RTL_BITMAP bitmap_a;
-	RtlInitializeBitMap(&bitmap_a, (PULONG)k->io_bitmap_a, PAGE_SIZE * CHAR_BIT);
-	RtlSetBit(&bitmap_a, 0x60);	/* PS/2 Mice  */
-	RtlSetBit(&bitmap_a, 0x64);	/* PS/2 Mice and keyboard  */
+#if 0	/* This can be anonying  */
+	bitmap_t *bitmap_a = (bitmap_t *)(k->io_bitmap_a);
+	set_bit(bitmap_a, 0x60);	/* PS/2 Mice  */
+	set_bit(bitmap_a, 0x64);	/* PS/2 Mice and keyboard  */
 #endif
 }
 

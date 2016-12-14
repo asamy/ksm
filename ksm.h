@@ -23,7 +23,10 @@
 #include "x86.h"
 #include "vmx.h"
 #include "mm.h"
+#include "bitmap.h"
+#ifdef EPAGE_HOOK
 #include "htable.h"
+#endif
 
 /* Avoid NT retardism  */
 #define container_of(address, type, field)	CONTAINING_RECORD(address, type, field)
@@ -215,18 +218,18 @@ struct pi_desc {
 
 static inline bool pi_test_bit(struct pi_desc *d, u8 vector)
 {
-	return d->pir[vector / 32] & (1 << (vector % 32));
+	return test_bit((bitmap_t *)d->pir, vector);
 }
 
 static inline void pi_set_irq(struct pi_desc *d, u8 vector)
 {
-	d->pir[vector / 32] |= 1 << (vector % 32);
+	set_bit((bitmap_t *)d->pir, vector);
 	d->on = 1;
 }
 
 static inline void pi_clear_irq(struct pi_desc *d, u8 vector)
 {
-	d->pir[vector / 32] &= ~(1 << (vector % 32));
+	clear_bit((bitmap_t *)d->pir, vector);
 	d->on = 0;
 }
 
@@ -588,15 +591,15 @@ static inline void __set_epte_ar_pfn(uintptr_t *epte, uintptr_t ar, uintptr_t pf
 #ifdef DBG
 static inline const char *ar_get_bits(u8 ar)
 {
-	if (test_bit(ar, EPT_ACCESS_RWX))
+	if ((ar, EPT_ACCESS_RWX) == EPT_ACCESS_RWX)
 		return "rwx";
-	else if (test_bit(ar, EPT_ACCESS_RW))
+	else if ((ar & EPT_ACCESS_RW) == EPT_ACCESS_RW)
 		return "rw-";
-	else if (test_bit(ar, EPT_ACCESS_WRITE))
+	else if (ar & EPT_ACCESS_WRITE)
 		return "-w-";
-	else if (test_bit(ar, EPT_ACCESS_EXEC))
+	else if (ar & EPT_ACCESS_EXEC)
 		return "--x";
-	else if (test_bit(ar, EPT_ACCESS_READ))
+	else if (ar & EPT_ACCESS_READ)
 		return "r--";
 
 	return "---";
