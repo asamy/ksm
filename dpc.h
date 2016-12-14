@@ -19,11 +19,6 @@
 #ifndef __KERNEL_DPC_H
 #define __KERNEL_DPC_H
 
-#ifndef _MSC_VER
-#define _In_
-#define _In_opt_
-#endif
-
 NTKERNELAPI
 #ifndef __GNUC__
 _IRQL_requires_max_(APC_LEVEL)
