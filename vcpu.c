@@ -339,57 +339,6 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 		vcpu_vmfunc(eptp, 0);
 }
 
-static inline bool enter_vmx(struct vmcs *vmxon)
-{
-	/*
-	 * Actually enter VMX root mode.
-	 *
-	 * If we're running nested on a hypervisor that does not
-	 * support VT-x, this will cause #GP.
-	 */
-	u64 cr0 = __readcr0();
-	cr0 &= __readmsr(MSR_IA32_VMX_CR0_FIXED1);
-	cr0 |= __readmsr(MSR_IA32_VMX_CR0_FIXED0);
-	__writecr0(cr0);
-
-	u64 cr4 = __readcr4();
-	cr4 &= __readmsr(MSR_IA32_VMX_CR4_FIXED1);
-	cr4 |= __readmsr(MSR_IA32_VMX_CR4_FIXED0);
-	__writecr4(cr4);
-
-	u64 vmx = __readmsr(MSR_IA32_VMX_BASIC);
-	vmxon->revision_id = (u32)vmx;
-
-	/* Enter VMX root operation  */
-	uintptr_t pa = __pa(vmxon);
-	if (__vmx_on(&pa))
-		return false;
-
-	/*
-	 * This is necessary here or just before we exit the VM,
-	 * we do it here as it's easier.
-	 */
-	__invept_all();
-	__invvpid_all();
-	return true;
-}
-
-static inline bool init_vmcs(struct vmcs *vmcs)
-{
-	/*
-	 * Initialize VMCS (VM control structure) that we're going to use
-	 * to store stuff in it, see setup_vmcs().
-	 */
-	u64 vmx = __readmsr(MSR_IA32_VMX_BASIC);
-	vmcs->revision_id = (u32)vmx;
-
-	uintptr_t pa = __pa(vmcs);
-	if (__vmx_vmclear(&pa))
-		return false;
-
-	return __vmx_vmptrld(&pa) == 0;
-}
-
 #ifndef _MSC_VER
 unsigned long __segmentlimit(unsigned long selector)
 {
@@ -432,21 +381,9 @@ static inline unsigned char debug_vmx_vmwrite(const char *name, size_t field, si
 	__vmx_vmwrite(field, value)
 #endif
 
-static bool setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
+static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 {
-	struct gdtr gdtr;
-	__sgdt(&gdtr);
-
-	struct gdtr idtr;
-	__sidt(&idtr);
-
-	/* Get this CPU's EPT  */
-	struct ept *ept = &vcpu->ept;
-
-	u64 cr0 = __readcr0();
-	u64 cr4 = __readcr4();
-	u64 err = 0;
-
+	u64 vmx = __readmsr(MSR_IA32_VMX_BASIC);
 	u16 es = __reades();
 	u16 cs = __readcs();
 	u16 ss = __readss();
@@ -455,6 +392,54 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	u16 gs = __readgs();
 	u16 ldt = __sldt();
 	u16 tr = __str();
+	u8 err = 0;
+
+	struct gdtr gdtr;
+	__sgdt(&gdtr);
+
+	struct gdtr idtr;
+	__sidt(&idtr);
+
+	struct ept *ept = &vcpu->ept;
+	struct vmcs *vmxon = &vcpu->vmxon;
+	vmxon->revision_id = (u32)vmx;
+
+	/*
+	 * Actually enter VMX root mode.
+	 *
+	 * If we're running nested on a hypervisor that does not
+	 * support VT-x, this will cause #GP.
+	 */
+	u64 cr0 = __readcr0();
+	cr0 &= __readmsr(MSR_IA32_VMX_CR0_FIXED1);
+	cr0 |= __readmsr(MSR_IA32_VMX_CR0_FIXED0);
+	__writecr0(cr0);
+
+	u64 cr4 = __readcr4();
+	cr4 &= __readmsr(MSR_IA32_VMX_CR4_FIXED1);
+	cr4 |= __readmsr(MSR_IA32_VMX_CR4_FIXED0);
+	__writecr4(cr4);
+
+	/* Enter VMX root operation  */
+	uintptr_t pa = __pa(vmxon);
+	if (__vmx_on(&pa))
+		return 3;
+
+	/*
+	 * Initialize VMCS (VM control structure) that we're going to use
+	 * to store stuff in it, see setup_vmcs().
+	 */
+	struct vmcs *vmcs = &vcpu->vmcs;
+	vmcs->revision_id = (u32)vmx;
+
+	pa = __pa(vmcs);
+	err = __vmx_vmclear(&pa);
+	if (err)
+		return err;
+
+	err = __vmx_vmptrld(&pa);
+	if (err)
+		return err;
 
 	vcpu->g_idt.base = idtr.base;
 	vcpu->g_idt.limit = idtr.limit;
@@ -683,7 +668,16 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= DEBUG_VMX_VMWRITE(HOST_RSP, (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE);
 	err |= DEBUG_VMX_VMWRITE(HOST_RIP, (uintptr_t)__vmx_entrypoint);
 
-	return err == 0;
+	if (err == 0) {
+		/*
+		 * This is necessary here or just before we exit the VM,
+		 * we do it here as it's easier.
+		 */
+		__invept_all();
+		__invvpid_all();
+	}
+
+	return err;
 }
 
 void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
@@ -695,9 +689,7 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 *
 	 * What we do here (in order):
 	 *	- Setup EPT
-	 *	- Setup the shadow IDT (later initialized)
-	 *	- Enter VMX root mode
-	 *	- Initialize VMCS
+	 *	- Allocate the shadow IDT (later initialized)
 	 *	- Setup VMCS (shadow IDT initialized here)
 	 *	- Launch VM
 	 */
@@ -711,12 +703,6 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	if (!vcpu->idt.base)
 		return ept_exit(&vcpu->ept);
 
-	if (!enter_vmx(&vcpu->vmxon))
-		goto out;
-
-	if (!init_vmcs(&vcpu->vmcs))
-		goto out_off;
-
 #ifdef NESTED_VMX
 	vcpu->nested_vcpu.feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
 #endif
@@ -729,12 +715,15 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	vcpu->cr0_guest_host_mask = 0;
 	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;
 
-	bool launch = setup_vmcs(vcpu, sp, ip);
-	err = __vmx_vmread(VM_INSTRUCTION_ERROR, &vm_err);
-	if (err)
-		VCPU_DEBUG("VM_INSTRUCTION_ERROR: %zd\n", vm_err);
+	err = setup_vmcs(vcpu, sp, ip);
+	if (err) {
+		if (err != 3)
+			__vmx_off();
 
-	if (launch) {
+		err = __vmx_vmread(VM_INSTRUCTION_ERROR, &vm_err);
+		if (err)
+			VCPU_DEBUG("setup_vmcs(): failed %zd\n", vm_err);
+	} else {
 		err = __vmx_vmlaunch();
 		if (err) {
 			__vmx_vmread(VM_INSTRUCTION_ERROR, &vm_err);
@@ -748,10 +737,6 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 * notice and BSOD us.
 	 */
 	__lidt(&vcpu->g_idt);
-
-out_off:
-	__vmx_off();
-out:
 	vcpu_free(vcpu);
 }
 
