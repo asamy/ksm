@@ -589,30 +589,27 @@ static inline void __set_epte_ar_pfn(uintptr_t *epte, uintptr_t ar, uintptr_t pf
 }
 
 #ifdef DBG
-static inline const char *ar_get_bits(u8 ar)
+static inline void ar_get_bits(u8 ar, char *p)
 {
-	if ((ar & EPT_ACCESS_RWX) == EPT_ACCESS_RWX)
-		return "rwx";
-	else if ((ar & EPT_ACCESS_RW) == EPT_ACCESS_RW)
-		return "rw-";
-	else if (ar & EPT_ACCESS_WRITE)
-		return "-w-";
-	else if (ar & EPT_ACCESS_EXEC)
-		return "--x";
-	else if (ar & EPT_ACCESS_READ)
-		return "r--";
+	p[0] = p[1] = p[2] = '-';
+	if (ar & EPT_ACCESS_READ)
+		p[0] = 'r';
 
-	return "---";
+	if (ar & EPT_ACCESS_WRITE)
+		p[1] = 'w';
+
+	if (ar & EPT_ACCESS_EXEC)
+		p[2] = 'x';
 }
 
-static inline const char *__get_epte_ar(uintptr_t *epte)
+static inline void __get_epte_ar(uintptr_t *epte, char *p)
 {
-	return ar_get_bits((u8)*epte & EPT_ACCESS_MAX_BITS);
+	return ar_get_bits((u8)*epte & EPT_ACCESS_MAX_BITS, p);
 }
 
-static inline const char *get_epte_ar(struct ept *ept, uintptr_t *pml, uintptr_t pa)
+static inline void get_epte_ar(struct ept *ept, uintptr_t *pml, uintptr_t pa, char *p)
 {
-	return __get_epte_ar(ept_pte(ept, pml, pa));
+	return __get_epte_ar(ept_pte(ept, pml, pa), p);
 }
 #endif
 #endif

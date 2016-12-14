@@ -293,9 +293,12 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	u16 eptp = vcpu_eptp_idx(vcpu);
 	u8 ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
 	u8 ac = exit & EPT_AR_MASK;
+	char sar[3], sac[3];
+	ar_get_bits(ar, sar);
+	ar_get_bits(ac, sac);
 
 	VCPU_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
-		   eptp, gpa, gva, ar, ar_get_bits(ar), ac, ar_get_bits(ac));
+		   eptp, gpa, gva, ar, sar, ac, sac);
 	u16 eptp_switch = do_ept_violation(vcpu, vcpu->ip, gpa, gva, eptp, ar, ac);
 	if (eptp_switch == EPT_MAX_EPTP_LIST)
 		return false;
@@ -322,9 +325,12 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 	u16 eptp = info->eptp;
 	u8 ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
 	u8 ac = exit & EPT_AR_MASK;
+	char sar[3], sac[3];
+	ar_get_bits(ar, sar);
+	ar_get_bits(ac, sac);
 
 	VCPU_DEBUG("0x%X:%p [%d]: PA %p VA %p (%d AR %s - %d AC %s)\n",
-		   cs, rip, eptp, gpa, gva, ar, ar_get_bits(ar), ac, ar_get_bits(ac));
+		   cs, rip, eptp, gpa, gva, ar, sar, ac, sac);
 	info->except_mask = 0;
 
 	u16 eptp_switch = do_ept_violation(vcpu, rip, gpa, gva, eptp, ar, ac);
