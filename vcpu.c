@@ -512,17 +512,16 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		| SECONDARY_EXEC_CONCEAL_VMX_IPT
 #endif
 		;
+	if (!KD_DEBUGGER_ENABLED || KD_DEBUGGER_NOT_PRESENT) {
+		/* NB: Desc table exiting makes windbg go maniac mode.  */
+		vm_2ndctl |= SECONDARY_EXEC_DESC_TABLE_EXITING;
+	}
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
 
 #ifdef NESETD_VMX
 	u64 tmp = __readmsr(MSR_IA32_VMX_PROCBASED_CTLS2);
 	nested_unsupported_secondary |= ~((u32)(tmp >> 32));
 #endif
-
-	if (!KD_DEBUGGER_ENABLED || KD_DEBUGGER_NOT_PRESENT) {
-		/* NB: Desc table exiting makes windbg go maniac mode.  */
-		vm_2ndctl |= SECONDARY_EXEC_DESC_TABLE_EXITING;
-	}
 
 	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
 		CPU_BASED_USE_IO_BITMAPS;
@@ -567,6 +566,9 @@ static bool setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP2, 0);
 		err |= DEBUG_VMX_VMWRITE(EOI_EXIT_BITMAP3, 0);
 		err |= DEBUG_VMX_VMWRITE(GUEST_INTR_STATUS, 0);
+
+		if (vm_cpuctl & CPU_BASED_TPR_SHADOW)
+			err |= DEBUG_VMX_VMWRITE(TPR_THRESHOLD, 0);
 	}
 
 	/* CR0/CR4 controls  */
@@ -699,6 +701,8 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 *	- Setup VMCS (shadow IDT initialized here)
 	 *	- Launch VM
 	 */
+	size_t vm_err;
+	uint8_t err;
 	if (!ept_init(&vcpu->ept))
 		return;
 
@@ -724,16 +728,17 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 */
 	vcpu->cr0_guest_host_mask = 0;
 	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;
-	if (setup_vmcs(vcpu, sp, ip)) {
-		size_t vmerr;
-		uint8_t err = __vmx_vmread(VM_INSTRUCTION_ERROR, &vmerr);
-		if (err)
-			VCPU_DEBUG("VM_INSTRUCTION_ERROR: %zd\n", vmerr);
 
+	bool launch = setup_vmcs(vcpu, sp, ip);
+	err = __vmx_vmread(VM_INSTRUCTION_ERROR, &vm_err);
+	if (err)
+		VCPU_DEBUG("VM_INSTRUCTION_ERROR: %zd\n", vm_err);
+
+	if (launch) {
 		err = __vmx_vmlaunch();
 		if (err) {
-			__vmx_vmread(VM_INSTRUCTION_ERROR, &vmerr);
-			VCPU_DEBUG("__vmx_vmlaunch(): failed %d %d\n", err, vmerr);
+			__vmx_vmread(VM_INSTRUCTION_ERROR, &vm_err);
+			VCPU_DEBUG("__vmx_vmlaunch(): failed %zd\n", vm_err);
 		}
 	}
 

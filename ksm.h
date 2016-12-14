@@ -270,6 +270,7 @@ static inline void nested_enter(struct nested_vcpu *nested)
 	 * vmresume done by the nested hypervisor.
 	 */
 	nested->inside_guest = true;
+	nested->current_vmxon = 0;
 }
 
 static inline void nested_leave(struct nested_vcpu *nested)
@@ -279,6 +280,7 @@ static inline void nested_leave(struct nested_vcpu *nested)
 	 * to process an event coming from the nested guest.
 	 */
 	nested->inside_guest = false;
+	nested->current_vmxon = nested->vmxon_region;
 }
 
 static inline bool nested_entered(const struct nested_vcpu *nested)
