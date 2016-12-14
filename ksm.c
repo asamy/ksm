@@ -192,7 +192,10 @@ NTSTATUS ksm_init(void)
 
 	/* Caller cr3 (could be user)  */
 	ksm.origin_cr3 = __readcr3();
+
+#ifdef EPAGE_HOOK
 	htable_init(&ksm.ht, rehash, NULL);
+#endif
 
 	init_msr_bitmap(&ksm);
 	init_io_bitmaps(&ksm);
@@ -240,6 +243,9 @@ NTSTATUS ksm_exit(void)
 	if (ksm.hotplug_cpu)
 		KeDeregisterProcessorChangeCallback(ksm.hotplug_cpu);
 
+#ifdef EPAGE_HOOK
+	htable_clear(&ksm.ht);
+#endif
 	return ksm_unsubvert();
 }
 

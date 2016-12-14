@@ -527,7 +527,7 @@ extern u8 __vmx_vmcall(uintptr_t, void *);
 extern u8 __vmx_vmfunc(u32, u32);
 #endif
 
-static inline u64 vmcs_read(u64 what)
+static inline u64 vmcs_read(size_t what)
 {
 	u64 x;
 	__vmx_vmread(what, &x);
@@ -535,14 +535,40 @@ static inline u64 vmcs_read(u64 what)
 	return x;
 }
 
-static inline u32 vmcs_read32(u64 what)
+static inline u64 vmcs_read64(size_t what)
+{
+	return vmcs_read(what) | vmcs_read(what + 1) << 32;
+}
+
+static inline u32 vmcs_read32(size_t what)
 {
 	return (u32)vmcs_read(what);
 }
 
-static inline u16 vmcs_read16(u64 what)
+static inline u16 vmcs_read16(size_t what)
 {
 	return (u16)vmcs_read32(what);
+}
+
+static inline u8 vmcs_write(size_t what, size_t value)
+{
+	return __vmx_vmwrite(what, value);
+}
+
+static inline u8 vmcs_write64(size_t what, size_t value)
+{
+	return __vmx_vmwrite(what, (u32)value) |
+		__vmx_vmwrite(what + 1, (u32)(value >> 32));
+}
+
+static inline u8 vmcs_write32(size_t what, size_t value)
+{
+	return __vmx_vmwrite(what, (u32)value);
+}
+
+static inline u8 vmcs_write16(size_t what, size_t value)
+{
+	return __vmx_vmwrite(what, (u16)value);
 }
 
 static inline u8 __invept_all(void)

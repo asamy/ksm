@@ -329,6 +329,8 @@ struct vcpu {
 	__align(PAGE_SIZE) struct vmcs vmcs;
 	__align(PAGE_SIZE) struct ve_except_info ve;
 	__align(64) struct pi_desc pi_desc;
+	u32 pin_ctl;
+	u32 cpu_ctl;
 	u32 secondary_ctl;	/* Emulation purposes of VE / VMFUNC  */
 	u32 vm_func_ctl;	/* Same as above  */
 	u64 *gp;
@@ -401,6 +403,7 @@ static inline u64 *ksm_reg(struct vcpu *vcpu, int reg)
 	return &vcpu->gp[reg];
 }
 
+#ifdef EPAGE_HOOK
 struct page_hook_info;	/* avoid declared inside parameter list...  */
 struct phi_ops {
 	void(*init_eptp) (struct page_hook_info *phi, struct ept *ept);
@@ -425,6 +428,7 @@ static inline size_t rehash(const void *e, void *unused)
 {
 	return page_hash(((struct page_hook_info *)e)->origin);
 }
+#endif
 
 #ifdef ENABLE_ACPI
 typedef struct _DEV_EXT {
@@ -442,7 +446,9 @@ struct ksm {
 	void *hotplug_cpu;
 	u64 kernel_cr3;
 	u64 origin_cr3;
+#ifdef EPAGE_HOOK
 	struct htable ht;
+#endif
 	__align(PAGE_SIZE) u8 msr_bitmap[PAGE_SIZE];
 	__align(PAGE_SIZE) u8 io_bitmap_a[PAGE_SIZE];
 	__align(PAGE_SIZE) u8 io_bitmap_b[PAGE_SIZE];

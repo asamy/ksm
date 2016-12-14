@@ -20,10 +20,6 @@
 
 #include "ksm.h"
 
-#ifdef NESTED_VMX
-extern u32 nested_unsupported_secondary;
-#endif
-
 static uintptr_t *ept_alloc_entry(struct ept *ept)
 {
 	if (ept) {
@@ -479,6 +475,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 
 	u32 vm_pinctl = PIN_BASED_POSTED_INTR;
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
+	vcpu->pin_ctl = vm_pinctl;
 
 	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID |
 		SECONDARY_EXEC_XSAVES |
@@ -503,16 +500,12 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	}
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
 
-#ifdef NESETD_VMX
-	u64 tmp = __readmsr(MSR_IA32_VMX_PROCBASED_CTLS2);
-	nested_unsupported_secondary |= ~((u32)(tmp >> 32));
-#endif
-
 	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
 		CPU_BASED_USE_IO_BITMAPS;
 	if (vm_2ndctl & apicv)
 		vm_cpuctl |= CPU_BASED_TPR_SHADOW;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
+	vcpu->cpu_ctl = vm_cpuctl;
 
 	/* Processor control fields  */
 	err |= DEBUG_VMX_VMWRITE(PIN_BASED_VM_EXEC_CONTROL, vm_pinctl);
