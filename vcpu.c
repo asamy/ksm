@@ -406,7 +406,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	__writecr4(cr4);
 
 	/* Enter VMX root operation  */
-	uintptr_t pa = __pa(vmxon);
+	u64 pa = __pa(vmxon);
 	if (__vmx_on(&pa))
 		return 3;
 

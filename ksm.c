@@ -52,6 +52,9 @@ static void init_msr_bitmap(struct ksm *k)
 	 *
 	 * To opt-in for an MSR vm-exit, simply set the bit of it.
 	 * Note: for high msrs, subtract it with 0xC0000000.
+	 *
+	 * We currently opt in for MSRs that are VT-x related, so that we can
+	 * emulate nesting.
 	 */
 	bitmap_t *read_lo = (bitmap_t *)k->msr_bitmap;
 	set_bit(read_lo, MSR_IA32_FEATURE_CONTROL);

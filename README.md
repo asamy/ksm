@@ -1,6 +1,9 @@
 # ksm [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)
 
-A really simple and lightweight x64 hypervisor written in C for Intel processors.
+A really simple and lightweight x64 hypervisor written in C for Intel processors.  
+KSM aims to be fully feature fledged and as general purpose as possible.  KSM uses
+Linux kernel coding style because it's rather simple and easy to follow, it's more of
+a general C thing.  KSM is licensed under GPL v2 stricly.
 
 ## Features
 
@@ -37,7 +40,7 @@ technique that I can relay on.
 Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it, you can now test under VMs with
 emulation for VMFUNC.
 
-	if you're live debugging then you may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in secondary controls,
+Note: if you're live debugging then you may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in secondary controls,
 	otherwise it makes WinDBG go *maniac*.  I have not investigated the root cause, but it keeps loading GDT and LDT all the time,
 	which is _insane_.
 
@@ -51,6 +54,10 @@ All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested 
 - Port `acpi.c` (not really needed) for re-virtualization on S1-3 or S4 state (commenting it out is OK).
 - Port `main.c` for some internal windows stuff, e.g. `DriverEntry`, etc.  Perhaps even rename to something like main_windows.c or similar.
 - Port `page.c` for the hooking example (not required, but it's essential to demonstrate usage).
+- Port `print.c` for printing interface (it does not really have to be fully
+					 ported, just merely replacing
+					 `do_print` with `printk` should be OK)
+- Port `x64.S` for the assembly based stuff, please use macros for calling conventions, etc.
 
 Hopefully didn't miss something important, but these are definitely the mains.
 
@@ -77,6 +84,11 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 ### Compiling under MinGW
 
 Simply `make C=1` (if cross compiling under Linux) or `mingw32-make` (under native).
+
+#### Makefile variables
+
+1. `C=1` - Prepare for cross-compiling.
+2. `V=1` - Verbose output (the default, pass 0 for quiet.)
 
 ### Compiling under MSVC
 

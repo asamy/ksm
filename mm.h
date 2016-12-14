@@ -102,8 +102,8 @@ static uintptr_t pte_top = 0xFFFFF6FFFFFFFFFFULL;
 #define __pde_idx(addr)		(((addr) >> PDI_SHIFT) & PTX_MASK)
 #define __pte_idx(addr)		(((addr) >> PTI_SHIFT) & PTX_MASK)
 
-#define __pa(va)		(uintptr_t)MmGetPhysicalAddress((void *)(va)).QuadPart
-#define __va(pa)		(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (pa) })
+#define __pa(va)		MmGetPhysicalAddress((void *)(va)).QuadPart
+#define __va(pa)		(char *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (pa) })
 #define page_align(addr)	(addr & ~(PAGE_SIZE - 1))
 
 static inline bool same_page(uintptr_t a1, uintptr_t a2)

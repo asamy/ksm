@@ -251,9 +251,9 @@ struct ept {
 };
 
 #ifdef NESTED_VMX
-#define VMCS_LAUNCH_STATE_NONE		0
-#define VMCS_LAUNCH_STATE_CLEAR		1
-#define VMCS_LAUNCH_STATE_LAUNCHED	2
+#define VMCS_LAUNCH_STATE_NONE		0	/* no state  */
+#define VMCS_LAUNCH_STATE_CLEAR		1	/* vmclear was executed  */
+#define VMCS_LAUNCH_STATE_LAUNCHED	2	/* vmlaunch was executed  */
 
 struct nested_vcpu {
 	uintptr_t vmcs;			/* mapped via gpa->hpa (vmcs_region)  */
@@ -269,7 +269,7 @@ static inline void nested_enter(struct nested_vcpu *nested)
 {
 	/*
 	 * About to enter nested guest due to a vmlaunch /
-	 * vmresume done by the nested hypervisor.
+	 * vmresume exuected by the nested hypervisor.
 	 */
 	nested->inside_guest = true;
 	nested->current_vmxon = 0;
@@ -310,6 +310,13 @@ static inline void nested_free_vmcs(struct nested_vcpu *nested)
 }
 #endif
 
+/*
+ * IRQs are queued to incase we inject another interrupt
+ * (or we were unable to past VM exit), so that we can inject
+ * contributory faults appropriately, e.g. #PF into #DF, etc.
+ *
+ * See exit.c on how this is used.
+ */
 struct pending_irq {
 	bool pending;
 	u32 err;
@@ -337,6 +344,7 @@ struct vcpu {
 	u32 cpu_ctl;
 	u32 secondary_ctl;	/* Emulation purposes of VE / VMFUNC  */
 	u32 vm_func_ctl;	/* Same as above  */
+	/* Those are set during VM-exit only:  */
 	u64 *gp;
 	u64 eflags;
 	u64 ip;

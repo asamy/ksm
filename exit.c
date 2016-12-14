@@ -1314,6 +1314,10 @@ static bool prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 	err |= vmcs_write(CR0_READ_SHADOW, cr0_read_shadow);
 	err |= vmcs_write(CR4_READ_SHADOW, cr4_read_shadow);
 
+	err |= nested_copy(vmcs, GUEST_CR0);
+	err |= nested_copy(vmcs, GUEST_CR3);
+	err |= nested_copy(vmcs, GUEST_CR4);
+
 	err |= nested_copy(vmcs, GUEST_ES_BASE);
 	err |= nested_copy(vmcs, GUEST_FS_BASE);
 	err |= nested_copy(vmcs, GUEST_GS_BASE);
