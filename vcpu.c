@@ -20,7 +20,7 @@
 
 #include "ksm.h"
 
-static uintptr_t *ept_alloc_entry(struct ept *ept)
+static uintptr_t *alloc_epte(struct ept *ept)
 {
 	if (ept) {
 		if (ept->pre_alloc_used >= EPT_MAX_PREALLOC)
@@ -32,7 +32,7 @@ static uintptr_t *ept_alloc_entry(struct ept *ept)
 	return mm_alloc_pool(NonPagedPool, PAGE_SIZE);
 }
 
-static inline void ept_init_entry(uintptr_t *entry, uint8_t access, uintptr_t phys)
+static inline void init_epte(uintptr_t *entry, uint8_t access, uintptr_t phys)
 {
 	*entry ^= *entry;
 	*entry |= access & EPT_ACCESS_MAX_BITS;
@@ -78,38 +78,38 @@ uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uint
 	uintptr_t *pdpt = page_addr(pml4e);
 
 	if (!pdpt) {
-		pdpt = ept_alloc_entry(ept);
+		pdpt = alloc_epte(ept);
 		if (!pdpt)
 			return NULL;
 
-		ept_init_entry(pml4e, EPT_ACCESS_ALL, __pa(pdpt));
+		init_epte(pml4e, EPT_ACCESS_ALL, __pa(pdpt));
 	}
 
 	/* PDPT (1 GB)  */
 	uintptr_t *pdpte = &pdpt[__ppe_idx(phys)];
 	uintptr_t *pdt = page_addr(pdpte);
 	if (!pdt) {
-		pdt = ept_alloc_entry(ept);
+		pdt = alloc_epte(ept);
 		if (!pdt)
 			return NULL;
 
-		ept_init_entry(pdpte, EPT_ACCESS_ALL, __pa(pdt));
+		init_epte(pdpte, EPT_ACCESS_ALL, __pa(pdt));
 	}
 
 	/* PDT (2 MB)  */
 	uintptr_t *pdte = &pdt[__pde_idx(phys)];
 	uintptr_t *pt = page_addr(pdte);
 	if (!pt) {
-		pt = ept_alloc_entry(ept);
+		pt = alloc_epte(ept);
 		if (!pt)
 			return NULL;
 
-		ept_init_entry(pdte, EPT_ACCESS_ALL, __pa(pt));
+		init_epte(pdte, EPT_ACCESS_ALL, __pa(pt));
 	}
 
 	/* PT (4 KB)  */
 	uintptr_t *page = &pt[__pte_idx(phys)];
-	ept_init_entry(page, access, phys);
+	init_epte(page, access, phys);
 
 	*page |= EPT_MT_WRITEBACK << VMX_EPT_MT_EPTE_SHIFT;
 #ifdef EPT_SUPPRESS_VE
@@ -122,7 +122,7 @@ uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uint
  * Free pre-allocated EPT entries, discarding used entries because they were
  * used by ept_alloc_page(), so no need to confuse each other.
  */
-static void ept_free_prealloc(struct ept *ept)
+static void free_pre_alloc(struct ept *ept)
 {
 	for (u32 i = ept->pre_alloc_used; i < EPT_MAX_PREALLOC; ++i)
 		if (ept->pre_alloc[i])
@@ -133,14 +133,14 @@ static void ept_free_prealloc(struct ept *ept)
  * Recursively free each table entries, see ept_alloc_page()
  * for an explanation.
  */
-static void ept_free_entries(uintptr_t *table, uint32_t lvl)
+static void free_entries(uintptr_t *table, uint32_t lvl)
 {
 	for (int i = 0; i < 512; ++i) {
 		uintptr_t entry = table[i];
 		if (entry) {
 			uintptr_t *sub_table = __va(PAGE_PA(entry));
 			if (lvl > 2)
-				ept_free_entries(sub_table, lvl - 1);
+				free_entries(sub_table, lvl - 1);
 			else
 				mm_free_pool(sub_table, PAGE_SIZE);
 		}
@@ -149,11 +149,11 @@ static void ept_free_entries(uintptr_t *table, uint32_t lvl)
 	mm_free_pool(table, PAGE_SIZE);
 }
 
-static void ept_free_pml4_list(struct ept *ept)
+static void free_pml4_list(struct ept *ept)
 {
 	for (int i = 0; i < EPTP_USED; ++i)
 		if (EPT4(ept, i))
-			ept_free_entries(EPT4(ept, i), 4);
+			free_entries(EPT4(ept, i), 4);
 }
 
 static bool setup_pml4(struct ept *ept)
@@ -199,7 +199,7 @@ static inline void setup_eptp(uintptr_t *ptr, uintptr_t pml4_pfn)
 	*ptr |= pml4_pfn << PAGE_SHIFT;
 }
 
-static inline bool ept_init(struct ept *ept)
+static inline bool init_ept(struct ept *ept)
 {
 	for_each_eptp(i) {
 		uintptr_t **pml4 = &EPT4(ept, i);
@@ -224,16 +224,16 @@ static inline bool ept_init(struct ept *ept)
 	return true;
 
 err_pre:
-	ept_free_prealloc(ept);
+	free_pre_alloc(ept);
 err_pml4_list:
-	ept_free_pml4_list(ept);
+	free_pml4_list(ept);
 	return false;
 }
 
-static inline void ept_exit(struct ept *ept)
+static inline void free_ept(struct ept *ept)
 {
-	ept_free_prealloc(ept);
-	ept_free_pml4_list(ept);
+	free_pre_alloc(ept);
+	free_pml4_list(ept);
 }
 
 /*
@@ -681,13 +681,13 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 */
 	u32 vm_err;
 	u8 err;
-	if (!ept_init(&vcpu->ept))
+	if (!init_ept(&vcpu->ept))
 		return;
 
 	vcpu->idt.limit = PAGE_SIZE - 1;
 	vcpu->idt.base = (uintptr_t)mm_alloc_pool(NonPagedPool, PAGE_SIZE);
 	if (!vcpu->idt.base)
-		return ept_exit(&vcpu->ept);
+		return free_ept(&vcpu->ept);
 
 #ifdef NESTED_VMX
 	vcpu->nested_vcpu.feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
@@ -730,7 +730,7 @@ void vcpu_free(struct vcpu *vcpu)
 	if (vcpu->idt.base)
 		mm_free_pool((void *)vcpu->idt.base, PAGE_SIZE);
 
-	ept_exit(&vcpu->ept);
+	free_ept(&vcpu->ept);
 	__stosq((unsigned long long *)vcpu, 0x00, sizeof(*vcpu) >> 3);
 }
 
