@@ -591,7 +591,7 @@ static inline void __set_epte_ar_pfn(uintptr_t *epte, uintptr_t ar, uintptr_t pf
 #ifdef DBG
 static inline const char *ar_get_bits(u8 ar)
 {
-	if ((ar, EPT_ACCESS_RWX) == EPT_ACCESS_RWX)
+	if ((ar & EPT_ACCESS_RWX) == EPT_ACCESS_RWX)
 		return "rwx";
 	else if ((ar & EPT_ACCESS_RW) == EPT_ACCESS_RW)
 		return "rw-";
