@@ -559,7 +559,7 @@ static inline bool nested_inject_ve(struct vcpu *vcpu)
 	}
 
 	/* Set appropriate data in VE structure  */
-	info->eptp = vcpu_eptp_idx(vcpu);
+	info->eptp = __nested_vmcs_read16(vmcs, EPTP_INDEX);
 	info->except_mask = ~0UL;
 	info->reason = EXIT_REASON_EPT_VIOLATION;
 	info->gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
@@ -626,7 +626,7 @@ static bool vcpu_handle_taskswitch(struct vcpu *vcpu)
 	/* Not really called  */
 	VCPU_TRACER_START();
 
-	u32 exit = vmcs_read32(EXIT_QUALIFICATION);
+	uintptr_t exit = vmcs_read(EXIT_QUALIFICATION);
 	u16 selector = (u16)exit;
 	u8 src = (exit >> 30) & 3;
 	const char *name;
@@ -927,11 +927,80 @@ static inline u32 nested_build_ar_bytes(u32 type, u32 s, u32 dpl, u32 present,
 		(avl << 12) | (l << 13) | (db << 14) | (g << 15);
 }
 
+static inline void nested_save(uintptr_t vmcs, u32 field)
+{
+	__nested_vmcs_write(vmcs, field, vmcs_read(field));
+}
+
+static inline void nested_save16(uintptr_t vmcs, u32 field)
+{
+	__nested_vmcs_write(vmcs, field, vmcs_read16(field));
+}
+
+static inline void nested_save32(uintptr_t vmcs, u32 field)
+{
+	__nested_vmcs_write(vmcs, field, vmcs_read32(field));
+}
+
+static inline void nested_save64(uintptr_t vmcs, u32 field)
+{
+	__nested_vmcs_write(vmcs, field, vmcs_read32(field));
+	__nested_vmcs_write(vmcs, field + 1, vmcs_read32(field + 1));
+}
+
 static inline bool nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	bool secondary = nested_has_primary(nested, CPU_BASED_ACTIVATE_SECONDARY_CONTROLS);
 	u8 err = 0;
+
+	nested_save(vmcs, GUEST_CR0);
+	nested_save(vmcs, GUEST_CR3);
+	nested_save(vmcs, GUEST_CR4);
+	nested_save(vmcs, GUEST_RSP);
+	nested_save(vmcs, GUEST_RIP);
+	nested_save(vmcs, GUEST_RFLAGS);
+
+	nested_save64(vmcs, GUEST_PDPTR0);
+	nested_save64(vmcs, GUEST_PDPTR1);
+	nested_save64(vmcs, GUEST_PDPTR2);
+	nested_save64(vmcs, GUEST_PDPTR3);
+
+	nested_save16(vmcs, GUEST_ES_SELECTOR);
+	nested_save16(vmcs, GUEST_FS_SELECTOR);
+	nested_save16(vmcs, GUEST_CS_SELECTOR);
+	nested_save16(vmcs, GUEST_SS_SELECTOR);
+	nested_save16(vmcs, GUEST_GS_SELECTOR);
+	nested_save16(vmcs, GUEST_DS_SELECTOR);
+	nested_save16(vmcs, GUEST_LDTR_SELECTOR);
+	nested_save16(vmcs, GUEST_TR_SELECTOR);
+
+	nested_save32(vmcs, GUEST_ES_LIMIT);
+	nested_save32(vmcs, GUEST_FS_LIMIT);
+	nested_save32(vmcs, GUEST_CS_LIMIT);
+	nested_save32(vmcs, GUEST_SS_LIMIT);
+	nested_save32(vmcs, GUEST_GS_LIMIT);
+	nested_save32(vmcs, GUEST_DS_LIMIT);
+	nested_save32(vmcs, GUEST_LDTR_LIMIT);
+	nested_save32(vmcs, GUEST_TR_LIMIT);
+
+	nested_save32(vmcs, GUEST_ES_AR_BYTES);
+	nested_save32(vmcs, GUEST_FS_AR_BYTES);
+	nested_save32(vmcs, GUEST_CS_AR_BYTES);
+	nested_save32(vmcs, GUEST_GS_AR_BYTES);
+	nested_save32(vmcs, GUEST_SS_AR_BYTES);
+	nested_save32(vmcs, GUEST_LDTR_AR_BYTES);
+	nested_save32(vmcs, GUEST_TR_AR_BYTES);
+
+	nested_save32(vmcs, GUEST_INTERRUPTIBILITY_INFO);
+	nested_save(vmcs, GUEST_PENDING_DBG_EXCEPTIONS);
+	nested_save64(vmcs, GUEST_IA32_DEBUGCTL);
+	nested_save(vmcs, GUEST_DR7);
+
+	nested_save(vmcs, GUEST_SYSENTER_CS);
+	nested_save(vmcs, GUEST_SYSENTER_EIP);
+	nested_save(vmcs, GUEST_SYSENTER_ESP);
+	nested_save64(vmcs, GUEST_BNDCFGS);
 
 	err |= vmcs_write(GUEST_RIP, __nested_vmcs_read(vmcs, HOST_RIP));
 	err |= vmcs_write(GUEST_RSP, __nested_vmcs_read(vmcs, HOST_RSP));
@@ -998,6 +1067,9 @@ static inline bool nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 	err |= vmcs_write(GUEST_DR7, DR7_FIXED_1);
 	err |= vmcs_write64(GUEST_IA32_DEBUGCTL, 0);
 
+	err |= vmcs_write64(VMCS_LINK_POINTER, -1ULL);
+	err |= vmcs_write32(VM_ENTRY_CONTROLS, vcpu->entry_ctl);
+	err |= vmcs_write32(VM_EXIT_CONTROLS, vcpu->exit_ctl);
 	err |= vmcs_write32(PIN_BASED_VM_EXEC_CONTROL, vcpu->pin_ctl);
 	err |= vmcs_write32(CPU_BASED_VM_EXEC_CONTROL, vcpu->cpu_ctl);
 	err |= vmcs_write32(SECONDARY_VM_EXEC_CONTROL, vcpu->secondary_ctl);
@@ -1006,8 +1078,12 @@ static inline bool nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 	err |= vmcs_write64(IO_BITMAP_B, __pa(ksm.io_bitmap_b));
 	err |= vmcs_write64(EPT_POINTER, EPTP(&vcpu->ept, vcpu_eptp_idx(vcpu)));
 	err |= vmcs_write16(VIRTUAL_PROCESSOR_ID, vpid_nr());
-	__invept_all();
-	__invvpid_all();
+
+	if (err == 0) {
+		__invept_all();
+		__invvpid_all();
+	}
+
 	return err == 0;
 }
 
@@ -1030,6 +1106,7 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu, u32 exit_reas
 	 * vm-exit came from it and not from it's guest.
 	*/
 	nested_leave(nested);
+
 	if (!nested_prepare_hypervisor(vcpu, vmcs))
 		return false;
 
@@ -1039,9 +1116,9 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu, u32 exit_reas
 		;/* FIXME  */
 
 	__nested_vmcs_write(vmcs, VM_EXIT_REASON, exit_reason);
-	__nested_vmcs_write(vmcs, VM_EXIT_INTR_INFO, vmcs_read(VM_EXIT_INTR_INFO));
-	__nested_vmcs_write(vmcs, EXIT_QUALIFICATION, vmcs_read(EXIT_QUALIFICATION));
+	__nested_vmcs_write(vmcs, VM_EXIT_INTR_INFO, vmcs_read32(VM_EXIT_INTR_INFO));
 
+	__nested_vmcs_write(vmcs, EXIT_QUALIFICATION, vmcs_read(EXIT_QUALIFICATION));
 	if (handler == EXIT_REASON_GDT_IDT_ACCESS || handler == EXIT_REASON_LDT_TR_ACCESS ||
 	   (handler >= EXIT_REASON_VMCLEAR && handler <= EXIT_REASON_VMON))
 		__nested_vmcs_write(vmcs, VMX_INSTRUCTION_INFO, vmcs_read(VMX_INSTRUCTION_INFO));

@@ -454,6 +454,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 #endif
 		;
 	adjust_ctl_val(MSR_IA32_VMX_ENTRY_CTLS + msr_off, &vm_entry);
+	vcpu->entry_ctl = vm_entry;
 
 	u32 vm_exit = VM_EXIT_ACK_INTR_ON_EXIT | VM_EXIT_HOST_ADDR_SPACE_SIZE
 #ifndef DBG
@@ -461,15 +462,16 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 #endif
 		;
 	adjust_ctl_val(MSR_IA32_VMX_EXIT_CTLS + msr_off, &vm_exit);
+	vcpu->exit_ctl = vm_exit;
 
 	u32 vm_pinctl = PIN_BASED_POSTED_INTR;
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 	vcpu->pin_ctl = vm_pinctl;
 
 	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID |
-		SECONDARY_EXEC_XSAVES |
+		SECONDARY_EXEC_XSAVES | SECONDARY_EXEC_UNRESTRICTED_GUEST
 #ifndef EMULATE_VMFUNC
-		SECONDARY_EXEC_ENABLE_VMFUNC
+		| SECONDARY_EXEC_ENABLE_VMFUNC
 #endif
 		| SECONDARY_EXEC_ENABLE_VE
 		| /* apic virtualization  */ apicv

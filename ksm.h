@@ -331,6 +331,8 @@ struct vcpu {
 	__align(PAGE_SIZE) struct vmcs vmcs;
 	__align(PAGE_SIZE) struct ve_except_info ve;
 	__align(64) struct pi_desc pi_desc;
+	u32 entry_ctl;
+	u32 exit_ctl;
 	u32 pin_ctl;
 	u32 cpu_ctl;
 	u32 secondary_ctl;	/* Emulation purposes of VE / VMFUNC  */
