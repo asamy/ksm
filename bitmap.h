@@ -36,7 +36,7 @@ typedef unsigned long bitmap_t;
 
 static inline unsigned long pos_bit(unsigned long pos)
 {
-	return 1 << ((pos % BITMAP_BITS));
+	return 1 << (pos % BITMAP_BITS);
 }
 
 static inline unsigned long bit_at(unsigned long pos)
@@ -69,9 +69,9 @@ static inline void clear_bits(bitmap_t *bmp, unsigned long count)
 	memset(bmp, 0x00, count_bits(count));
 }
 
-static inline void fill_bits(bitmap_t *bmp, unsigned long count)
+static inline void fill_bits(bitmap_t *bmp, unsigned long count, unsigned char bits)
 {
-	memset(bmp, 0xFF, count_bits(count));
+	memset(bmp, bits, count_bits(count));
 }
 
 #endif

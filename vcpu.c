@@ -439,6 +439,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		memcpy(&shadow[n], &current[n], sizeof(*shadow));
 
 	u32 apicv = 0;
+#if 0
 	if (lapic_in_kernel()) {
 		apicv |= SECONDARY_EXEC_APIC_REGISTER_VIRT | SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES;
 		if (cpu_has_x2apic() && x2apic_enabled()) {
@@ -446,6 +447,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 			apicv &= ~SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES;
 		}
 	}
+#endif
 
 	u32 msr_off = 0;
 	if (__readmsr(MSR_IA32_VMX_BASIC) & VMX_BASIC_TRUE_CTLS)
@@ -467,7 +469,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	adjust_ctl_val(MSR_IA32_VMX_EXIT_CTLS + msr_off, &vm_exit);
 	vcpu->exit_ctl = vm_exit;
 
-	u32 vm_pinctl = PIN_BASED_POSTED_INTR;
+	u32 vm_pinctl = 0;// PIN_BASED_POSTED_INTR;
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 	vcpu->pin_ctl = vm_pinctl;
 
@@ -534,15 +536,22 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 
 	/* Full APIC virtualization if any available.  */
 	if (vm_2ndctl & apicv) {
-		err |= vmcs_write64(VIRTUAL_APIC_PAGE_ADDR, __pa(vcpu->vapic_page));
-		err |= vmcs_write64(EOI_EXIT_BITMAP0, 0);
-		err |= vmcs_write64(EOI_EXIT_BITMAP1, 0);
-		err |= vmcs_write64(EOI_EXIT_BITMAP2, 0);
-		err |= vmcs_write64(EOI_EXIT_BITMAP3, 0);
-		err |= vmcs_write16(GUEST_INTR_STATUS, 0);
+		if (vm_2ndctl & SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY) {
+			err |= vmcs_write64(EOI_EXIT_BITMAP0, 0);
+			err |= vmcs_write64(EOI_EXIT_BITMAP1, 0);
+			err |= vmcs_write64(EOI_EXIT_BITMAP2, 0);
+			err |= vmcs_write64(EOI_EXIT_BITMAP3, 0);
+			err |= vmcs_write16(GUEST_INTR_STATUS, 0);
+		}
 
-		if (vm_cpuctl & CPU_BASED_TPR_SHADOW)
+		if (vm_cpuctl & CPU_BASED_TPR_SHADOW) {
+			err |= vmcs_write64(VIRTUAL_APIC_PAGE_ADDR, __pa(vcpu->vapic_page));
 			err |= vmcs_write16(TPR_THRESHOLD, 0);
+
+			if (vm_2ndctl & SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES)
+				err |= vmcs_write64(APIC_ACCESS_ADDR,
+						    __readmsr(MSR_IA32_APICBASE_BASE) & MSR_IA32_APICBASE_BASE);
+		}
 	}
 
 	/* CR0/CR4 controls  */
@@ -564,8 +573,10 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		vcpu->vm_func_ctl |= VM_FUNCTION_CTL_EPTP_SWITCHING;
 	}
 
-	/* We shouldn't emulate VE unless we're nesting someone,
-	 * it'll add pointless overhead.  */
+	/*
+	 * We shouldn't emulate VE unless we're nesting someone,
+	 * it'll add pointless overhead.
+	 */
 	if (vm_2ndctl & SECONDARY_EXEC_ENABLE_VE) {
 		err |= vmcs_write16(EPTP_INDEX, EPTP_DEFAULT);
 		err |= vmcs_write64(VE_INFO_ADDRESS, __pa(&vcpu->ve));
@@ -709,16 +720,18 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 
 	err = setup_vmcs(vcpu, sp, ip);
 	if (err) {
-		if (err != 3)
+		if (err != 3) {
+			vm_err = vmcs_read32(VM_INSTRUCTION_ERROR);
 			__vmx_off();
+			VCPU_DEBUG("setup_vmcs(): failed %d\n", vm_err);
+		}
 
-		vm_err = vmcs_read32(VM_INSTRUCTION_ERROR);
-		VCPU_DEBUG("setup_vmcs(): failed %zd\n", vm_err);
+		VCPU_DEBUG("setup_vmcs(): failed with error %d\n", err);
 	} else {
 		err = __vmx_vmlaunch();
 		if (err) {
 			vm_err = vmcs_read32(VM_INSTRUCTION_ERROR);
-			VCPU_DEBUG("__vmx_vmlaunch(): failed %zd\n", vm_err);
+			VCPU_DEBUG("__vmx_vmlaunch(): failed %d\n", vm_err);
 		}
 	}
 

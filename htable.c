@@ -1,6 +1,7 @@
 /*
  * Hacked from ccan (https://github.com/rustyrussell/ccan)
- * Licensed under LGPLv2+ */
+ * Licensed under LGPLv2+
+ */
 #ifdef EPAGE_HOOK
 #include <limits.h>
 #include <string.h>

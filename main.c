@@ -67,7 +67,7 @@ static inline NTSTATUS check_dynamic_pgtables(void)
 		u8 *base = (u8 *)MmGetVirtualForPhysical;
 		bool found = false;
 		for (size_t i = 0; i <= 0x50 - sizeof(pattern); ++i) {
-			if (memcmp(pattern, &base[i], sizeof(pattern)) == sizeof(pattern)) {
+			if (RtlCompareMemory(pattern, &base[i], sizeof(pattern)) == sizeof(pattern)) {
 				pte_base = *(uintptr_t *)(base + i + sizeof(pattern));
 
 				uintptr_t idx = (pte_base >> PXI_SHIFT) & PTX_MASK;

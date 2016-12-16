@@ -351,9 +351,9 @@ ept_no_swap:
 
 	mov	rcx, [rbp + KFRAME_CS]
 	mov	rdx, [rbp + KFRAME_IP]
-	sub	rsp, 48h
+	sub	rsp, 20h
 	call	__ept_handle_violation
-	add	rsp, 48h
+	add	rsp, 20h
 
 	test	byte ptr [rbp + KFRAME_RPL], 1
 	jz	ept_ret_noswap
