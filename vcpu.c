@@ -731,6 +731,7 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 		err = __vmx_vmlaunch();
 		if (err) {
 			vm_err = vmcs_read32(VM_INSTRUCTION_ERROR);
+			__vmx_off();
 			VCPU_DEBUG("__vmx_vmlaunch(): failed %d\n", vm_err);
 		}
 	}
