@@ -81,7 +81,7 @@ static NTSTATUS set_lock_bit(void)
 	/* Required MSR_IA32_FEATURE_CONTROL bits:  */
 	const u64 required_feat_bits = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
 
-	uintptr_t feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
+	u64 feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
 	if ((feat_ctl & required_feat_bits) == required_feat_bits)
 		return STATUS_SUCCESS;
 
@@ -166,8 +166,10 @@ NTSTATUS ksm_init(void)
 	if (!ept_check_capabilitiy())
 		return STATUS_HV_FEATURE_UNAVAILABLE;
 
-	/* Zero out everything (this is allocated by the kernel device driver
-	 * loader)  */
+	/*
+	 * Zero out everything (this is allocated by the kernel device driver
+	 * loader)
+	 */
 	__stosq((unsigned long long *)&ksm, 0, sizeof(ksm) >> 3);
 
 	ksm.hotplug_cpu = KeRegisterProcessorChangeCallback(ksm_hotplug_cpu, NULL, 0);

@@ -193,12 +193,14 @@ struct vmcs {
 /* Posted interrupt descriptor */
 struct pi_desc {
 	/* 256 bits of posted interrupt requests
-	* The bit index is the vector in IDT.  */
+	 * The bit index is the vector in IDT.  */
 	u32 pir[8];
 	union {
 		struct {
-			/* bit 256 - Outstanding notification, must be set to notify
-			* the processor when interrupt vector is set in the PIR.  */
+			/*
+			 * bit 256 - Outstanding notification, must be set to notify
+			 * the processor when interrupt vector is set in the PIR.
+			 */
 			u16 on : 1;
 			/* bit 257 - suppress notification  */
 			u16 sn : 1;

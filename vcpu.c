@@ -240,21 +240,24 @@ static inline void free_ept(struct ept *ept)
  * Get a PTE for the specified guest physical address, this can be used
  * to get the host physical address it redirects to or redirect to it.
  */
-uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys)
+u64 *ept_pte(struct ept *ept, uintptr_t *pml, u64 gpa)
 {
-	uintptr_t *pxe = page_addr(&pml[__pxe_idx(phys)]);
+	u64 *pxe = page_addr(&pml[__pxe_idx(gpa)]);
 	if (!pxe)
 		return 0;
 
-	uintptr_t *ppe = page_addr(&pxe[__ppe_idx(phys)]);
+	u64 *ppe = page_addr(&pxe[__ppe_idx(gpa)]);
 	if (!ppe)
 		return 0;
 
-	uintptr_t *pde = page_addr(&ppe[__pde_idx(phys)]);
+	u64 *pde = page_addr(&ppe[__pde_idx(gpa)]);
 	if (!pde)
 		return 0;
 
-	return &pde[__pte_idx(phys)];
+	if (pte_large(pde))
+		return pde;
+
+	return &pde[__pte_idx(gpa)];
 }
 
 static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa, u64 gva, u16 eptp, u8 ar, u8 ac)
@@ -395,12 +398,12 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	 * If we're running nested on a hypervisor that does not
 	 * support VT-x, this will cause #GP.
 	 */
-	u64 cr0 = __readcr0();
+	uintptr_t cr0 = __readcr0();
 	cr0 &= __readmsr(MSR_IA32_VMX_CR0_FIXED1);
 	cr0 |= __readmsr(MSR_IA32_VMX_CR0_FIXED0);
 	__writecr0(cr0);
 
-	u64 cr4 = __readcr4();
+	uintptr_t cr4 = __readcr4();
 	cr4 &= __readmsr(MSR_IA32_VMX_CR4_FIXED1);
 	cr4 |= __readmsr(MSR_IA32_VMX_CR4_FIXED0);
 	__writecr4(cr4);
@@ -572,6 +575,9 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		struct ve_except_info *ve = &vcpu->ve;
 		ve->eptp = EPTP_DEFAULT;
 	}
+
+	if (vm_2ndctl & SECONDARY_EXEC_XSAVES)
+		err |= vmcs_write64(XSS_EXIT_BITMAP, 0);
 
 #ifdef ENABLE_PML
 	/* PML if supported  */

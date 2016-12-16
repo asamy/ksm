@@ -134,7 +134,7 @@
 .macro irq_entry symbol:req handler:req no_error_code:req
 .globl \symbol
 \symbol:
-	.ifeq \no_error_code == true
+	.if \no_error_code
 		subq	$8, %rsp
 	.endif
 	TRAP_ENTER(1f)
@@ -164,7 +164,7 @@
 	.text
 
 /* EPT violations  */
-irq_entry __ept_violation	__ept_handle_violation	true
+irq_entry __ept_violation	__ept_handle_violation	1
 
 .globl __vmx_vminit
 __vmx_vminit:
