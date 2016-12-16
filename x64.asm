@@ -189,9 +189,9 @@ __vmx_entrypoint PROC
 	PUSHAQ
 	mov	rcx, rsp
     
-	sub	rsp, 48h
+	sub	rsp, 20h
 	call	vcpu_handle_exit
-	add	rsp, 48h
+	add	rsp, 20h
 
 	test	al, al
 	jz	exit

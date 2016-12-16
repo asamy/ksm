@@ -676,8 +676,8 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 {
 	/*
 	 * Note: that we return to __ksm_init_cpu anyway regardless of failure or
-	 * success, but the difference is, if we fail, vcpu_launch() will give us back control
-	 * instead of directly returning to __ksm_init_cpu.
+	 * success, but the difference is, if we fail, __vmx_vmlaunch() will give
+	 * us back control instead of directly returning to __ksm_init_cpu.
 	 *
 	 * What we do here (in order):
 	 *	- Setup EPT
@@ -701,7 +701,7 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 
 	/*
 	 * Leave cr0 guest host mask empty, we support all.
-	 * Set VMXE bit in cr4 gurest host mask so they VM-exit to us when
+	 * Set VMXE bit in cr4 guest host mask so they VM-exit to us when
 	 * they try to set that bit.
 	 */
 	vcpu->cr0_guest_host_mask = 0;

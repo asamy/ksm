@@ -106,6 +106,11 @@ static uintptr_t pte_top = 0xFFFFF6FFFFFFFFFFULL;
 #define __va(pa)		(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (pa) })
 #define page_align(addr)	(addr & ~(PAGE_SIZE - 1))
 
+static inline bool page_aligned(uintptr_t addr)
+{
+	return (addr & (PAGE_SIZE - 1)) == 0;
+}
+
 static inline bool same_page(uintptr_t a1, uintptr_t a2)
 {
 	return page_align(a1) == page_align(a2);
@@ -209,10 +214,9 @@ static inline uintptr_t va_to_pa(uintptr_t va)
 	return PAGE_PA(*pte) | addr_offset(va);
 }
 
-static inline u64 *__cr3_resolve_va(u64 va)
+static inline u64 *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
 {
 	/* NB: You can also use va_to_pte / va_to_pde, etc.  */
-	u64 cr3 = __readcr3();
 	u64 pml4_pa = cr3 & PAGE_MASK;
 
 	u64 *pml4 = __va(pml4_pa);
@@ -238,9 +242,9 @@ static inline u64 *__cr3_resolve_va(u64 va)
 	return 0;
 }
 
-static inline u64 cr3_resolve_va(u64 va)
+static inline u64 cr3_resolve_va(uintptr_t cr3, uintptr_t va)
 {
-	u64 *page = __cr3_resolve_va(va);
+	u64 *page = __cr3_resolve_va(cr3, va);
 	if (!pte_present(page))
 		return 0;
 

@@ -299,30 +299,6 @@ static inline bool field_supported(u32 field)
 
 static inline bool __nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
 {
-	switch (field) {
-	case HOST_ES_SELECTOR:
-	case HOST_CS_SELECTOR:
-	case HOST_SS_SELECTOR:
-	case HOST_DS_SELECTOR:
-	case HOST_FS_SELECTOR:
-	case HOST_GS_SELECTOR:
-	case HOST_TR_SELECTOR:
-		if ((value & 0xF8) == 0)
-			return false;
-
-		break;
-	case CPU_BASED_VM_EXEC_CONTROL:
-		if (value & nested_unsupported_primary)
-			return false;
-
-		break;
-	case SECONDARY_VM_EXEC_CONTROL:
-		if (value & nested_unsupported_secondary)
-			return false;
-
-		break;
-	}
-
 	u64 *s = (u64 *)vmcs;
 	u16 off = field_offset(field);
 	u64 v = s[off];
@@ -360,6 +336,30 @@ static inline bool nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
 {
 	if (!field_supported(field))
 		return false;
+
+	switch (field) {
+	case HOST_ES_SELECTOR:
+	case HOST_CS_SELECTOR:
+	case HOST_SS_SELECTOR:
+	case HOST_DS_SELECTOR:
+	case HOST_FS_SELECTOR:
+	case HOST_GS_SELECTOR:
+	case HOST_TR_SELECTOR:
+		if ((value & 0xF8) == 0)
+			return false;
+
+		break;
+	case CPU_BASED_VM_EXEC_CONTROL:
+		if (value & nested_unsupported_primary)
+			return false;
+
+		break;
+	case SECONDARY_VM_EXEC_CONTROL:
+		if (value & nested_unsupported_secondary)
+			return false;
+
+		break;
+	}
 
 	return __nested_vmcs_write(vmcs, field, value);
 }
@@ -468,7 +468,8 @@ static inline void vcpu_inject_irq(struct vcpu *vcpu, size_t instr_len, u16 intr
 	if (pirq->pending) {
 		u8 prev_vec = pirq->bits;
 		if (prev_vec == X86_TRAP_DF) {
-			/* Triple fault  */
+			/* FIXME:  Triple fault  */
+			dbgbreak();
 			return;
 		}
 
@@ -495,6 +496,16 @@ static inline void vcpu_inject_hardirq(struct vcpu *vcpu, u8 vector, u32 err)
 			       INTR_TYPE_HARD_EXCEPTION, vector, true, err);
 }
 
+static inline void vcpu_inject_pf(struct vcpu *vcpu, u64 gla, u32 ec)
+{
+	__writecr2(gla);	/* XXX  */
+	return vcpu_inject_irq(vcpu, 0,
+			       INTR_TYPE_HARD_EXCEPTION,
+			       X86_TRAP_PF,
+			       true,
+			       ec);
+}
+
 static inline void vcpu_advance_rip(struct vcpu *vcpu)
 {
 	if (vcpu->eflags & X86_EFLAGS_TF) {
@@ -517,6 +528,21 @@ static inline void vcpu_advance_rip(struct vcpu *vcpu)
 }
 
 #ifdef NESTED_VMX
+static inline u64 gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3, uintptr_t gva, u32 ac)
+{
+	u64 *pte = __cr3_resolve_va(cr3, gva);
+	u32 pgf = PGF_PRESENT;
+	if (ac & PAGE_WRITE)
+		pgf |= PGF_WRITE;
+
+	if (!pte || (*pte & pgf) != pgf) {
+		vcpu_inject_pf(vcpu, gva, pgf);
+		return 0;
+	}
+
+	return PAGE_PA(*pte);
+}
+
 static inline bool gpa_to_hpa(struct vcpu *vcpu, u64 gpa, u64 *hpa)
 {
 	struct ept *ept = &vcpu->ept;
@@ -548,13 +574,20 @@ static inline bool nested_inject_ve(struct vcpu *vcpu)
 		return false;
 
 	u64 ve_info_addr = __nested_vmcs_read64(vmcs, VE_INFO_ADDRESS);
+	if (!page_aligned(ve_info_addr))
+		return false;
+
 	u64 hpa;
 	if (!gpa_to_hpa(vcpu, ve_info_addr, &hpa))
 		return false;
 
 	struct ve_except_info *info = kmap(hpa, PAGE_SIZE);
-	if (!info || info->except_mask == 0) {
+	if (!info)
+		return false;
+
+	if (info->except_mask == 0) {
 		VCPU_DEBUG("Trying to inject #VE but guest opted-out.\n");
+		kunmap(info, PAGE_SIZE);
 		return false;
 	}
 
@@ -565,20 +598,11 @@ static inline bool nested_inject_ve(struct vcpu *vcpu)
 	info->gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
 	info->gla = vmcs_read(GUEST_LINEAR_ADDRESS);
 	info->exit = vmcs_read(EXIT_QUALIFICATION);
+	kunmap(info, PAGE_SIZE);
 	vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_VE);
 	return true;
 }
 #endif
-
-static inline void vcpu_inject_pf(struct vcpu *vcpu, u64 gla, u32 ec)
-{
-	__writecr2(gla);	/* XXX  */
-	return vcpu_inject_irq(vcpu, 0,
-			       INTR_TYPE_HARD_EXCEPTION,
-			       X86_TRAP_PF,
-			       true,
-			       ec);
-}
 
 static bool vcpu_nop(struct vcpu *vcpu)
 {
@@ -763,7 +787,7 @@ static bool vcpu_dump_pml(struct vcpu *vcpu)
 		VCPU_DEBUG("On PML %d: GPA %p GVA %p\n", pml_index, gpa, gva);
 
 		/* Reset AD bits now otherwise we probably won't get this page again  */
-		uintptr_t *epte = ept_pte(ept, EPT4(ept, eptp), gpa);
+		u64_t *epte = ept_pte(ept, EPT4(ept, eptp), gpa);
 		*epte &= ~(EPT_ACCESSED | EPT_DIRTY);
 	}
 
@@ -804,12 +828,12 @@ static inline void vcpu_vm_fail_invalid(struct vcpu *vcpu)
 #ifdef NESTED_VMX
 static inline void vcpu_vm_fail_valid(struct vcpu *vcpu, size_t err)
 {
-	vcpu->eflags |= X86_EFLAGS_ZF;
-	vcpu->eflags &= ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_SF | X86_EFLAGS_OF);
-
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	if (nested_has_vmcs(nested))
 		__nested_vmcs_write(nested->vmcs, VM_INSTRUCTION_ERROR, err);
+
+	vcpu->eflags |= X86_EFLAGS_ZF;
+	vcpu->eflags &= ~(X86_EFLAGS_CF | X86_EFLAGS_PF | X86_EFLAGS_AF | X86_EFLAGS_SF | X86_EFLAGS_OF);
 }
 #endif
 
@@ -2950,6 +2974,7 @@ bool vcpu_handle_exit(u64 *regs)
 		 * Mostly comes via invalid guest state, and is due to a cruical
 		 * error that happened past VM-exit, let the handler see what it does first
 		 */
+		dbgbreak();
 		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, vcpu->ip,
 			      vmcs_read(EXIT_QUALIFICATION), curr_handler);
 	}

@@ -47,28 +47,8 @@ uintptr_t ppe_base = 0xfffff6fb7da00000ull;
 uintptr_t pde_base = 0xfffff6fb40000000ull;
 uintptr_t pte_base = 0xfffff68000000000ull;
 
-static void DriverUnload(PDRIVER_OBJECT driverObject)
+static inline NTSTATUS check_dynamic_pgtables(void)
 {
-	UNREFERENCED_PARAMETER(driverObject);
-#ifdef ENABLE_ACPI
-	deregister_power_callback(&g_dev_ext);
-#endif
-	VCPU_DEBUG("ret: 0x%08X\n", ksm_exit());
-#ifdef DBG
-	print_exit();
-#endif
-}
-
-NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
-{
-#ifdef DBG
-	/* Stupid printing interface  */
-	if (!NT_SUCCESS(print_init())) {
-		DbgPrint("failed to initialize log!\n");
-		return STATUS_ABANDONED;
-	}
-#endif
-
 	/* On Windows 10 build 14316+ Page table base addresses are not static.  */
 	RTL_OSVERSIONINFOW osv;
 	osv.dwOSVersionInfoSize = sizeof(osv);
@@ -76,10 +56,6 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	NTSTATUS status = RtlGetVersion(&osv);
 	if (!NT_SUCCESS(status))
 		return status;
-
-	LDR_DATA_TABLE_ENTRY *entry = driverObject->DriverSection;
-	PsLoadedModuleList = entry->InLoadOrderLinks.Flink;
-	driverObject->DriverUnload = DriverUnload;
 
 	if (osv.dwMajorVersion >= 10 && osv.dwBuildNumber >= 14316) {
 		static const u8 pattern[] = {
@@ -91,7 +67,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		u8 *base = (u8 *)MmGetVirtualForPhysical;
 		bool found = false;
 		for (size_t i = 0; i <= 0x50 - sizeof(pattern); ++i) {
-			if (RtlCompareMemory(pattern, &base[i], sizeof(pattern)) == sizeof(pattern)) {
+			if (memcmp(pattern, &base[i], sizeof(pattern)) == sizeof(pattern)) {
 				pte_base = *(uintptr_t *)(base + i + sizeof(pattern));
 
 				uintptr_t idx = (pte_base >> PXI_SHIFT) & PTX_MASK;
@@ -106,10 +82,43 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		if (!found)
 			return STATUS_NOT_FOUND;
 
-		uintptr_t tmp = (uintptr_t)PAGE_ALIGN((uintptr_t)MmGetVirtualForPhysical);
+		uintptr_t tmp = (uintptr_t)MmGetVirtualForPhysical;
 		VCPU_DEBUG("PXE: %p PPE %p PDE %p PTE %p\n", pxe_base, ppe_base, pde_base, pte_base);
 		VCPU_DEBUG("Addr 0x%X 0x%X\n", __pa((uintptr_t *)tmp), va_to_pa(tmp));
 	}
+
+	return STATUS_SUCCESS;
+}
+
+static void DriverUnload(PDRIVER_OBJECT driverObject)
+{
+	UNREFERENCED_PARAMETER(driverObject);
+#ifdef ENABLE_ACPI
+	deregister_power_callback(&g_dev_ext);
+#endif
+	VCPU_DEBUG("ret: 0x%08X\n", ksm_exit());
+#ifdef DBG
+	print_exit();
+#endif
+}
+
+NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
+{
+	NTSTATUS status;
+
+#ifdef DBG
+	/* Stupid printing interface  */
+	if (!NT_SUCCESS(status = print_init())) {
+		DbgPrint("failed to initialize log: 0x%08X\n", status);
+		return status;
+	}
+#endif
+
+	if (!NT_SUCCESS(status = check_dynamic_pgtables()))
+		goto err;
+
+	LDR_DATA_TABLE_ENTRY *entry = driverObject->DriverSection;
+	PsLoadedModuleList = entry->InLoadOrderLinks.Flink;
 
 	VCPU_DEBUG("We're mapped at %p (size: %d bytes (%d KB), on %d pages)\n",
 		   entry->DllBase, entry->SizeOfImage, entry->SizeOfImage / 1024, entry->SizeOfImage / PAGE_SIZE);
@@ -136,6 +145,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 #endif
 
 	/* Succeeded  */
+	driverObject->DriverUnload = DriverUnload;
 	goto out;
 
 #ifdef ENABLE_ACPI

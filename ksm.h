@@ -538,8 +538,8 @@ static inline u8 vcpu_vmfunc(u32 eptp, u32 func)
 }
 
 /* Execute function on a CPU.  */
-typedef NTSTATUS(*oncpu_fn_t) (void *);
-static inline NTSTATUS exec_on_cpu(int cpu, oncpu_fn_t oncpu, void *param)
+typedef u64 (*oncpu_fn_t) (void *);
+static inline NTSTATUS exec_on_cpu(int cpu, oncpu_fn_t oncpu, void *param, u64 *ret)
 {
 	PROCESSOR_NUMBER nr;
 	NTSTATUS status = KeGetProcessorNumberFromIndex(cpu, &nr);
@@ -556,11 +556,11 @@ static inline NTSTATUS exec_on_cpu(int cpu, oncpu_fn_t oncpu, void *param)
 	KeSetSystemGroupAffinityThread(&affinity, &prev);
 
 	/* Fire in the hole!  */
-	status = oncpu(param);
+	*ret = oncpu(param);
 
 	/* Switch back to old CPU.  */
 	KeRevertToUserGroupAffinityThread(&prev);
-	return status;
+	return STATUS_SUCCESS;
 }
 
 static inline NTSTATUS sleep_ms(s32 ms)
