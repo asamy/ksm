@@ -546,7 +546,7 @@ static inline u64 gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3, uintptr_t gva, u3
 static inline bool gpa_to_hpa(struct vcpu *vcpu, u64 gpa, u64 *hpa)
 {
 	struct ept *ept = &vcpu->ept;
-	uintptr_t *epte = ept_pte(ept, EPT4(ept, vcpu_eptp_idx(vcpu)), gpa);
+	uintptr_t *epte = ept_pte(EPT4(ept, vcpu_eptp_idx(vcpu)), gpa);
 	if (!(*epte & EPT_ACCESS_RW))
 		return false;
 
@@ -2554,7 +2554,7 @@ static bool vcpu_handle_ept_misconfig(struct vcpu *vcpu)
 	u64 gpa = vmcs_read(GUEST_PHYSICAL_ADDRESS);
 	u16 eptp = vcpu_eptp_idx(vcpu);
 
-	uintptr_t *epte = ept_pte(ept, EPT4(ept, eptp), gpa);
+	uintptr_t *epte = ept_pte(EPT4(ept, eptp), gpa);
 	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, EPT_BUGCHECK_MISCONFIG, gpa, *epte);
 	return false;
 }

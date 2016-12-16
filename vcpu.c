@@ -59,7 +59,7 @@ static inline void init_epte(uintptr_t *entry, uint8_t access, uintptr_t phys)
  * does is quite simple, it checks if the entry is not NULL and is present, then does
  * __va(PAGE_PA(entry)).
  */
-uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uintptr_t phys)
+uintptr_t *ept_alloc_page(uintptr_t *pml4, uint8_t access, uintptr_t phys)
 {
 	/* PML4 (512 GB) */
 	uintptr_t *pml4e = &pml4[__pxe_idx(phys)];
@@ -150,14 +150,14 @@ static bool setup_pml4(struct ept *ept)
 		for (uintptr_t page = 0; page < nr_pages; ++page) {
 			uintptr_t page_addr = base_addr + page * PAGE_SIZE;
 			for_each_eptp(i)
-				if (!ept_alloc_page(NULL, EPT4(ept, i), EPT_ACCESS_ALL, page_addr))
+				if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, page_addr))
 					goto out;
 		}
 	}
 
 	/* Allocate APIC page  */
 	for_each_eptp(i)
-		if (!(ret = ept_alloc_page(NULL, EPT4(ept, i), EPT_ACCESS_ALL, __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE)))
+		if (!(ret = ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE)))
 			break;
 
 out:
@@ -203,7 +203,7 @@ static inline void free_ept(struct ept *ept)
  * Get a PTE for the specified guest physical address, this can be used
  * to get the host physical address it redirects to or redirect to it.
  */
-u64 *ept_pte(struct ept *ept, uintptr_t *pml4, u64 gpa)
+u64 *ept_pte(uintptr_t *pml4, u64 gpa)
 {
 	u64 *pdpt, *pdt, *pd;
 	u64 *pdpte, *pdte;
@@ -236,7 +236,7 @@ static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa, u64 gva, u16 ep
 	struct ept *ept = &vcpu->ept;
 	if (ar == EPT_ACCESS_NONE) {
 		for_each_eptp(i)
-			if (!ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, gpa))
+			if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, gpa))
 				return EPT_MAX_EPTP_LIST;
 	} else {
 #ifdef EPAGE_HOOK

@@ -503,8 +503,8 @@ extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_set_mtf(bool enable);
 extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
 extern bool ept_check_capabilitiy(void);
-extern uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uintptr_t phys);
-extern uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, u64 gpa);
+extern uintptr_t *ept_alloc_page(uintptr_t *pml4, uint8_t access, uintptr_t phys);
+extern uintptr_t *ept_pte(uintptr_t *pml4, u64 gpa);
 extern bool ept_handle_violation(struct vcpu *vcpu);
 extern void __ept_handle_violation(u64 cs, uintptr_t rip);
 
@@ -616,9 +616,9 @@ static inline void __get_epte_ar(uintptr_t *epte, char *p)
 	return ar_get_bits((u8)*epte & EPT_ACCESS_MAX_BITS, p);
 }
 
-static inline void get_epte_ar(struct ept *ept, uintptr_t *pml, uintptr_t pa, char *p)
+static inline void get_epte_ar(uintptr_t *pml4, u64 gpa, char *p)
 {
-	return __get_epte_ar(ept_pte(ept, pml, pa), p);
+	return __get_epte_ar(ept_pte(pml4, gpa), p);
 }
 #endif
 #endif
