@@ -20,18 +20,6 @@
 
 #include "ksm.h"
 
-static uintptr_t *alloc_epte(struct ept *ept)
-{
-	if (ept) {
-		if (ept->pre_alloc_used >= EPT_MAX_PREALLOC)
-			return NULL;
-
-		return ept->pre_alloc[ept->pre_alloc_used++];
-	}
-
-	return mm_alloc_pool(NonPagedPool, PAGE_SIZE);
-}
-
 static inline void init_epte(uintptr_t *entry, uint8_t access, uintptr_t phys)
 {
 	*entry ^= *entry;
@@ -78,7 +66,7 @@ uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uint
 	uintptr_t *pdpt = page_addr(pml4e);
 
 	if (!pdpt) {
-		pdpt = alloc_epte(ept);
+		pdpt = mm_alloc_page();
 		if (!pdpt)
 			return NULL;
 
@@ -89,7 +77,7 @@ uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uint
 	uintptr_t *pdpte = &pdpt[__ppe_idx(phys)];
 	uintptr_t *pdt = page_addr(pdpte);
 	if (!pdt) {
-		pdt = alloc_epte(ept);
+		pdt = mm_alloc_page();
 		if (!pdt)
 			return NULL;
 
@@ -100,7 +88,7 @@ uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uint
 	uintptr_t *pdte = &pdt[__pde_idx(phys)];
 	uintptr_t *pt = page_addr(pdte);
 	if (!pt) {
-		pt = alloc_epte(ept);
+		pt = mm_alloc_page();
 		if (!pt)
 			return NULL;
 
@@ -119,17 +107,6 @@ uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uint
 }
 
 /*
- * Free pre-allocated EPT entries, discarding used entries because they were
- * used by ept_alloc_page(), so no need to confuse each other.
- */
-static void free_pre_alloc(struct ept *ept)
-{
-	for (u32 i = ept->pre_alloc_used; i < EPT_MAX_PREALLOC; ++i)
-		if (ept->pre_alloc[i])
-			mm_free_pool(ept->pre_alloc[i], PAGE_SIZE);
-}
-
-/*
  * Recursively free each table entries, see ept_alloc_page()
  * for an explanation.
  */
@@ -142,11 +119,11 @@ static void free_entries(uintptr_t *table, uint32_t lvl)
 			if (lvl > 2)
 				free_entries(sub_table, lvl - 1);
 			else
-				mm_free_pool(sub_table, PAGE_SIZE);
+				mm_free_page(sub_table);
 		}
 	}
 
-	mm_free_pool(table, PAGE_SIZE);
+	mm_free_page(table);
 }
 
 static void free_pml4_list(struct ept *ept)
@@ -184,7 +161,7 @@ static bool setup_pml4(struct ept *ept)
 			break;
 
 out:
-	mm_free_pool(pm_ranges, sizeof(PHYSICAL_MEMORY_RANGE));
+	ExFreePool(pm_ranges);
 	return ret;
 }
 
@@ -203,28 +180,15 @@ static inline bool init_ept(struct ept *ept)
 {
 	for_each_eptp(i) {
 		uintptr_t **pml4 = &EPT4(ept, i);
-		if (!(*pml4 = mm_alloc_pool(NonPagedPool, PAGE_SIZE)))
+		if (!(*pml4 = mm_alloc_page()))
 			goto err_pml4_list;
 
 		setup_eptp(&EPTP(ept, i), __pa(*pml4) >> PAGE_SHIFT);
 	}
 
-	if (!setup_pml4(ept))
-		goto err_pml4_list;
+	if (setup_pml4(ept))
+		return true;
 
-	for (int i = 0; i < EPT_MAX_PREALLOC; ++i) {
-		uintptr_t *entry = mm_alloc_pool(NonPagedPool, PAGE_SIZE);
-		if (!entry)
-			goto err_pre;
-
-		ept->pre_alloc[i] = entry;
-	}
-
-	ept->pre_alloc_used = 0;
-	return true;
-
-err_pre:
-	free_pre_alloc(ept);
 err_pml4_list:
 	free_pml4_list(ept);
 	return false;
@@ -232,7 +196,6 @@ err_pml4_list:
 
 static inline void free_ept(struct ept *ept)
 {
-	free_pre_alloc(ept);
 	free_pml4_list(ept);
 }
 
@@ -240,24 +203,32 @@ static inline void free_ept(struct ept *ept)
  * Get a PTE for the specified guest physical address, this can be used
  * to get the host physical address it redirects to or redirect to it.
  */
-u64 *ept_pte(struct ept *ept, uintptr_t *pml, u64 gpa)
+u64 *ept_pte(struct ept *ept, uintptr_t *pml4, u64 gpa)
 {
-	u64 *pxe = page_addr(&pml[__pxe_idx(gpa)]);
-	if (!pxe)
+	u64 *pdpt, *pdt, *pd;
+	u64 *pdpte, *pdte;
+
+	pdpt = page_addr(&pml4[__pxe_idx(gpa)]);
+	if (!pdpt)
 		return 0;
 
-	u64 *ppe = page_addr(&pxe[__ppe_idx(gpa)]);
-	if (!ppe)
+	pdpte = &pdpt[__ppe_idx(gpa)];
+	pdt = page_addr(pdpte);
+	if (!pdt)
 		return 0;
 
-	u64 *pde = page_addr(&ppe[__pde_idx(gpa)]);
-	if (!pde)
+	if (pte_large(pdpte))
+		return pdpte;	/* 1 GB  */
+
+	pdte = &pdt[__pde_idx(gpa)];
+	pd = page_addr(pdte);
+	if (!pd)
 		return 0;
 
-	if (pte_large(pde))
-		return pde;
+	if (pte_large(pdte))
+		return pdte;	/* 2 MB  */
 
-	return &pde[__pte_idx(gpa)];
+	return &pd[__pte_idx(gpa)];	/* 4 KB  */
 }
 
 static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa, u64 gva, u16 eptp, u8 ar, u8 ac)
@@ -702,7 +673,7 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 		return;
 
 	vcpu->idt.limit = PAGE_SIZE - 1;
-	vcpu->idt.base = (uintptr_t)mm_alloc_pool(NonPagedPool, PAGE_SIZE);
+	vcpu->idt.base = (uintptr_t)mm_alloc_page();
 	if (!vcpu->idt.base)
 		return free_ept(&vcpu->ept);
 
@@ -748,7 +719,7 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 void vcpu_free(struct vcpu *vcpu)
 {
 	if (vcpu->idt.base)
-		mm_free_pool((void *)vcpu->idt.base, PAGE_SIZE);
+		mm_free_page((void *)vcpu->idt.base);
 
 	free_ept(&vcpu->ept);
 	__stosq((unsigned long long *)vcpu, 0x00, sizeof(*vcpu) >> 3);

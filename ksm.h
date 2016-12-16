@@ -153,7 +153,6 @@
 #define EPTP_NORMAL			2			/* sane eptp index, no hooks  */
 #define EPTP_DEFAULT			EPTP_EXHOOK
 #define EPTP_USED			3			/* number of unique ptrs currently in use and should be freed  */
-#define EPT_MAX_PREALLOC		256			/* FIXME:  This is retarded!  */
 #define EPTP(e, i)			(e)->ptr_list[(i)]
 #define EPT4(e, i)			(e)->pml4_list[(i)]
 #define for_each_eptp(i)		for (int i = 0; i < EPTP_USED; ++i)
@@ -248,8 +247,6 @@ struct ve_except_info {
 struct ept {
 	__align(PAGE_SIZE) uintptr_t ptr_list[EPT_MAX_EPTP_LIST];
 	uintptr_t *pml4_list[EPTP_USED];
-	uintptr_t *pre_alloc[EPT_MAX_PREALLOC];
-	u32 pre_alloc_used;
 };
 
 #ifdef NESTED_VMX
@@ -507,7 +504,7 @@ extern void vcpu_set_mtf(bool enable);
 extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
 extern bool ept_check_capabilitiy(void);
 extern uintptr_t *ept_alloc_page(struct ept *ept, uintptr_t *pml4, uint8_t access, uintptr_t phys);
-extern uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, uintptr_t phys);
+extern uintptr_t *ept_pte(struct ept *ept, uintptr_t *pml, u64 gpa);
 extern bool ept_handle_violation(struct vcpu *vcpu);
 extern void __ept_handle_violation(u64 cs, uintptr_t rip);
 

@@ -365,18 +365,18 @@ static inline uintptr_t subst_addr(uintptr_t *pte)
 }
 #endif
 
-static inline void *mm_alloc_pool(POOL_TYPE type, size_t size)
+static inline void *mm_alloc_page(void)
 {
-	void *v = ExAllocatePool(type, size);
+	void *v = ExAllocatePool(NonPagedPool, PAGE_SIZE);
 	if (v)
-		__stosq(v, 0x00, size >> 3);
+		__stosq(v, 0x00, PAGE_SIZE >> 3);
 
 	return v;
 }
 
-static inline void mm_free_pool(void *v, size_t size)
+static inline void mm_free_page(void *v)
 {
-	__stosq(v, 0x00, size >> 3);
+	__stosq(v, 0x00, PAGE_SIZE >> 3);
 	ExFreePool(v);
 }
 

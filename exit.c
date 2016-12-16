@@ -2094,12 +2094,19 @@ static bool vcpu_handle_dr_access(struct vcpu *vcpu)
 	 */
 	uintptr_t cr4 = vmcs_read(GUEST_CR4);
 	if (cr4 & X86_CR4_DE && (dr == 4 || dr == 5)) {
-		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 		goto out;
 	}
 
 	if (!vcpu_probe_cpl(0)) {
 		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+		goto out;
+	}
+
+	uintptr_t dr7 = vmcs_read(GUEST_DR7);
+	if (dr7 & DR7_GD) {
+		__writedr(6, (__readdr(6) & ~15) | DR6_RTM | DR6_BD);
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_DB);
 		goto out;
 	}
 

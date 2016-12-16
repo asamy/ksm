@@ -27,6 +27,9 @@ struct ksm ksm = {
 	.active_vcpus = 0,
 };
 
+/* Required MSR_IA32_FEATURE_CONTROL bits:  */
+static const u64 required_feat_bits = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
+
 /*
  * This file manages CPUs initialization, for per-cpu initializaiton
  * see vcpu.c, for VM-exit handlers see exit.c
@@ -76,33 +79,20 @@ static void init_io_bitmaps(struct ksm *k)
 #endif
 }
 
-static NTSTATUS set_lock_bit(void)
-{
-	/* Required MSR_IA32_FEATURE_CONTROL bits:  */
-	const u64 required_feat_bits = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
-
-	u64 feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
-	if ((feat_ctl & required_feat_bits) == required_feat_bits)
-		return STATUS_SUCCESS;
-
-	/* Attempt to set bits in place  */
-	__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl | required_feat_bits);
-
-	feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
-	if ((feat_ctl & required_feat_bits) == required_feat_bits)
-		return STATUS_SUCCESS;
-
-	return STATUS_HV_ACCESS_DENIED;
-}
-
 static NTSTATUS __ksm_init_cpu(struct ksm *k)
 {
 #ifndef __GNUC__
 	__try {
 #endif
-		NTSTATUS status = set_lock_bit();
-		if (!NT_SUCCESS(status))
-			return status;
+		u64 feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
+		if ((feat_ctl & required_feat_bits) != required_feat_bits) {
+			/* Attempt to set bits in place  */
+			__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl | required_feat_bits);
+
+			feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
+			if ((feat_ctl & required_feat_bits) != required_feat_bits)
+				return STATUS_HV_ACCESS_DENIED;
+		}
 
 		k->kernel_cr3 = __readcr3();
 		if (__vmx_vminit(&k->vcpu_list[cpu_nr()])) {
