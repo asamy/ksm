@@ -18,6 +18,17 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
+#ifdef __linux__
+#define REG_A1		%rsi
+#define REG_A2		%rdi
+#define REG_A3		%rdx
+#define REG_A4		%r10
+#else
+#define REG_A1		%rcx
+#define REG_A2		%rdx
+#define REG_A3		%r8
+#define REG_A4		%r9
+#endif
 
 .macro PUSH_REGS
 	pushq	%r15
@@ -143,8 +154,8 @@
 	cld
 	TRAP_SAVE_XMM
 
-	movq	KFRAME_CS(%rbp), %rcx
-	movq	KFRAME_IP(%rbp), %rdx
+	movq	KFRAME_CS(%rbp), REG_A1
+	movq	KFRAME_IP(%rbp), REG_A2
 	call	\handler
 
 	testb	$1, KFRAME_RPL(%rbp)
@@ -171,8 +182,8 @@ __vmx_vminit:
 	pushfq
 	PUSH_REGS
 
-	movq	%rsp, %rdx
-	movabs	$do_resume, %r8
+	movq	%rsp, REG_A2
+	movabs	$do_resume, REG_A3
 	call	vcpu_init
 
 	/* If we get here, we failed  */
@@ -192,7 +203,7 @@ do_resume:
 .globl __vmx_entrypoint
 __vmx_entrypoint:
 	PUSH_REGS
-	movq	%rsp, %rcx
+	movq	%rsp, REG_A1
 	call	vcpu_handle_exit
 
 	testb	%al, %al
@@ -221,7 +232,7 @@ __vmx_entrypoint:
 2:
 	pushfq
 	PUSH_REGS
-	movq	%rsp, %rcx
+	movq	%rsp, REG_A1
 	call	vcpu_handle_fail
 
 3:	/* not reached  */

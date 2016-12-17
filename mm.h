@@ -19,6 +19,10 @@
 #ifndef __MM_H
 #define __MM_H
 
+#ifdef __linux__
+#include <linux/mm.h>
+#endif
+
 #ifndef PXI_SHIFT
 #define PXI_SHIFT		39
 #endif
@@ -59,15 +63,12 @@
 #define PTI_MASK		0xFFFFFFFFF
 #endif
 
+#ifndef __linux__
 extern uintptr_t pxe_base;
 extern uintptr_t ppe_base;
 extern uintptr_t pde_base;
 extern uintptr_t pte_base;
-
-static uintptr_t pxe_top = 0xFFFFF6FB7DBEDFFFULL;
-static uintptr_t ppe_top = 0xFFFFF6FB7DBFFFFFULL;
-static uintptr_t pde_top = 0xFFFFF6FB7FFFFFFFULL;
-static uintptr_t pte_top = 0xFFFFF6FFFFFFFFFFULL;
+#endif
 
 #define PAGE_PRESENT		0x1
 #define PAGE_WRITE		0x2
@@ -81,8 +82,8 @@ static uintptr_t pte_top = 0xFFFFF6FFFFFFFFFFULL;
 #define PAGE_COPYONWRITE	0x200
 #define PAGE_PROTOTYPE		0x400
 #define PAGE_TRANSIT		0x800
-#define PAGE_MASK		(0xFFFFFFFFFULL << PAGE_SHIFT)
-#define PAGE_PA(page)		((page) & PAGE_MASK)
+#define PAGE_PA_MASK		(0xFFFFFFFFFULL << PAGE_SHIFT)
+#define PAGE_PA(page)		((page) & PAGE_PA_MASK)
 #define PAGE_FN(page)		(((page) >> PTI_SHIFT) & PTI_MASK)
 #define PAGE_SOFT_WS_IDX_SHIFT	52
 #define PAGE_SOFT_WS_IDX_MASK	0xFFF
@@ -102,13 +103,21 @@ static uintptr_t pte_top = 0xFFFFF6FFFFFFFFFFULL;
 #define __pde_idx(addr)		(((addr) >> PDI_SHIFT) & PTX_MASK)
 #define __pte_idx(addr)		(((addr) >> PTI_SHIFT) & PTX_MASK)
 
+#ifndef __linux__
 #define __pa(va)		MmGetPhysicalAddress((void *)(va)).QuadPart
 #define __va(pa)		(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (pa) })
-#define page_align(addr)	(addr & ~(PAGE_SIZE - 1))
+#endif
 
+#define page_align(addr)	(addr & ~(PAGE_SIZE - 1))
 static inline bool page_aligned(uintptr_t addr)
 {
 	return (addr & (PAGE_SIZE - 1)) == 0;
+}
+
+static inline u16 addr_offset(uintptr_t addr)
+{
+	/* Get the lower 12 bits which represent the offset  */
+	return addr & (PAGE_SIZE - 1);
 }
 
 static inline bool same_page(uintptr_t a1, uintptr_t a2)
@@ -116,7 +125,7 @@ static inline bool same_page(uintptr_t a1, uintptr_t a2)
 	return page_align(a1) == page_align(a2);
 }
 
-static inline uintptr_t *page_addr(uintptr_t *page)
+static inline u64 *page_addr(u64 *page)
 {
 	if (!page || !*page)
 		return 0;
@@ -124,7 +133,8 @@ static inline uintptr_t *page_addr(uintptr_t *page)
 	return __va(PAGE_PA(*page));
 }
 
-static inline int pte_soft_ws_idx(uintptr_t *pte)
+#ifndef __linux
+static inline int pte_soft_ws_idx(u64 *pte)
 {
 	return (*pte >> PAGE_SOFT_WS_IDX_SHIFT) & PAGE_SOFT_WS_IDX_MASK;
 }
@@ -194,12 +204,6 @@ static inline uintptr_t __pte_to_va(uintptr_t *pte)
 static inline void *pte_to_va(uintptr_t *pte)
 {
 	return (void *)__pte_to_va(pte);
-}
-
-static inline u16 addr_offset(uintptr_t addr)
-{
-	/* Get the lower 12 bits which represent the offset  */
-	return addr & (PAGE_SIZE - 1);
 }
 
 static inline uintptr_t va_to_pa(uintptr_t va)
@@ -364,35 +368,67 @@ static inline uintptr_t subst_addr(uintptr_t *pte)
 	return (*pte >> SSP_SUBST_ADDR_SHIFT) & SSP_SUBST_ADDR_MASK;
 }
 #endif
+#endif
+
+#ifdef __linux__
+static inline void __stosq(unsigned long long *a, unsigned long x, unsigned long count)
+{
+	__asm __volatile("rep; stosq\n\t"
+			 :: "c" (count), "a" (x), "D" (a));
+}
+#endif
 
 static inline void *mm_alloc_page(void)
 {
+#ifndef __linux__
 	void *v = ExAllocatePool(NonPagedPool, PAGE_SIZE);
+#else
+	void *v = (void *)__get_free_page(GFP_KERNEL);
+#endif
 	if (v)
-		__stosq(v, 0x00, PAGE_SIZE >> 3);
+		__stosq(v, 00, PAGE_SIZE >> 3);
 
 	return v;
 }
 
 static inline void mm_free_page(void *v)
 {
-	__stosq(v, 0x00, PAGE_SIZE >> 3);
+	__stosq(v, 0, PAGE_SIZE >> 3);
+#ifndef __linux__
 	ExFreePool(v);
+#else
+	free_page((unsigned long)v);
+#endif
 }
 
-static inline void __mm_free_pool(void *v)
+static inline void __mm_free_page(void *v)
 {
+#ifndef __linux__
 	ExFreePool(v);
+#else
+	free_page((unsigned long)v);
+#endif
 }
 
-static inline void *kmap(u64 addr, size_t size)
+#ifndef __linux__
+static inline void *kmap_iomem(u64 addr, size_t size)
 {
 	return MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = addr }, size, MmNonCached);
 }
 
-static inline void kunmap(void *addr, size_t size)
+static inline void kunmap_iomem(void *addr, size_t size)
 {
 	return MmUnmapIoSpace(addr, size);
 }
+#else
+static inline void __iomem *kmap_iomem(unsigned long addr, unsigned long size)
+{
+	return ioremap(addr, size);
+}
 
+static inline void kunmap_iomem(volatile void __iomem *addr, unsigned long size)
+{
+	return iounmap(addr);
+}
+#endif
 #endif

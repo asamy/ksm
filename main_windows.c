@@ -2,6 +2,8 @@
  * ksm - a really simple and fast x64 hypervisor
  * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
  *
+ * Main windows kernel driver entry point.
+ *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation; either version 2 of the License, or
@@ -24,14 +26,17 @@
 #include "pe.h"
 
 #ifdef ENABLE_ACPI
+typedef struct _DEV_EXT {
+	PVOID CbRegistration;
+	PCALLBACK_OBJECT CbObject;
+} DEV_EXT, *PDEV_EXT;
 static DEV_EXT g_dev_ext = { NULL, NULL };
-#endif
 
-/*
- * Main entry point, calls ksm_init() to virtualize the system, on failure,
- * an error is printed, DebugView can be used to see the error if compiled
- * with debug.
- */
+extern int register_power_callback(PDEV_EXT ext);
+extern void deregister_power_callback(PDEV_EXT ext);
+#endif
+static void *hotplug_cpu;
+
 #ifndef __GNUC__
 DRIVER_INITIALIZE DriverEntry;
 #pragma alloc_text(INIT, DriverEntry)
@@ -46,6 +51,29 @@ uintptr_t pxe_base = 0xfffff6fb7dbed000ull;
 uintptr_t ppe_base = 0xfffff6fb7da00000ull;
 uintptr_t pde_base = 0xfffff6fb40000000ull;
 uintptr_t pte_base = 0xfffff68000000000ull;
+
+static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT change_ctx, Pint op_status)
+{
+	/* CPU Hotplug callback, a CPU just came online.  */
+	GROUP_AFFINITY affinity;
+	GROUP_AFFINITY prev;
+	PPROCESSOR_NUMBER pnr;
+	int status;
+
+	if (change_ctx->State == KeProcessorAddCompleteNotify) {
+		pnr = &change_ctx->ProcNumber;
+		affinity.Group = pnr->Group;
+		affinity.Mask = 1ULL << pnr->Number;
+		KeSetSystemGroupAffinityThread(&affinity, &prev);
+
+		VCPU_DEBUG_RAW("New processor\n");
+		status = __ksm_init_cpu(&ksm);
+		if (!NT_SUCCESS(status))
+			*op_status = status;
+
+		KeRevertToUserGroupAffinityThread(&prev);
+	}
+}
 
 static inline NTSTATUS check_dynamic_pgtables(void)
 {
@@ -93,6 +121,7 @@ static inline NTSTATUS check_dynamic_pgtables(void)
 static void DriverUnload(PDRIVER_OBJECT driverObject)
 {
 	UNREFERENCED_PARAMETER(driverObject);
+	KeDeregisterProcessorChangeCallback(hotplug_cpu);
 #ifdef ENABLE_ACPI
 	deregister_power_callback(&g_dev_ext);
 #endif
@@ -121,11 +150,14 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	PsLoadedModuleList = entry->InLoadOrderLinks.Flink;
 
 	VCPU_DEBUG("We're mapped at %p (size: %d bytes (%d KB), on %d pages)\n",
-		   entry->DllBase, entry->SizeOfImage, entry->SizeOfImage / 1024, entry->SizeOfImage / PAGE_SIZE);
+		   entry->DllBase, entry->SizeOfImage,
+		   entry->SizeOfImage / 1024, entry->SizeOfImage / PAGE_SIZE);
 	g_driver_base = (uintptr_t)entry->DllBase;
 	g_driver_size = entry->SizeOfImage;
 
-	LDR_DATA_TABLE_ENTRY *kentry = container_of(PsLoadedModuleList->Flink, LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
+	LDR_DATA_TABLE_ENTRY *kentry = container_of(PsLoadedModuleList->Flink,
+						    LDR_DATA_TABLE_ENTRY,
+						    InLoadOrderLinks);
 	g_kernel_base = kentry->DllBase;
 
 	VCPU_DEBUG("Kernel: %p -> %p (size: 0x%X pages: %d) path: %wS\n",
@@ -136,8 +168,14 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
 #endif
 
+	ksm.hotplug_cpu = KeRegisterProcessorChangeCallback(ksm_hotplug_cpu, NULL, 0);
+	if (!ksm.hotplug_cpu) {
+		status = STATUS_UNSUCCESSFUL;
+		return err;
+	}
+
 	if (!NT_SUCCESS(status = ksm_init()))
-		goto err;
+		goto err1;
 
 #ifdef ENABLE_ACPI
 	if (!NT_SUCCESS(status = register_power_callback(&g_dev_ext)))
@@ -152,6 +190,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 exit:
 	ksm_exit();
 #endif
+err1:
+	KeDeregisterProcessorChangeCallback(hotplug_cpu);
 err:
 #ifdef DBG
 	print_exit();

@@ -25,12 +25,12 @@
 static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 {
 	uintptr_t dpa = phi->d_pfn << PAGE_SHIFT;
-	uintptr_t *epte = ept_alloc_page(ept, EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, dpa);
-	__set_epte_ar_pfn(epte, EPT_ACCESS_EXEC, phi->c_pfn);
-
-	ept_alloc_page(ept, EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, dpa);
-	ept_alloc_page(ept, EPT4(ept, EPTP_NORMAL), EPT_ACCESS_EXEC, dpa);
-
+	uintptr_t *epte = ept_alloc_page(EPT4(ept, EPTP_EXHOOK),
+					 EPT_ACCESS_EXEC,
+					 dpa,
+					 phi->c_pfn << PAGE_SHIFT);
+	ept_alloc_page(EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, dpa, dpa);
+	ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_EXEC, dpa, dpa);
 	__invept_all();
 }
 

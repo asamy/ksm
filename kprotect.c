@@ -41,14 +41,13 @@ bool kprotect_init_eptp(struct vcpu *vcpu, uintptr_t gpa)
 	struct ept *ept = &vcpu->ept;
 
 	/* EXHOOK execute only, redirect to normal page:  */
-	ept_alloc_page(ept, EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, gpa);
+	ept_alloc_page(EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, gpa, gpa);
 
 	/* RWHOOK readwrite only, redirect to zero page:  */
-	uintptr_t *epte = ept_alloc_page(ept, EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, gpa);
-	__set_epte_ar_pfn(epte, EPT_ACCESS_RW, hpa >> PAGE_SHIFT);
+	uintptr_t *epte = ept_alloc_page(EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, gpa, hpa);
 
 	/* NORMAL readwrite only, redirect to normal page:  */
-	epte = ept_alloc_page(ept, EPT4(ept, EPTP_NORMAL), EPT_ACCESS_RW, gpa);
+	epte = ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_RW, gpa, gpa);
 
 	__invept_all();
 	return true;

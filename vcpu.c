@@ -16,15 +16,19 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
+#ifdef __linux__
+#include <linux/kernel.h>
+#else
 #include <ntddk.h>
+#endif
 
 #include "ksm.h"
 
-static inline void init_epte(uintptr_t *entry, uint8_t access, uintptr_t phys)
+static inline void init_epte(u64 *entry, int access, u64 hpa)
 {
 	*entry ^= *entry;
 	*entry |= access & EPT_ACCESS_MAX_BITS;
-	*entry |= (phys >> PAGE_SHIFT) << PAGE_SHIFT;
+	*entry |= (hpa >> PAGE_SHIFT) << PAGE_SHIFT;
 #ifdef EPT_SUPPRESS_VE
 	*entry |= EPT_SUPPRESS_VE_BIT;
 #endif
@@ -59,11 +63,11 @@ static inline void init_epte(uintptr_t *entry, uint8_t access, uintptr_t phys)
  * does is quite simple, it checks if the entry is not NULL and is present, then does
  * __va(PAGE_PA(entry)).
  */
-uintptr_t *ept_alloc_page(uintptr_t *pml4, uint8_t access, uintptr_t phys)
+u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 {
 	/* PML4 (512 GB) */
-	uintptr_t *pml4e = &pml4[__pxe_idx(phys)];
-	uintptr_t *pdpt = page_addr(pml4e);
+	u64 *pml4e = &pml4[__pxe_idx(gpa)];
+	u64 *pdpt = page_addr(pml4e);
 
 	if (!pdpt) {
 		pdpt = mm_alloc_page();
@@ -74,8 +78,8 @@ uintptr_t *ept_alloc_page(uintptr_t *pml4, uint8_t access, uintptr_t phys)
 	}
 
 	/* PDPT (1 GB)  */
-	uintptr_t *pdpte = &pdpt[__ppe_idx(phys)];
-	uintptr_t *pdt = page_addr(pdpte);
+	u64 *pdpte = &pdpt[__ppe_idx(gpa)];
+	u64 *pdt = page_addr(pdpte);
 	if (!pdt) {
 		pdt = mm_alloc_page();
 		if (!pdt)
@@ -85,8 +89,8 @@ uintptr_t *ept_alloc_page(uintptr_t *pml4, uint8_t access, uintptr_t phys)
 	}
 
 	/* PDT (2 MB)  */
-	uintptr_t *pdte = &pdt[__pde_idx(phys)];
-	uintptr_t *pt = page_addr(pdte);
+	u64 *pdte = &pdt[__pde_idx(gpa)];
+	u64 *pt = page_addr(pdte);
 	if (!pt) {
 		pt = mm_alloc_page();
 		if (!pt)
@@ -96,8 +100,8 @@ uintptr_t *ept_alloc_page(uintptr_t *pml4, uint8_t access, uintptr_t phys)
 	}
 
 	/* PT (4 KB)  */
-	uintptr_t *page = &pt[__pte_idx(phys)];
-	init_epte(page, access, phys);
+	u64 *page = &pt[__pte_idx(gpa)];
+	init_epte(page, access, hpa);
 
 	*page |= EPT_MT_WRITEBACK << VMX_EPT_MT_EPTE_SHIFT;
 #ifdef EPT_SUPPRESS_VE
@@ -110,12 +114,12 @@ uintptr_t *ept_alloc_page(uintptr_t *pml4, uint8_t access, uintptr_t phys)
  * Recursively free each table entries, see ept_alloc_page()
  * for an explanation.
  */
-static void free_entries(uintptr_t *table, uint32_t lvl)
+static void free_entries(u64 *table, int lvl)
 {
 	for (int i = 0; i < 512; ++i) {
-		uintptr_t entry = table[i];
+		u64 entry = table[i];
 		if (entry) {
-			uintptr_t *sub_table = __va(PAGE_PA(entry));
+			u64 *sub_table = __va(PAGE_PA(entry));
 			if (lvl > 2)
 				free_entries(sub_table, lvl - 1);
 			else
@@ -135,11 +139,13 @@ static void free_pml4_list(struct ept *ept)
 
 static bool setup_pml4(struct ept *ept)
 {
+	bool ret = false;
+
+#ifndef __linux__
 	PPHYSICAL_MEMORY_RANGE pm_ranges = MmGetPhysicalMemoryRanges();
 	if (!pm_ranges)
 		return false;
 
-	bool ret = false;
 	for (int run = 0;; ++run) {
 		uintptr_t base_addr = pm_ranges[run].BaseAddress.QuadPart;
 		uintptr_t bytes = pm_ranges[run].NumberOfBytes.QuadPart;
@@ -150,22 +156,26 @@ static bool setup_pml4(struct ept *ept)
 		for (uintptr_t page = 0; page < nr_pages; ++page) {
 			uintptr_t page_addr = base_addr + page * PAGE_SIZE;
 			for_each_eptp(i)
-				if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, page_addr))
+				if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, page_addr, page_addr))
 					goto out;
 		}
 	}
+#endif
 
 	/* Allocate APIC page  */
+	u64 apic = __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE;
 	for_each_eptp(i)
-		if (!(ret = ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE)))
+		if (!(ret = ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, apic, apic)))
 			break;
 
+#ifndef __linux__
 out:
 	ExFreePool(pm_ranges);
+#endif
 	return ret;
 }
 
-static inline void setup_eptp(uintptr_t *ptr, uintptr_t pml4_pfn)
+static inline void setup_eptp(u64 *ptr, u64 pml4)
 {
 	*ptr ^= *ptr;
 	*ptr |= VMX_EPT_DEFAULT_MT;
@@ -173,17 +183,17 @@ static inline void setup_eptp(uintptr_t *ptr, uintptr_t pml4_pfn)
 #ifdef ENABLE_PML
 	*ptr |= VMX_EPT_AD_ENABLE_BIT;
 #endif
-	*ptr |= pml4_pfn << PAGE_SHIFT;
+	*ptr |= (pml4 >> PAGE_SHIFT) << PAGE_SHIFT;
 }
 
 static inline bool init_ept(struct ept *ept)
 {
 	for_each_eptp(i) {
-		uintptr_t **pml4 = &EPT4(ept, i);
+		u64 **pml4 = &EPT4(ept, i);
 		if (!(*pml4 = mm_alloc_page()))
 			goto err_pml4_list;
 
-		setup_eptp(&EPTP(ept, i), __pa(*pml4) >> PAGE_SHIFT);
+		setup_eptp(&EPTP(ept, i), __pa(*pml4));
 	}
 
 	if (setup_pml4(ept))
@@ -203,7 +213,7 @@ static inline void free_ept(struct ept *ept)
  * Get a PTE for the specified guest physical address, this can be used
  * to get the host physical address it redirects to or redirect to it.
  */
-u64 *ept_pte(uintptr_t *pml4, u64 gpa)
+u64 *ept_pte(u64 *pml4, u64 gpa)
 {
 	u64 *pdpt, *pdt, *pd;
 	u64 *pdpte, *pdte;
@@ -217,7 +227,7 @@ u64 *ept_pte(uintptr_t *pml4, u64 gpa)
 	if (!pdt)
 		return 0;
 
-	if (pte_large(pdpte))
+	if (*pdpte & PAGE_LARGE)
 		return pdpte;	/* 1 GB  */
 
 	pdte = &pdt[__pde_idx(gpa)];
@@ -225,7 +235,7 @@ u64 *ept_pte(uintptr_t *pml4, u64 gpa)
 	if (!pd)
 		return 0;
 
-	if (pte_large(pdte))
+	if (*pdte & PAGE_LARGE)
 		return pdte;	/* 2 MB  */
 
 	return &pd[__pte_idx(gpa)];	/* 4 KB  */
@@ -236,7 +246,7 @@ static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa, u64 gva, u16 ep
 	struct ept *ept = &vcpu->ept;
 	if (ar == EPT_ACCESS_NONE) {
 		for_each_eptp(i)
-			if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, gpa))
+			if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, gpa, gpa))
 				return EPT_MAX_EPTP_LIST;
 	} else {
 #ifdef EPAGE_HOOK
@@ -284,14 +294,13 @@ bool ept_handle_violation(struct vcpu *vcpu)
 }
 
 /*
- * This is called from the IDT handler (__ept_violation) see x64.asm
+ * This is called from the IDT handler (__ept_violation) see x64.{S,asm}
  * We're inside Guest here
  */
 void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 {
 	struct vcpu *vcpu = ksm_current_cpu();
 	struct ve_except_info *info = &vcpu->ve;
-	struct ept *ept = &vcpu->ept;
 
 	u64 gpa = info->gpa;
 	u64 gva = info->gla;
@@ -403,11 +412,11 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	vcpu->g_idt.base = idtr.base;
 	vcpu->g_idt.limit = idtr.limit;
 
-	struct kidt_entry64 *current = (struct kidt_entry64 *)idtr.base;
+	struct kidt_entry64 *current_idt = (struct kidt_entry64 *)idtr.base;
 	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
 	unsigned count = idtr.limit / sizeof(*shadow);
 	for (unsigned n = 0; n < count; ++n)
-		memcpy(&shadow[n], &current[n], sizeof(*shadow));
+		memcpy(&shadow[n], &current_idt[n], sizeof(*shadow));
 
 	u32 apicv = 0;
 #if 0
@@ -451,7 +460,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 #endif
 		| SECONDARY_EXEC_ENABLE_VE
 		| /* apic virtualization  */ apicv
-#if _WIN32_WINNT == 0x0A00	/* w10 required features  */
+#if !defined(__linux__) && _WIN32_WINNT == 0x0A00	/* w10 required features  */
 		| SECONDARY_EXEC_RDTSCP
 #endif
 #ifdef ENABLE_PML
@@ -461,10 +470,11 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		| SECONDARY_EXEC_CONCEAL_VMX_IPT
 #endif
 		;
-	if (!KD_DEBUGGER_ENABLED || KD_DEBUGGER_NOT_PRESENT) {
-		/* NB: Desc table exiting makes windbg go maniac mode.  */
+	/* NB: Desc table exiting makes windbg go maniac mode.  */
+#ifndef __linux__
+	if (!KD_DEBUGGER_ENABLED || KD_DEBUGGER_NOT_PRESENT)
+#endif
 		vm_2ndctl |= SECONDARY_EXEC_DESC_TABLE_EXITING;
-	}
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
 
 	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |

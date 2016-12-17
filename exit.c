@@ -22,18 +22,28 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
+#ifdef __linux__
+#include <linux/kernel.h>
+#else
 #include <ntddk.h>
 #include <intrin.h>
+#endif
 
 #include "ksm.h"
 
 static u16 curr_handler = 0;
+#ifdef DBG
 static u16 prev_handler = 0;
+#endif
 
+#ifdef __linux__
+#define dbgbreak()	__asm __volatile("int $3")
+#else
 #define dbgbreak() do {		\
 	if (KD_DEBUGGER_ENABLED && !KD_DEBUGGER_NOT_PRESENT)	\
 		__debugbreak();		\
 } while (0)
+#endif
 
 #ifdef NESTED_VMX
 /* FIXME:  Support these!  */
@@ -2154,12 +2164,12 @@ out:
 static bool vcpu_handle_io_port(struct vcpu *vcpu)
 {
 	u32 exit = vmcs_read32(EXIT_QUALIFICATION);
-	u64 *addr = ksm_reg(vcpu, REG_AX);
+	uintptr_t *addr = ksm_reg(vcpu, REG_AX);
 	if (exit & 16) {
 		/* string  */
-		addr = (u64 *)ksm_read_reg(vcpu, REG_SI);
+		addr = (uintptr_t *)ksm_read_reg(vcpu, REG_SI);
 		if (exit & 8)	/* in?  */
-			addr = (u64 *)ksm_read_reg(vcpu, REG_DI);
+			addr = (uintptr_t *)ksm_read_reg(vcpu, REG_DI);
 	}
 
 	u16 port = exit >> 16;
@@ -2211,7 +2221,7 @@ static bool vcpu_handle_io_port(struct vcpu *vcpu)
 		*
 		* For in the register is RDI, for out it's RSI.
 		*/
-		u64 *reg = ksm_reg(vcpu, (exit & 8) ? REG_DI : REG_SI);
+		uintptr_t *reg = ksm_reg(vcpu, (exit & 8) ? REG_DI : REG_SI);
 		if (vcpu->eflags & X86_EFLAGS_DF)
 			*reg -= count * size;
 		else
@@ -2227,19 +2237,6 @@ static bool vcpu_handle_io_port(struct vcpu *vcpu)
 
 	vcpu_advance_rip(vcpu);
 	return true;
-}
-
-static inline u64 read_tsc_msr(void)
-{
-	u64 host_tsc = __rdtsc();
-	u64 tsc_off = vmcs_read64(TSC_OFFSET);
-	u64 tsc_mul = vmcs_read64(TSC_MULTIPLIER);
-
-#ifndef _MSC_VER
-	return (u64)(((unsigned __int128)host_tsc * tsc_mul) >> 48);
-#else
-	return (u64)MultiplyExtract128(host_tsc, tsc_mul, 48);
-#endif
 }
 
 static bool vcpu_handle_msr_read(struct vcpu *vcpu)
@@ -2259,9 +2256,6 @@ static bool vcpu_handle_msr_read(struct vcpu *vcpu)
 #else
 		val = __readmsr(msr) & ~(FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX);
 #endif
-		break;
-	case MSR_IA32_TSC:
-		val = read_tsc_msr();
 		break;
 	default:
 		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC) {
@@ -2415,17 +2409,17 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 	 * Synchronize shadow IDT with Guest's IDT, taking into account
 	 * entries that we set, by simply just discarding them.
 	 */
-	unsigned entries = min(idt->limit, PAGE_SIZE - 1) / sizeof(struct kidt_entry64);
-	struct kidt_entry64 *current = (struct kidt_entry64 *)idt->base;
+	u16 entries = min(idt->limit, (u16)((PAGE_SIZE - 1) / sizeof(struct kidt_entry64)));
+	struct kidt_entry64 *current_idt = (struct kidt_entry64 *)idt->base;
 	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
 
 	VCPU_DEBUG("Loading new IDT (new size: %d old size: %d)  Copying %d entries\n",
 		   idt->limit, vcpu->idt.limit, entries);
 
 	vcpu->idt.limit = idt->limit;
-	for (unsigned n = 0; n < entries; ++n)
+	for (u16 n = 0; n < entries; ++n)
 		if (n > X86_TRAP_VE || !idte_present(&vcpu->shadow_idt[n]))
-			memcpy(&shadow[n], &current[n], sizeof(*shadow));
+			memcpy(&shadow[n], &current_idt[n], sizeof(*shadow));
 	vcpu_flush_idt(vcpu);
 }
 
@@ -2554,7 +2548,7 @@ static bool vcpu_handle_ept_misconfig(struct vcpu *vcpu)
 	u64 gpa = vmcs_read(GUEST_PHYSICAL_ADDRESS);
 	u16 eptp = vcpu_eptp_idx(vcpu);
 
-	uintptr_t *epte = ept_pte(EPT4(ept, eptp), gpa);
+	u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
 	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, EPT_BUGCHECK_MISCONFIG, gpa, *epte);
 	return false;
 }
@@ -2941,7 +2935,7 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_PCOMMIT] = vcpu_nop
 };
 
-bool vcpu_handle_exit(u64 *regs)
+bool vcpu_handle_exit(uintptr_t *regs)
 {
 	struct vcpu *vcpu = ksm_current_cpu();
 	struct pending_irq *irq = &vcpu->irq;
@@ -3016,17 +3010,17 @@ do_pending_irq:
 
 static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *regs)
 {
-	VCPU_DEBUG("%p: ax=0x%016X   cx=0x%016X  dx=0x%016X\n"
-		   "    bx=0x%016X   sp=0x%016X  bp=0x%016X\n"
-		   "    si=0x%016X   di=0x%016X  r08=0x%016X\n"
-		   "    r09=0x%016X  r10=0x%016X r11=0x%016X\n"
-		   "    r12=0x%016X  r13=0x%016X r14=0x%016X\n"
-		   "    r15=0x%016X  rip=0x%016X"
+	VCPU_DEBUG("%p: ax=0x%016llX   cx=0x%016llX  dx=0x%016llX\n"
+		   "    bx=0x%016llX   sp=0x%016llX  bp=0x%016llX\n"
+		   "    si=0x%016llX   di=0x%016llX  r08=0x%016llX\n"
+		   "    r09=0x%016llX  r10=0x%016llX r11=0x%016llX\n"
+		   "    r12=0x%016llX  r13=0x%016llX r14=0x%016llX\n"
+		   "    r15=0x%016llX  rip=0x%016llX"
 		   "    cs=0x%02X    ds=0x%02X   es=0x%02X\n"
-		   "    fs=0x%016X   gs=0x%016X  kgs=0x%016X\n"
-		   "    cr0=0x%016X  cr3=0x%016X cr4=0x%016X\n"
-		   "	dr0=0x%016X  dr1=0x%016X dr2=0x%016X\n"
-		   "	dr3=0x%016X  dr6=0x%016X dr7=0x%016X\n",
+		   "    fs=0x%016llX   gs=0x%016llX  kgs=0x%016llX\n"
+		   "    cr0=0x%016llX  cr3=0x%016llX cr4=0x%016llX\n"
+		   "	dr0=0x%016llX  dr1=0x%016llX dr2=0x%016llX\n"
+		   "	dr3=0x%016llX  dr6=0x%016llX dr7=0x%016llX\n",
 		   vcpu, regs->gp[REG_AX], regs->gp[REG_CX], regs->gp[REG_DX],
 		   regs->gp[REG_BX], vmcs_read(GUEST_RSP), regs->gp[REG_BP],
 		   regs->gp[REG_SI], regs->gp[REG_DI], regs->gp[REG_R8],

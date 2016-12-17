@@ -10,6 +10,7 @@
 #include "compiler.h"
 #include "mm.h"
 
+#ifndef __linux__
 #define bit(b) 			(1 << (b))
 #define _BITUL(bit)		(1ul << (bit))
 
@@ -126,6 +127,7 @@
 #define X86_CR4_SMAP		_BITUL(X86_CR4_SMAP_BIT)
 #define X86_CR4_PKE_BIT		22 /* enable Protection Keys support */
 #define X86_CR4_PKE		_BITUL(X86_CR4_PKE_BIT)
+#endif
 
 /* Interrupts/Exceptions */
 #define X86_TRAP_DE			0	/*  0, Divide-by-zero */
@@ -156,22 +158,7 @@
 #define GATE_CALL		0xC
 #define GATE_TASK		0x5
 
- /*
- * x86-64 Task Priority Register, CR8
- */
-#define X86_CR8_TPR		_AC(0x0000000f,UL) /* task priority register */
-
-/*
- * Defines x86 CPU feature bits
- */
-#define NCAPINTS	18	/* N 32-bit words worth of info */
-
-/*
- * Note: If the comment begins with a quoted string, that string is used
- * in /proc/cpuinfo instead of the macro name.  If the string is "",
- * this feature bit is not displayed in /proc/cpuinfo at all.
- */
-
+#ifndef __linux__
 /* Intel-defined CPU features, CPUID level 0x00000001 (edx), word 0 */
 #define X86_FEATURE_FPU		( 0*32+ 0) /* Onboard FPU */
 #define X86_FEATURE_VME		( 0*32+ 1) /* Virtual Mode Extensions */
@@ -412,6 +399,7 @@
 #define X86_FEATURE_OVERFLOW_RECOV (17*32+0) /* MCA overflow recovery support */
 #define X86_FEATURE_SUCCOR	(17*32+1) /* Uncorrectable error containment and recovery */
 #define X86_FEATURE_SMCA	(17*32+3) /* Scalable MCA */
+#endif
 
 /* x86-64 specific MSRs */
 #define MSR_EFER		0xc0000080 /* extended feature register */
@@ -796,6 +784,7 @@ complete list. */
 #define THERM_STATUS_THRESHOLD1        (1 << 8)
 #define THERM_LOG_THRESHOLD1           (1 << 9)
 
+#ifndef __linux__
 /* MISC_ENABLE bits: architectural */
 #define MSR_IA32_MISC_ENABLE_FAST_STRING_BIT		0
 #define MSR_IA32_MISC_ENABLE_FAST_STRING		(1ULL << MSR_IA32_MISC_ENABLE_FAST_STRING_BIT)
@@ -850,6 +839,7 @@ complete list. */
 #define MSR_IA32_MISC_ENABLE_IP_PREF_DISABLE_BIT	39
 #define MSR_IA32_MISC_ENABLE_IP_PREF_DISABLE		(1ULL << MSR_IA32_MISC_ENABLE_IP_PREF_DISABLE_BIT)
 
+#endif
 #define MSR_IA32_TSC_DEADLINE		0x000006E0
 
 /* Pentium IV performance counter MSRs */
@@ -991,7 +981,9 @@ complete list. */
 #ifndef _MSC_VER
 #define __return_addr()		__builtin_return_address(0)
 #define cpu_relax()		__asm __volatile("pause\n\t" ::: "memory")
+#ifndef __linux__
 #define barrier() 		__asm __volatile("lock orq $0, 0(%%rsp)" ::: "memory")
+#endif
 #else
 #define __return_addr()		_ReturnAddress()
 #define cpu_relax()		_mm_pause()
@@ -1039,6 +1031,77 @@ static inline u64 __lar(u64 sel)
 			 : [sel] "r" (sel));
 	return ar;
 }
+
+#ifdef __linux__
+static inline u64 __rdtsc(void)
+{
+	u32 eax, edx;
+	__asm __volatile("rdtscp"
+			 : "=a" (eax), "=d" (edx));
+	return (u64)eax | (u64)edx << 32;
+}
+
+static inline u64 __rdtscp(u32 *cpu)
+{
+	u32 eax, edx;
+	__asm __volatile("rdtscp"
+			 : "=c" (*cpu), "=a" (eax), "=d" (edx));
+	return (u64)eax | (u64)edx << 32;
+}
+
+#define __readmsr(msr) __extension__ ({		\
+	u32 eax, edx;	\
+	__asm __volatile("rdmsr\n\t"	\
+			 : "=a" (eax), "=d" (edx)	\
+			 : "c" (msr));	\
+	(u64)eax | (u64)edx << 32;	\
+})
+
+#define __writemsr(msr, val) \
+	__asm __volatile("wrmsr\n\t"	\
+			 :: "a" ((u32)(val)), "d" ((u32)((val) >> 32)),	\
+			 "c" ((msr)))	\
+
+#define __readcr0()	__extension__ ({	\
+	uintptr_t cr0;	\
+	__asm("mov %%cr0, %0" : "=r" (cr0));	\
+	cr0;	\
+})
+#define __writecr0(cr0)		\
+	__asm("mov %0, %%cr0" :: "r"(cr0))
+#define __writecr2(cr2)		\
+	__asm("mov %0, %%cr2" :: "r"(cr2))
+#define __readcr3()	__extension__ ({	\
+	uintptr_t cr3;				\
+	__asm("mov %%cr3, %0" : "=r" (cr3));	\
+	cr3;	\
+})
+#define __writecr3(cr3)		\
+	__asm("mov %0, %%cr3" :: "r" (cr3))
+#define __readcr4()	__extension__ ({	\
+	uintptr_t cr4;				\
+	__asm("mov %%cr4, %0" : "=r" (cr4));	\
+	cr4;	\
+})
+#define __writecr4(cr4)		\
+	__asm("mov %0, %%cr4" :: "r"(cr4))
+
+#define __inbytestring(port, addr, count)	insb(port, addr, count)
+#define __inwordstring(port, addr, count)	insw(port, addr, count)
+#define __indwordstring(port, addr, count)	insl(port, addr, count)
+
+#define __inbyte(port)				inb(port)
+#define __inword(port)				inw(port)
+#define __indword(port)				inl(port)
+
+#define __outbytestring(port, addr, count)	outsb(port, addr, count)
+#define __outwordstring(port, addr, count)	outsw(port, addr, count)
+#define __outdwordstring(port, addr, count)	outsl(port, addr, count)
+
+#define __outbyte(port, value)			outb(value, port)
+#define __outword(port, value)			outw(value, port)
+#define __outdword(port, value)			outl(value, port)
+#endif
 
 #define __wbinvd()	__asm __volatile("wbinvd")
 #define __invd() 	__asm __volatile("invd")
@@ -1093,12 +1156,17 @@ struct vcpu;
 extern bool __vmx_vminit(struct vcpu *);
 extern void __vmx_entrypoint(void);
 extern void __ept_violation(void);
+
+#ifndef __linux__
 extern void __writecr2(uintptr_t);
+#endif
 
 /*
  * Helper functions for segmentation (IDT, GDT, LDT, etc.)
  */
+#ifndef __linux__
 #include <pshpack1.h>
+#endif
 struct gdtr {
 	u16 limit;
 	uintptr_t base;
@@ -1137,7 +1205,9 @@ struct kidt_entry64 {
 	u32 hi;
 	u32 zero;
 } __packed;
+#ifndef __linux__
 #include <poppack.h>
+#endif
 
 #ifndef _MSC_VER
 static inline void __sidt(struct gdtr *idt)
@@ -1189,10 +1259,11 @@ static inline struct kidt_entry64 *idt_entry(uintptr_t base, unsigned n)
 
 static inline void pack_entry(struct kidt_entry64 *entry, u16 selector, uintptr_t addr)
 {
+	kidt_entry_t *e = &entry->e32;
+
 	entry->hi = HIGH_U32_U64(addr);
 	entry->zero = 0;
 
-	kidt_entry_t *e = &entry->e32;
 	e->lo = LOW_U16_U64(addr);
 	e->sel = selector;
 	e->ist = 0;
@@ -1208,17 +1279,11 @@ static inline void put_entry(uintptr_t base, unsigned n, struct kidt_entry64 *en
 	memcpy(idt_entry(base, n), entry, sizeof(*entry));
 }
 
-static inline void __set_intr_gate(unsigned n, u16 selector, uintptr_t base, uintptr_t addr)
+static inline void set_intr_gate(unsigned n, u16 selector, uintptr_t base, uintptr_t addr)
 {
 	struct kidt_entry64 entry;
 	pack_entry(&entry, selector, addr);
 	put_entry(base, n, &entry);
-}
-
-static inline void set_intr_gate(unsigned n, u16 selector, uintptr_t base, void *addr)
-{
-	NT_ASSERT(n <= 0xFF);
-	return __set_intr_gate(n, selector, base, (uintptr_t)addr);
 }
 
 typedef union {
@@ -1253,7 +1318,7 @@ static inline segmentdesc_t *segment_desc(uintptr_t gdt, u16 sel)
 
 static uintptr_t segment_desc_base(segmentdesc_t *desc)
 {
-	uintptr_t base = (desc->base_high << 24 | desc->base_mid << 16 | desc->base_low) & MAXULONG;
+	uintptr_t base = desc->base_high << 24 | desc->base_mid << 16 | desc->base_low;
 	if (!desc->system)
 		base |= (uintptr_t)(((segmentdesc64_t *)desc)->base_upper32) << 32;
 
@@ -1277,19 +1342,7 @@ static uintptr_t __segmentbase(uintptr_t gdt, u16 sel)
 	return segment_desc_base(segment_desc(gdt, sel));
 }
 
-static inline struct tss *get_tss(u16 sel)
-{
-	struct gdtr gdt;
-	__sgdt(&gdt);
-
-	return (struct tss *)__segmentbase(gdt.base, sel);
-}
-
-static inline struct tss *current_tss(void)
-{
-	return get_tss(__str());
-}
-
+#ifndef __linux__
 /*
  *
  * Taken from the Linux kernel
@@ -1465,6 +1518,7 @@ static inline bool x2apic_enabled(void)
 {
 	return __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_X2APIC;
 }
+#endif
 
 static inline bool lapic_is_bsp(void)
 {
@@ -1474,14 +1528,6 @@ static inline bool lapic_is_bsp(void)
 static inline u64 lapic_base_phys(void)
 {
 	return __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE;
-}
-
-static inline bool cpu_has_x2apic(void)
-{
-	int tmp[4];
-	__cpuid(tmp, 1);
-
-	return tmp[2] & (1 << (X86_FEATURE_X2APIC & 31));
 }
 
 #define IOAPIC_REGSEL		0x00
@@ -1538,23 +1584,23 @@ static inline u64 __lapic_read64(u64 base, u32 reg)
 
 static inline bool lapic_write(u32 reg, u32 val)
 {
-	void *base = kmap(lapic_base_phys(), PAGE_SIZE);
+	void *base = kmap_iomem(lapic_base_phys(), PAGE_SIZE);
 	if (!base)
 		return false;
 
 	__lapic_write((u64)base, reg, val);
-	kunmap(base, PAGE_SIZE);
+	kunmap_iomem(base, PAGE_SIZE);
 	return true;
 }
 
 static inline u32 lapic_read(u32 reg)
 {
-	void *base = kmap(lapic_base_phys(), PAGE_SIZE);
+	void *base = kmap_iomem(lapic_base_phys(), PAGE_SIZE);
 	if (!base)
 		return false;
 
 	u32 val = __lapic_read((u64)base, reg);
-	kunmap(base, PAGE_SIZE);
+	kunmap_iomem(base, PAGE_SIZE);
 	return val;
 }
 

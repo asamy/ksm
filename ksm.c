@@ -16,11 +16,15 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
+#ifdef __linux__
+#include <linux/kernel.h>
+#else
 #include <ntddk.h>
 #include <intrin.h>
+#endif
 
 #include "ksm.h"
-#include "dpc.h"
+#include "percpu.h"
 #include "bitmap.h"
 
 struct ksm ksm = {
@@ -60,26 +64,26 @@ static void init_msr_bitmap(struct ksm *k)
 	 * emulate nesting.
 	 */
 	bitmap_t *read_lo = (bitmap_t *)k->msr_bitmap;
-	set_bit(read_lo, MSR_IA32_FEATURE_CONTROL);
+	set_bit(MSR_IA32_FEATURE_CONTROL, read_lo);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
-		set_bit(read_lo, msr);
+		set_bit(msr, read_lo);
 
 	bitmap_t *write_lo = (bitmap_t *)(k->msr_bitmap + 2048);
-	set_bit(write_lo, MSR_IA32_FEATURE_CONTROL);
+	set_bit(MSR_IA32_FEATURE_CONTROL, write_lo);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
-		set_bit(write_lo, msr);
+		set_bit(msr, write_lo);
 }
 
 static void init_io_bitmaps(struct ksm *k)
 {
 #if 0	/* This can be anonying  */
 	bitmap_t *bitmap_a = (bitmap_t *)(k->io_bitmap_a);
-	set_bit(bitmap_a, 0x60);	/* PS/2 Mice  */
-	set_bit(bitmap_a, 0x64);	/* PS/2 Mice and keyboard  */
+	set_bit(0x60, bitmap_a);	/* PS/2 Mice  */
+	set_bit(0x64, bitmap_a);	/* PS/2 Mice and keyboard  */
 #endif
 }
 
-static NTSTATUS __ksm_init_cpu(struct ksm *k)
+static int __ksm_init_cpu(struct ksm *k)
 {
 #ifndef __GNUC__
 	__try {
@@ -91,80 +95,52 @@ static NTSTATUS __ksm_init_cpu(struct ksm *k)
 
 			feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
 			if ((feat_ctl & required_feat_bits) != required_feat_bits)
-				return STATUS_HV_ACCESS_DENIED;
+				return ERR_DENIED;
 		}
 
 		k->kernel_cr3 = __readcr3();
 		if (__vmx_vminit(&k->vcpu_list[cpu_nr()])) {
 			k->active_vcpus++;
-			return STATUS_SUCCESS;
+			return 0;
 		}
 #ifndef __GNUC__
 	} __except (EXCEPTION_EXECUTE_HANDLER)
 	{
 		__writecr4(__readcr4() & ~X86_CR4_VMXE);
-		return GetExceptionCode();
+		return ERR_EXCEPT;
 	}
 #endif
 
 	__writecr4(__readcr4() & ~X86_CR4_VMXE);
-	return STATUS_NOT_SUPPORTED;
-}
-
-static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT change_ctx, PNTSTATUS op_status)
-{
-	/* CPU Hotplug callback, a CPU just came online.  */
-	GROUP_AFFINITY affinity;
-	GROUP_AFFINITY prev;
-	PPROCESSOR_NUMBER pnr;
-	NTSTATUS status;
-
-	if (change_ctx->State == KeProcessorAddCompleteNotify) {
-		pnr = &change_ctx->ProcNumber;
-		affinity.Group = pnr->Group;
-		affinity.Mask = 1ULL << pnr->Number;
-		KeSetSystemGroupAffinityThread(&affinity, &prev);
-
-		VCPU_DEBUG_RAW("New processor\n");
-		status = __ksm_init_cpu(&ksm);
-		if (!NT_SUCCESS(status))
-			*op_status = status;
-
-		KeRevertToUserGroupAffinityThread(&prev);
-	}
+	return ERR_UNSUP;
 }
 
 STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
-NTSTATUS ksm_subvert(void)
+int ksm_subvert(void)
 {
 	STATIC_CALL_DPC(__call_init, &ksm);
 	return STATIC_DPC_RET();
 }
 
-NTSTATUS ksm_init(void)
+int ksm_init(void)
 {
-	NTSTATUS status = STATUS_UNSUCCESSFUL;
 	int info[4];
+	__cpuidex(info, 1, 0);
 
-	__cpuid(info, 1);
 	if (!(info[2] & (1 << (X86_FEATURE_VMX & 31))))
-		return STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR;
+		return ERR_CPUID;
 
 	if (__readcr4() & X86_CR4_VMXE)
-		return STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE;	/* closet...  */
+		return ERR_NESTED;
 
 	if (!ept_check_capabilitiy())
-		return STATUS_HV_FEATURE_UNAVAILABLE;
+		return ERR_FEAT;
 
 	/*
 	 * Zero out everything (this is allocated by the kernel device driver
 	 * loader)
 	 */
 	__stosq((unsigned long long *)&ksm, 0, sizeof(ksm) >> 3);
-
-	ksm.hotplug_cpu = KeRegisterProcessorChangeCallback(ksm_hotplug_cpu, NULL, 0);
-	if (!ksm.hotplug_cpu)
-		return status;
 
 	/* Caller cr3 (could be user)  */
 	ksm.origin_cr3 = __readcr3();
@@ -175,14 +151,10 @@ NTSTATUS ksm_init(void)
 
 	init_msr_bitmap(&ksm);
 	init_io_bitmaps(&ksm);
-
-	if (!NT_SUCCESS(status = ksm_subvert()))
-		KeDeregisterProcessorChangeCallback(ksm.hotplug_cpu);
-	
-	return status;
+	return ksm_subvert();
 }
 
-static NTSTATUS __ksm_exit_cpu(struct ksm *k)
+static int __ksm_exit_cpu(struct ksm *k)
 {
 	size_t err;
 #ifndef __GNUC__
@@ -193,32 +165,29 @@ static NTSTATUS __ksm_exit_cpu(struct ksm *k)
 #ifndef __GNUC__
 	} __except (EXCEPTION_EXECUTE_HANDLER)
 	{
-		VCPU_DEBUG("this processor is not virtualized: 0x%08X\n", GetExceptionCode());
-		return STATUS_HV_NOT_PRESENT;
+		VCPU_DEBUG("this processor is not virtualized: 0x%08X\n", ERR_EXCEPT);
+		return ERR_EXCEPT;
 	}
 #endif
 
 	if (err)
-		return STATUS_UNSUCCESSFUL;
+		return ERR_FAIL;
 
 	k->active_vcpus--;
 	vcpu_free(ksm_current_cpu());
 	__writecr4(__readcr4() & ~X86_CR4_VMXE);
-	return STATUS_SUCCESS;
+	return 0;
 }
 
 STATIC_DEFINE_DPC(__call_exit, __ksm_exit_cpu, ctx);
-NTSTATUS ksm_unsubvert(void)
+int ksm_unsubvert(void)
 {
 	STATIC_CALL_DPC(__call_exit, &ksm);
 	return STATIC_DPC_RET();
 }
 
-NTSTATUS ksm_exit(void)
+int ksm_exit(void)
 {
-	if (ksm.hotplug_cpu)
-		KeDeregisterProcessorChangeCallback(ksm.hotplug_cpu);
-
 #ifdef EPAGE_HOOK
 	htable_clear(&ksm.ht);
 #endif
@@ -226,7 +195,7 @@ NTSTATUS ksm_exit(void)
 }
 
 STATIC_DEFINE_DPC(__call_idt_hook, __vmx_vmcall, HYPERCALL_IDT, ctx);
-NTSTATUS ksm_hook_idt(unsigned n, void *h)
+int ksm_hook_idt(unsigned n, void *h)
 {
 	STATIC_CALL_DPC(__call_idt_hook, &(struct shadow_idt_entry) {
 		.n = n,
@@ -236,7 +205,7 @@ NTSTATUS ksm_hook_idt(unsigned n, void *h)
 }
 
 STATIC_DEFINE_DPC(__call_idt_unhook, __vmx_vmcall, HYPERCALL_UIDT, ctx);
-NTSTATUS ksm_free_idt(unsigned n)
+int ksm_free_idt(unsigned n)
 {
 	STATIC_CALL_DPC(__call_idt_unhook, &(struct shadow_idt_entry) {
 		.n = n,

@@ -19,6 +19,7 @@
 #ifndef __COMPILER_H
 #define __COMPILER_H
 
+#ifndef __linux__
 #ifdef _MSC_VER
 /* Disable annoying warnings  */
 #pragma warning(disable:4115)		/* 'type' : named type definition in parentheses  */
@@ -42,9 +43,19 @@
 #pragma warning(disable:4054)		/*  'conversion' : from function pointer 'type1' to data pointer 'type2'  */
 #pragma warning(disable:4057)		/* 'function' : 'unsigned int *' differs in indirection to slightly different base types from 'u32 *'  */
 #pragma warning(disable:4245)		/* 'initializing': conversion from 'int' to 'u8', signed/unsigned mismatch  */
+
+#define __align(alignment)	__declspec(align(alignment))
+#define __packed
+/* Opt-in NX bit  */
+#define POOL_NX_OPTIN 1
 #else
 #define _In_
 #define _In_opt_
+#define __align(alignment)	__attribute__((__aligned__(alignment)))
+#ifndef __forceinline
+#define __forceinline		__attribute__((always_inline)) inline
+#endif
+#define __packed		__attribute__((__packed__))
 #endif
 
 /* Long names  */
@@ -85,38 +96,28 @@ typedef unsigned long long uintptr_t;
 typedef signed long long intptr_t;
 #define _INTPTR_T_DEFINED
 #endif
-
-#define PRIu16	"h"
-#define PRIu32	"l"
-#define PRIu64	"ll"
-
-#define PRIh16	"hx"
-#define PRIH16	"04hx"
-#define PRIh32	"lx"
-#define PRIH32	"08lx"
-#define PRIh64	"llx"
-#define PRIH64	"016llx"
-
-#ifdef _MSC_VER
-#define __align(alignment)	__declspec(align(alignment))
-#define __packed
+#define ERR_CPUID		STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR
+#define ERR_NESTED		STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE
+#define ERR_FEAT		STATUS_HV_FEATURE_UNAVAILABLE
+#define ERR_UNSUP		STATUS_UNSUPPORTED
+#define ERR_FAIL		STATUS_UNSUCCESSFUL
+#define ERR_DENIED		STATUS_HV_ACCESS_DENIED
+#define ERR_NOMEM		STATUS_NO_MEMORY
+#define ERR_EXCEPT		GetExceptionCode()
 #else
+#include <stdbool.h>
 #define __align(alignment)	__attribute__((__aligned__(alignment)))
-#ifndef __forceinline
-#define __forceinline		__attribute__((always_inline)) inline
-#endif
-#define __packed		__attribute__((__packed__))
-#define STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR		((NTSTATUS)0xC035003CL)
-#define STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE		((NTSTATUS)0xC0350071L)
-#define STATUS_HV_FEATURE_UNAVAILABLE				((NTSTATUS)0xC035001EL)
-#define STATUS_HV_ACCESS_DENIED					((NTSTATUS)0xC0350006L)
-#define STATUS_HV_NOT_PRESENT					((NTSTATUS)0xC0351000L)
-#endif
+#define KERNEL_STACK_SIZE	(6 << PAGE_SHIFT)
 
-#ifndef __GNUC__
-/* Opt-in NX bit  */
-#define POOL_NX_OPTIN 1
-#endif
+#define ERR_CPUID		-EOPNOTSUPP
+#define ERR_NESTED		-ENODEV
+#define ERR_FEAT		-ENOENT
+#define ERR_UNSUP		-EOPNOTSUPP
+#define ERR_FAIL		-EIO
+#define ERR_DENIED		-EACCES
+#define ERR_NOMEM		-ENOMEM
+#define ERR_EXCEPT		-EINVAL
 
+#endif
 #endif
 
