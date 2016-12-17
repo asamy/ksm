@@ -37,7 +37,7 @@ static u16 prev_handler = 0;
 #endif
 
 #ifdef __linux__
-#define dbgbreak()	__asm __volatile("int $3")
+#define dbgbreak()	(void)0		//__asm __volatile("int $3")
 #else
 #define dbgbreak() do {		\
 	if (KD_DEBUGGER_ENABLED && !KD_DEBUGGER_NOT_PRESENT)	\

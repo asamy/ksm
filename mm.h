@@ -382,13 +382,13 @@ static inline void *mm_alloc_page(void)
 {
 #ifndef __linux__
 	void *v = ExAllocatePool(NonPagedPool, PAGE_SIZE);
-#else
-	void *v = (void *)__get_free_page(GFP_KERNEL);
-#endif
 	if (v)
 		__stosq(v, 00, PAGE_SIZE >> 3);
 
 	return v;
+#else
+	return get_zeroed_page(GFP_KERNEL);
+#endif
 }
 
 static inline void mm_free_page(void *v)

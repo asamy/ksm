@@ -36,6 +36,9 @@ void __exit ksm_cleanup(void)
 	ksm_exit();
 }
 
+module_init(ksm_start);
+module_exit(ksm_cleanup);
+
 MODULE_AUTHOR("Ahmed Samy");
 MODULE_LICENSE("GPL");
 

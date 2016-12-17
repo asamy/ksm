@@ -19,10 +19,10 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 #ifdef __linux__
-#define REG_A1		%rsi
-#define REG_A2		%rdi
+#define REG_A1		%rdi
+#define REG_A2		%rsi
 #define REG_A3		%rdx
-#define REG_A4		%r10
+#define REG_A4		%rcx
 #else
 #define REG_A1		%rcx
 #define REG_A2		%rdx

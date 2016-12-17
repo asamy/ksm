@@ -369,6 +369,15 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	__sidt(&idtr);
 
 	struct ept *ept = &vcpu->ept;
+	vcpu->g_idt.base = idtr.base;
+	vcpu->g_idt.limit = idtr.limit;
+
+	struct kidt_entry64 *current_idt = (struct kidt_entry64 *)idtr.base;
+	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
+	unsigned count = idtr.limit / sizeof(*shadow);
+	for (unsigned n = 0; n < count; ++n)
+		memcpy(&shadow[n], &current_idt[n], sizeof(*shadow));
+
 	struct vmcs *vmxon = &vcpu->vmxon;
 	vmxon->revision_id = (u32)vmx;
 
@@ -408,15 +417,6 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err = __vmx_vmptrld(&pa);
 	if (err)
 		return err;
-
-	vcpu->g_idt.base = idtr.base;
-	vcpu->g_idt.limit = idtr.limit;
-
-	struct kidt_entry64 *current_idt = (struct kidt_entry64 *)idtr.base;
-	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
-	unsigned count = idtr.limit / sizeof(*shadow);
-	for (unsigned n = 0; n < count; ++n)
-		memcpy(&shadow[n], &current_idt[n], sizeof(*shadow));
 
 	u32 apicv = 0;
 #if 0

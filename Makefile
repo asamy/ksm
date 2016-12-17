@@ -9,11 +9,11 @@ clean:
 	make -C /lib/modules/$(KVERSION)/build M=$(PWD) clean
 
 load:
-	insmod ksm.ko
+	insmod ksmlinux.ko
 
 unload:
-	rmmod ksm.ko
+	rmmod ksmlinux.ko
 
 install:
-	make modules_install ksm.ko
+	make modules_install ksmlinux.ko
 
