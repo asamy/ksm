@@ -326,7 +326,7 @@ static inline bool nested_has_vmcs(const struct nested_vcpu *nested)
 static inline void nested_free_vmcs(struct nested_vcpu *nested)
 {
 	if (nested->vmcs != 0) {
-		kunmap((void *)nested->vmcs, PAGE_SIZE);
+		kunmap_iomem((void *)nested->vmcs, PAGE_SIZE);
 		nested->vmcs = 0;
 	}
 }
@@ -478,9 +478,9 @@ struct ksm {
 };
 extern struct ksm ksm;
 
-#ifdef DBG
+#if defined(DBG) && !defined(__linux__)
 /* print.c  */
-extern int print_init(void);
+extern NTSTATUS print_init(void);
 extern void print_exit(void);
 extern void do_print(const char *fmt, ...);
 #endif
@@ -490,6 +490,7 @@ extern int ksm_init(void);
 extern int ksm_exit(void);
 extern int ksm_subvert(void);
 extern int ksm_unsubvert(void);
+extern int __ksm_init_cpu(struct ksm *k);
 extern int ksm_hook_idt(unsigned n, void *h);
 extern int ksm_free_idt(unsigned n);
 extern struct vcpu *ksm_current_cpu(void);

@@ -591,13 +591,13 @@ static inline bool nested_inject_ve(struct vcpu *vcpu)
 	if (!gpa_to_hpa(vcpu, ve_info_addr, &hpa))
 		return false;
 
-	struct ve_except_info *info = kmap(hpa, PAGE_SIZE);
+	struct ve_except_info *info = kmap_iomem(hpa, PAGE_SIZE);
 	if (!info)
 		return false;
 
 	if (info->except_mask == 0) {
 		VCPU_DEBUG("Trying to inject #VE but guest opted-out.\n");
-		kunmap(info, PAGE_SIZE);
+		kunmap_iomem(info, PAGE_SIZE);
 		return false;
 	}
 
@@ -608,7 +608,7 @@ static inline bool nested_inject_ve(struct vcpu *vcpu)
 	info->gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
 	info->gla = vmcs_read(GUEST_LINEAR_ADDRESS);
 	info->exit = vmcs_read(EXIT_QUALIFICATION);
-	kunmap(info, PAGE_SIZE);
+	kunmap_iomem(info, PAGE_SIZE);
 	vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_VE);
 	return true;
 }
@@ -1575,12 +1575,12 @@ static inline bool vcpu_read_vmx_addr(struct vcpu *vcpu, u64 gva, u64 *value)
 	if (!same_page(gva, gva + sizeof(value)))
 		return false;
 
-	char *v = kmap(hpa, PAGE_SIZE);
+	char *v = kmap_iomem(hpa, PAGE_SIZE);
 	if (!v)
 		return false;
 
 	*value = *(u64 *)(v + addr_offset(gva));
-	kunmap(v, PAGE_SIZE);
+	kunmap_iomem(v, PAGE_SIZE);
 	return true;
 }
 
@@ -1593,12 +1593,12 @@ static inline bool vcpu_write_vmx_addr(struct vcpu *vcpu, u64 gva, u64 value)
 	if (!same_page(gva, gva + sizeof(value)))
 		return false;
 
-	char *v = kmap(hpa, PAGE_SIZE);
+	char *v = kmap_iomem(hpa, PAGE_SIZE);
 	if (!v)
 		return false;
 
 	*(u64 *)(v + addr_offset(gva)) = value;
-	kunmap(v, PAGE_SIZE);
+	kunmap_iomem(v, PAGE_SIZE);
 	return true;
 }
 
@@ -1683,7 +1683,7 @@ static bool vcpu_handle_vmptrld(struct vcpu *vcpu)
 	if (nested_has_vmcs(nested))
 		nested_free_vmcs(nested);
 
-	nested->vmcs = (uintptr_t)kmap(hpa, PAGE_SIZE);
+	nested->vmcs = (uintptr_t)kmap_iomem(hpa, PAGE_SIZE);
 	if (!nested->vmcs) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_INVALID_ADDRESS);
 		goto out;
@@ -1890,14 +1890,14 @@ static bool vcpu_handle_vmon(struct vcpu *vcpu)
 	    !gpa_to_hpa(vcpu, gpa, &hpa))
 		goto out;
 
-	char *tmp = kmap(hpa, PAGE_SIZE);
+	char *tmp = kmap_iomem(hpa, PAGE_SIZE);
 	if (!tmp) {
 		vcpu_vm_fail_invalid(vcpu);
 		goto out;
 	}
 
 	bool match = *(u32 *)tmp == (u32)__readmsr(MSR_IA32_VMX_BASIC);
-	kunmap(tmp, PAGE_SIZE);
+	kunmap_iomem(tmp, PAGE_SIZE);
 	if (!match) {
 		vcpu_vm_fail_invalid(vcpu);
 		goto out;
@@ -2698,12 +2698,12 @@ static inline bool nested_can_handle_io(const struct nested_vcpu *nested)
 			if (!gpa_to_hpa(vcpu, bitmap, &hpa))
 				return false;
 
-			char *v = kmap(hpa, PAGE_SIZE);
+			char *v = kmap_iomem(hpa, PAGE_SIZE);
 			if (!v)
 				return false;
 
 			byte = *(u8 *)(v + addr_offset(bitmap));
-			kunmap(v, PAGE_SIZE);
+			kunmap_iomem(v, PAGE_SIZE);
 		}
 
 		if ((byte >> (port & 7)) & 1)
@@ -2726,7 +2726,7 @@ static inline bool nested_can_handle_msr(const struct nested_vcpu *nested, bool 
 	if (!gpa_to_hpa(vcpu, gpa, &hpa))
 		return false;
 
-	char *bitmap = kmap(hpa, PAGE_SIZE);
+	char *bitmap = kmap_iomem(hpa, PAGE_SIZE);
 	if (!bitmap)
 		return false;
 
@@ -2739,7 +2739,7 @@ static inline bool nested_can_handle_msr(const struct nested_vcpu *nested, bool 
 	}
 
 	bool ret = ((*(u8 *)(bitmap + msr / 8)) >> (msr % 8)) & 1;
-	kunmap(bitmap, PAGE_SIZE);
+	kunmap_iomem(bitmap, PAGE_SIZE);
 	return ret;
 }
 

@@ -221,7 +221,7 @@ static inline uintptr_t va_to_pa(uintptr_t va)
 static inline u64 *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
 {
 	/* NB: You can also use va_to_pte / va_to_pde, etc.  */
-	u64 pml4_pa = cr3 & PAGE_MASK;
+	u64 pml4_pa = cr3 & PAGE_PA_MASK;
 
 	u64 *pml4 = __va(pml4_pa);
 	u64 *pdpt = page_addr(&pml4[__pxe_idx(va)]);

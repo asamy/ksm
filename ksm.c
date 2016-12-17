@@ -83,7 +83,7 @@ static void init_io_bitmaps(struct ksm *k)
 #endif
 }
 
-static int __ksm_init_cpu(struct ksm *k)
+int __ksm_init_cpu(struct ksm *k)
 {
 #ifndef __GNUC__
 	__try {

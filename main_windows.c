@@ -22,7 +22,6 @@
 #include <intrin.h>
 
 #include "ksm.h"
-#include "dpc.h"
 #include "pe.h"
 
 #ifdef ENABLE_ACPI
@@ -52,7 +51,7 @@ uintptr_t ppe_base = 0xfffff6fb7da00000ull;
 uintptr_t pde_base = 0xfffff6fb40000000ull;
 uintptr_t pte_base = 0xfffff68000000000ull;
 
-static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT change_ctx, Pint op_status)
+static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT change_ctx, PNTSTATUS op_status)
 {
 	/* CPU Hotplug callback, a CPU just came online.  */
 	GROUP_AFFINITY affinity;
@@ -168,10 +167,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
 #endif
 
-	ksm.hotplug_cpu = KeRegisterProcessorChangeCallback(ksm_hotplug_cpu, NULL, 0);
-	if (!ksm.hotplug_cpu) {
+	hotplug_cpu = KeRegisterProcessorChangeCallback(ksm_hotplug_cpu, NULL, 0);
+	if (!hotplug_cpu) {
 		status = STATUS_UNSUCCESSFUL;
-		return err;
+		goto err;
 	}
 
 	if (!NT_SUCCESS(status = ksm_init()))
