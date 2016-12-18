@@ -549,14 +549,7 @@ static inline u16 vmcs_read16(size_t what)
 
 static inline u8 vmcs_write(size_t what, size_t value)
 {
-	u8 err = __vmx_vmwrite(what, value);
-#ifdef DBG
-	if (err)
-		VCPU_DEBUG("vmcs_write(): failed on 0x%08llX: 0x%016llX (%d)\n",
-			   what, value, err);
-#endif
-
-	return err;
+	return __vmx_vmwrite(what, value);
 }
 
 static inline u8 vmcs_write64(size_t what, size_t value)
