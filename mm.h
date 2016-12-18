@@ -449,15 +449,19 @@ static inline void kunmap_iomem(void *addr, size_t size)
 	return MmUnmapIoSpace(addr, size);
 }
 #else
-/* FIXME: Those are definitely broken  */
-static inline void __iomem *kmap_iomem(unsigned long addr, unsigned long size)
+static inline void *kmap_iomem(unsigned long addr, unsigned long size)
 {
-	return ioremap(addr, size);
+	struct page *page = pfn_to_page(addr >> PAGE_SHIFT);
+	if (!page)
+		return NULL;
+
+	/* should we use kmap() and kunmap() down below?  */
+	return page_address(page);
 }
 
-static inline void kunmap_iomem(volatile void __iomem *addr, unsigned long size)
+static inline void kunmap_iomem(void *addr, unsigned long size)
 {
-	return iounmap(addr);
+	/* Do nothing  */
 }
 #endif
 #endif
