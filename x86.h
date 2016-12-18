@@ -1076,7 +1076,7 @@ static inline void __writemsr(u32 msr, unsigned long val)
 })
 #define __writecr2(cr2)		\
 	__asm("mov %0, %%cr2" :: "r"(cr2))
-#define __readcr4 	__extension__ ({	\
+#define __readcr4() 	__extension__ ({	\
 	uintptr_t cr4;				\
 	__asm("mov %%cr4, %0" : "=r" (cr4));	\
 	cr4;	\
