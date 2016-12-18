@@ -392,7 +392,6 @@ static inline void *mm_alloc_page(void)
 
 	return v;
 #else
-<<<<<<< HEAD
 	return (void *)get_zeroed_page(GFP_KERNEL);
 #endif
 }
