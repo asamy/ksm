@@ -17,18 +17,20 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 #ifdef EPAGE_HOOK
+#ifdef __linux__
+#include <linux/vmalloc.h>
+#else
 #include <ntddk.h>
+#endif
 
 #include "ksm.h"
-#include "dpc.h"
+#include "percpu.h"
 
 static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 {
-	uintptr_t dpa = phi->d_pfn << PAGE_SHIFT;
-	uintptr_t *epte = ept_alloc_page(EPT4(ept, EPTP_EXHOOK),
-					 EPT_ACCESS_EXEC,
-					 dpa,
-					 phi->c_pfn << PAGE_SHIFT);
+	u64 dpa = phi->d_pfn << PAGE_SHIFT;
+	u64 cpa = phi->c_pfn << PAGE_SHIFT;
+	ept_alloc_page(EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, dpa, cpa);
 	ept_alloc_page(EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, dpa, dpa);
 	ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_EXEC, dpa, dpa);
 	__invept_all();
@@ -53,17 +55,21 @@ static inline bool ht_cmp(const void *candidate, void *cmp)
 	return phi->origin == (uintptr_t)cmp;
 }
 
+#ifndef __linux__
 #include <pshpack1.h>
+#endif
 struct trampoline {
 	u8 push;
 	u32 lo;
 	u32 mov;
 	u32 hi;
 	u32 ret;
-};
+} __packed;
+#ifndef __linux__
 #include <poppack.h>
+#endif
 
-static void init_trampoline(struct trampoline *trampo, u64 to)
+static void epage_init_trampoline(struct trampoline *trampo, u64 to)
 {
 	// push lo
 	// mov dword ptr [rsp + 0x4], hi
@@ -78,24 +84,32 @@ static void init_trampoline(struct trampoline *trampo, u64 to)
 STATIC_DEFINE_DPC(__do_hook_page, __vmx_vmcall, HYPERCALL_HOOK, ctx);
 STATIC_DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
 
-NTSTATUS ksm_hook_epage(void *original, void *redirect)
+int ksm_hook_epage(void *original, void *redirect)
 {
-	struct page_hook_info *phi = mm_alloc_pool(NonPagedPool, sizeof(*phi));
+	struct page_hook_info *phi = mm_alloc_pool(sizeof(*phi));
 	if (!phi)
-		return STATUS_NO_MEMORY;
+		return ERR_NOMEM;
 
-	u8 *code_page = MmAllocateContiguousMemory(PAGE_SIZE, (PHYSICAL_ADDRESS) { .QuadPart = -1 });
+#ifdef __linux__
+	void *tmp = mm_alloc_page();
+	phi->backing_page = tmp;
+
+	u8 *code_page = map_exec(tmp, PAGE_SIZE);
+#else
+	u8 *code_page = MmAllocateContiguousMemory(PAGE_SIZE,
+						  (PHYSICAL_ADDRESS) { .QuadPart = -1 });
+#endif
 	if (!code_page) {
 		mm_free_pool(phi, sizeof(*phi));
-		return STATUS_INSUFFICIENT_RESOURCES;
+		return ERR_NOMEM;
 	}
 
 	/* Offset where code starts in this page  */
-	void *aligned = PAGE_ALIGN(original);
+	void *aligned = (void *)page_align(original);
 	uintptr_t offset = (uintptr_t)original - (uintptr_t)aligned;
 
 	struct trampoline trampo;
-	init_trampoline(&trampo, (uintptr_t)redirect);
+	epage_init_trampoline(&trampo, (uintptr_t)redirect);
 	memcpy(code_page, aligned, PAGE_SIZE);
 	memcpy(code_page + offset, &trampo, sizeof(trampo));
 
@@ -107,22 +121,27 @@ NTSTATUS ksm_hook_epage(void *original, void *redirect)
 
 	STATIC_CALL_DPC(__do_hook_page, phi);
 	htable_add(&ksm.ht, page_hash(phi->origin), phi);
-	return STATUS_SUCCESS;
+	return 0;
 }
 
-NTSTATUS ksm_unhook_page(void *va)
+int ksm_unhook_page(void *va)
 {
 	struct page_hook_info *phi = ksm_find_page(va);
 	if (!phi)
-		return STATUS_NOT_FOUND;
+		return ERR_NOTH;
 
 	return __ksm_unhook_page(phi);
 }
 
-NTSTATUS __ksm_unhook_page(struct page_hook_info *phi)
+int __ksm_unhook_page(struct page_hook_info *phi)
 {
 	STATIC_CALL_DPC(__do_unhook_page, (void *)(phi->d_pfn << PAGE_SHIFT));
+#ifdef __linux__
+	vunmap(phi->c_va);
+	mm_free_page(phi->backing_page);
+#else
 	MmFreeContiguousMemory(phi->c_va);
+#endif
 	htable_del(&ksm.ht, page_hash(phi->origin), phi);
 	mm_free_pool(phi, sizeof(*phi));
 	return STATIC_DPC_RET();
@@ -130,7 +149,7 @@ NTSTATUS __ksm_unhook_page(struct page_hook_info *phi)
 
 struct page_hook_info *ksm_find_page(void *va)
 {
-	const void *align = PAGE_ALIGN(va);
+	const void *align = (const void *)page_align(va);
 	return htable_get(&ksm.ht, page_hash((u64)align), ht_cmp, align);
 }
 

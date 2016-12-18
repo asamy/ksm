@@ -23,6 +23,8 @@
 #include <linux/mm.h>
 #include <linux/slab.h>
 #include <linux/highmem.h>
+#include <linux/vmalloc.h>
+#include <linux/module.h>
 #endif
 
 #ifndef PXI_SHIFT
@@ -110,7 +112,7 @@ extern uintptr_t pte_base;
 #define __va(pa)		(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (pa) })
 #endif
 
-#define page_align(addr)	(addr & ~(PAGE_SIZE - 1))
+#define page_align(addr)	((uintptr_t)(addr) & ~(PAGE_SIZE - 1))
 static inline bool page_aligned(uintptr_t addr)
 {
 	return (addr & (PAGE_SIZE - 1)) == 0;
@@ -462,6 +464,40 @@ static inline void *kmap_iomem(unsigned long addr, unsigned long size)
 static inline void kunmap_iomem(void *addr, unsigned long size)
 {
 	/* Do nothing  */
+}
+
+/* Taken from KSplice  */
+static void *map_exec(void *addr, size_t len)
+{
+	int i;
+	void *vaddr;
+	int nr_pages = DIV_ROUND_UP(offset_in_page(addr) + len, PAGE_SIZE);
+	struct page **pages = kmalloc(nr_pages * sizeof(*pages), GFP_KERNEL);
+	void *page_addr = (void *)((unsigned long)addr & PAGE_MASK);
+
+	if (!pages)
+		return NULL;
+
+	for (i = 0; i < nr_pages; ++i) {
+		if (!__module_address((unsigned long)page_addr))
+			pages[i] = virt_to_page(page_addr);
+		else
+			pages[i] = vmalloc_to_page(page_addr);
+
+		if (!pages[i]) {
+			kfree(pages);
+			return NULL;
+		}
+
+		page_addr += PAGE_SIZE;
+	}
+
+	vaddr = vmap(pages, nr_pages, VM_MAP, PAGE_KERNEL_EXEC);
+	kfree(pages);
+	if (!vaddr)
+		return NULL;
+
+	return vaddr + offset_in_page(addr);
 }
 #endif
 #endif

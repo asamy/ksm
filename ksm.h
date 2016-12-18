@@ -43,10 +43,14 @@
 #define HYPERCALL_STOP		0	/* Stop virtualization on this CPU  */
 #define HYPERCALL_IDT		1	/* Hook IDT entry (see idt.h, exit.c)  */
 #define HYPERCALL_UIDT		2	/* Unhook IDT entry  */
+#ifdef EPAGE_HOOK
 #define HYPERCALL_HOOK		3	/* Hook page  */
 #define HYPERCALL_UNHOOK	4	/* Unhook page  */
+#endif
 #define HYPERCALL_VMFUNC	5	/* Emulate VMFunc  */
+#ifdef KPROTECT
 #define HYPERCALL_KPROTECT	6	/* kprotect.c  */
+#endif
 
 #define REG_AX			0
 #define REG_CX			1
@@ -449,6 +453,9 @@ struct page_hook_info {
 	u64 c_pfn;
 	u64 origin;
 	void *c_va;
+#ifdef __linux__
+	void *backing_page;
+#endif
 	struct phi_ops *ops;
 };
 

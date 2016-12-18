@@ -3,6 +3,7 @@
  * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
  *
  * kprotect.c - protect driver sensitive pages.
+ * Windows only.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -18,13 +19,17 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
-#ifdef EPAGE_HOOK
+#ifdef KPROTECT
+#ifdef __linux__
+#include <linux/kernel.h>
+#else
 #include <ntddk.h>
 #include <intrin.h>
+#endif
 
 #include "ksm.h"
 #include "pe.h"
-#include "dpc.h"
+#include "percpu.h"
 
 /*
  * This code shouldn't really be relayed upon, it can cause endless havoc
@@ -119,20 +124,21 @@ static void kprotect_driver_pages(void)
 		STATIC_CALL_DPC(kprotect_page, (void *)pages[i]);
 }
 
-NTSTATUS kprotect_init(void)
+int kprotect_init(void)
 {
-	vpage = mm_alloc_pool(NonPagedPool, PAGE_SIZE);
+	vpage = mm_alloc_page();
 	if (!vpage)
-		return STATUS_NO_MEMORY;
+		return ERR_NOMEM;
 
 	hpa = __pa(vpage);
 	kprotect_driver_pages();
-	return STATUS_SUCCESS;
+	return 0;
 }
 
-NTSTATUS kprotect_exit(void)
+int kprotect_exit(void)
 {
-	__mm_free_pool(vpage);
-	return STATUS_SUCCESS;
+	if (vpage)
+		mm_free_page(vpage);
+	return 0;
 }
 #endif

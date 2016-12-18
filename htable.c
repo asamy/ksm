@@ -3,12 +3,21 @@
  * Licensed under LGPLv2+
  */
 #ifdef EPAGE_HOOK
+#ifndef __linux__
 #include <limits.h>
 #include <string.h>
+#else
+#include <linux/kernel.h>
+#ifndef CHAR_BIT
+#define CHAR_BIT 	8
+#endif
+#endif
 
 #include "htable.h"
 
+#ifndef __linux__
 #include <ntddk.h>
+#endif
 
 #include "mm.h"
 
@@ -77,7 +86,7 @@ bool htable_init_sized(struct htable *ht,
 			break;
 	}
 
-	ht->table = mm_alloc_pool(NonPagedPool, (1ULL << ht->bits) * sizeof(size_t));
+	ht->table = mm_alloc_pool((1ULL << ht->bits) * sizeof(size_t));
 	if (!ht->table) {
 		ht->table = &ht->perfect_bit;
 		return false;
@@ -96,7 +105,7 @@ void htable_clear(struct htable *ht)
 
 bool htable_copy(struct htable *dst, const struct htable *src)
 {
-	uintptr_t *htable = mm_alloc_pool(NonPagedPool, sizeof(size_t) << src->bits);
+	uintptr_t *htable = mm_alloc_pool(sizeof(size_t) << src->bits);
 
 	if (!htable)
 		return false;
@@ -193,7 +202,7 @@ static bool double_table(struct htable *ht)
 	uintptr_t *oldtable, e;
 
 	oldtable = ht->table;
-	ht->table = mm_alloc_pool(NonPagedPool, (1ULL << (ht->bits+1)) * sizeof(size_t));
+	ht->table = mm_alloc_pool((1ULL << (ht->bits+1)) * sizeof(size_t));
 	if (!ht->table) {
 		ht->table = oldtable;
 		return false;

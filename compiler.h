@@ -117,7 +117,7 @@ typedef signed long long intptr_t;
 #define __align(alignment)	__attribute__((__aligned__(alignment)))
 #define KERNEL_STACK_SIZE	(6 << PAGE_SHIFT)
 
-#define ERR_NOTH 		-EEXIST
+#define ERR_NOTH 		-ENOENT
 #define ERR_CPUID		-EOPNOTSUPP
 #define ERR_NESTED		-ENODEV
 #define ERR_FEAT		-ENOENT

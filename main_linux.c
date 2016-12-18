@@ -61,8 +61,11 @@ static struct notifier_block cpu_notify = {
 
 static void ksm_worker(struct work_struct *w)
 {
+	int ret;
 	VCPU_DEBUG("in ksm_worker(): %s\n", current->comm);
-	VCPU_DEBUG("virtualizing: %d\n", ksm_init());
+
+	ret = ksm_init();
+	VCPU_DEBUG("init: %d\n", ret);
 }
 
 int __init ksm_start(void)

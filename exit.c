@@ -891,7 +891,7 @@ static inline bool vcpu_handle_unhook(struct vcpu *vcpu, uintptr_t dpa)
 	struct ept *ept = &vcpu->ept;
 	VCPU_DEBUG("unhook page %p\n", dpa);
 	for_each_eptp(i)
-		ept_alloc_page(ept, EPT4(ept, i), EPT_ACCESS_ALL, dpa);
+		ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, dpa, dpa);
 	__invept_all();
 	return true;
 }
@@ -1239,6 +1239,8 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 	case HYPERCALL_UNHOOK:
 		vcpu_adjust_rflags(vcpu, vcpu_handle_unhook(vcpu, arg));
 		break;
+#endif
+#ifdef KPROTECT
 	case HYPERCALL_KPROTECT:
 		vcpu_adjust_rflags(vcpu, kprotect_init_eptp(vcpu, arg));
 		break;

@@ -343,11 +343,13 @@ static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa,
 			VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
 			return eptp_switch;
 		} else {
+#ifdef KPROTECT
 			/*
 			 * kprotect special handling
 			 * although should be part of epage.
 			 */
 			return kprotect_select_eptp(ept, rip, ac);
+#endif
 		}
 #else
 #ifndef NESTED_VMX
