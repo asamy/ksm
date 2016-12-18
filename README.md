@@ -47,9 +47,9 @@ You may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in seconda
 ## Supported Kernels
 
 - All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested under Windows 7/8/8.1/10.
-- Linux kernel (tested under 3.16)
+- Linux kernel (tested under 3.16 and 4.8.13)
 
-##Porting to other kernels guidelines
+## Porting to other kernels guidelines
 
 - Port `mm.h` functions (`mm_alloc_page`, `__mm_free_page`)
 - Port `acpi.c` (not really needed) for re-virtualization on S1-3 or S4 state (commenting it out is OK).

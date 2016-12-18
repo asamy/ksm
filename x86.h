@@ -1033,8 +1033,6 @@ static inline u64 __lar(u64 sel)
 }
 
 #ifdef __linux__
-#include <asm/tlbflush.h>
-
 static inline u64 __rdtsc(void)
 {
 	u32 eax, edx;
