@@ -19,6 +19,10 @@
 #ifndef __KSM_H
 #define __KSM_H
 
+#ifdef __linux__
+#include <linux/kernel.h>
+#endif
+
 #include "compiler.h"
 #include "x86.h"
 #include "vmx.h"
@@ -28,8 +32,10 @@
 #include "htable.h"
 #endif
 
+#ifndef __linux__
 /* Avoid NT retardism  */
 #define container_of(address, type, field)	CONTAINING_RECORD(address, type, field)
+#endif
 
 #define KSM_MAX_VCPUS		32
 #define __EXCEPTION_BITMAP	0
@@ -68,28 +74,43 @@
 #define VCPU_BUGCHECK_GUEST_STATE	0xBAAD7A1E
 #define VCPU_BUGCHECK_UNEXPECTED	0xEEEEEEE9
 #ifdef DBG
+#ifndef __linux__
 #define VCPU_BUGCHECK(a, b, c, d)	KeBugCheckEx(MANUALLY_INITIATED_CRASH, a, b, c, d)
+#else
+#define VCPU_BUGCHECK(a, b, c, d) do {	\
+	printk(KERN_ERR "bugcheck 0x%016X 0x%016X 0x%016X 0x%016X\n", a, b, c, d);	\
+	dump_stack();	\
+} while (0)
+#endif
 #else
 #define VCPU_BUGCHECK(a, b, c, d)	(void)0
 #endif
 
 /* Short name:  */
+#ifdef __linux__
+#define cpu_nr()			smp_processor_id()
+#else
 #define cpu_nr()			KeGetCurrentProcessorNumberEx(NULL)
+#endif
 #define vpid_nr()			(cpu_nr() + 1)
-#define proc_nr()			PsGetCurrentProcessId()
 
 #ifndef __func__
 #define __func__ __FUNCTION__
 #endif
 
 #ifdef DBG
+#ifdef __linux__
+#define VCPU_DEBUG(fmt, args...)	printk(KERN_INFO "ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
+#define VCPU_DEBUG_RAW(str)		printk(KERN_INFO "ksm: CPU %d: %s: " str, cpu_nr(), __func__)
+#else
 #ifdef _MSC_VER
-#define VCPU_DEBUG(fmt, ...)		do_print("CPU %d: " __func__ ": " fmt, cpu_nr(), __VA_ARGS__)
-#define VCPU_DEBUG_RAW(str)		do_print("CPU %d: " __func__ ": " str, cpu_nr())
+#define VCPU_DEBUG(fmt, ...)		do_print("ksm: CPU %d: " __func__ ": " fmt, cpu_nr(), __VA_ARGS__)
+#define VCPU_DEBUG_RAW(str)		do_print("ksm: CPU %d: " __func__ ": " str, cpu_nr())
 #else
 /* avoid warning on empty argument list  */
-#define VCPU_DEBUG(fmt, args...)	do_print("CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
-#define VCPU_DEBUG_RAW(str)		do_print("CPU %d: %s: " str, cpu_nr(), __func__)
+#define VCPU_DEBUG(fmt, args...)	do_print("ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
+#define VCPU_DEBUG_RAW(str)		do_print("ksm: CPU %d: %s: " str, cpu_nr(), __func__)
+#endif
 #endif
 #else
 #define VCPU_DEBUG(fmt, ...)
@@ -187,7 +208,9 @@ struct vmcs {
 	u32 data[1];
 };
 
+#ifdef _MSC_VER
 #pragma warning(disable:4201)	/* stupid nonstandard bullshit  */
+#endif
 
 /* Posted interrupt descriptor */
 struct pi_desc {
@@ -215,39 +238,24 @@ struct pi_desc {
 		u64 control;
 	};
 	u32 rsvd[6];
-};
+} __align(64);
 
-static inline bool pi_test_bit(struct pi_desc *d, u8 vector)
+static inline bool pi_test_bit(struct pi_desc *d, int vector)
 {
-	return test_bit((bitmap_t *)d->pir, vector);
+	return test_bit(vector, (bitmap_t *)d->pir);
 }
 
-static inline void pi_set_irq(struct pi_desc *d, u8 vector)
+static inline void pi_set_irq(struct pi_desc *d, int vector)
 {
-	set_bit((bitmap_t *)d->pir, vector);
+	set_bit(vector, (bitmap_t *)d->pir);
 	d->on = 1;
 }
 
-static inline void pi_clear_irq(struct pi_desc *d, u8 vector)
+static inline void pi_clear_irq(struct pi_desc *d, int vector)
 {
-	clear_bit((bitmap_t *)d->pir, vector);
+	clear_bit(vector, (bitmap_t *)d->pir);
 	d->on = 0;
 }
-
-/* #VE (EPT Violation via IDT exception informaiton)  */
-struct ve_except_info {
-	u32 reason;		/* EXIT_REASON_EPT_VIOLATION  */
-	u32 except_mask;	/* FFFFFFFF (set to 0 to deliver more)  */
-	u64 exit;		/* normal exit qualification bits, see above  */
-	u64 gla;		/* guest linear address */
-	u64 gpa;		/* guest physical address  */
-	u16 eptp;		/* current EPTP index  */
-};
-
-struct ept {
-	__align(PAGE_SIZE) uintptr_t ptr_list[EPT_MAX_EPTP_LIST];
-	uintptr_t *pml4_list[EPTP_USED];
-};
 
 #ifdef NESTED_VMX
 #define VMCS_LAUNCH_STATE_NONE		0	/* no state  */
@@ -303,7 +311,7 @@ static inline bool nested_has_vmcs(const struct nested_vcpu *nested)
 static inline void nested_free_vmcs(struct nested_vcpu *nested)
 {
 	if (nested->vmcs != 0) {
-		kunmap((void *)nested->vmcs, PAGE_SIZE);
+		kunmap_iomem((void *)nested->vmcs, PAGE_SIZE);
 		nested->vmcs = 0;
 	}
 }
@@ -327,16 +335,31 @@ struct pending_irq {
 #define PML_MAX_ENTRIES		512
 #endif
 
+/* #VE (EPT Violation via IDT exception informaiton)  */
+struct ve_except_info {
+	u32 reason;		/* EXIT_REASON_EPT_VIOLATION  */
+	u32 except_mask;	/* FFFFFFFF (set to 0 to deliver more)  */
+	u64 exit;		/* normal exit qualification bits, see above  */
+	u64 gla;		/* guest linear address */
+	u64 gpa;		/* guest physical address  */
+	u16 eptp;		/* current EPTP index  */
+};
+
+struct ept {
+	u64 *ptr_list;
+	u64 *pml4_list[EPTP_USED];
+};
+
 struct vcpu {
-	__align(PAGE_SIZE) u8 stack[KERNEL_STACK_SIZE];
-	__align(PAGE_SIZE) u8 vapic_page[PAGE_SIZE];
+	void *stack;
+	void *vapic_page;
 #ifdef ENABLE_PML
-	__align(PAGE_SIZE) uintptr_t pml[PML_MAX_ENTRIES];
+	void *pml;
 #endif
-	__align(PAGE_SIZE) struct vmcs vmxon;
-	__align(PAGE_SIZE) struct vmcs vmcs;
-	__align(PAGE_SIZE) struct ve_except_info ve;
-	__align(64) struct pi_desc pi_desc;
+	struct vmcs *vmxon;
+	struct vmcs *vmcs;
+	struct ve_except_info *ve;
+	struct pi_desc pi_desc;
 	u32 entry_ctl;
 	u32 exit_ctl;
 	u32 pin_ctl;
@@ -344,11 +367,11 @@ struct vcpu {
 	u32 secondary_ctl;	/* Emulation purposes of VE / VMFUNC  */
 	u32 vm_func_ctl;	/* Same as above  */
 	/* Those are set during VM-exit only:  */
-	u64 *gp;
-	u64 eflags;
-	u64 ip;
-	u64 cr0_guest_host_mask;
-	u64 cr4_guest_host_mask;
+	uintptr_t *gp;
+	uintptr_t eflags;
+	uintptr_t ip;
+	uintptr_t cr0_guest_host_mask;
+	uintptr_t cr4_guest_host_mask;
 	/* Pending IRQ  */
 	struct pending_irq irq;
 	struct ept ept;
@@ -409,7 +432,7 @@ static inline u64 ksm_combine_reg64(struct vcpu *vcpu, int lo, int hi)
 	return (u64)ksm_read_reg32(vcpu, lo) | (u64)ksm_read_reg32(vcpu, hi) << 32;
 }
 
-static inline u64 *ksm_reg(struct vcpu *vcpu, int reg)
+static inline uintptr_t *ksm_reg(struct vcpu *vcpu, int reg)
 {
 	return &vcpu->gp[reg];
 }
@@ -441,32 +464,20 @@ static inline size_t rehash(const void *e, void *unused)
 }
 #endif
 
-#ifdef ENABLE_ACPI
-typedef struct _DEV_EXT {
-	PVOID CbRegistration;
-	PCALLBACK_OBJECT CbObject;
-} DEV_EXT, *PDEV_EXT;
-
-extern NTSTATUS register_power_callback(PDEV_EXT ext);
-extern void deregister_power_callback(PDEV_EXT ext);
-#endif
-
 struct ksm {
 	int active_vcpus;
 	struct vcpu vcpu_list[KSM_MAX_VCPUS];
-	void *hotplug_cpu;
-	u64 kernel_cr3;
-	u64 origin_cr3;
+	uintptr_t origin_cr3;
 #ifdef EPAGE_HOOK
 	struct htable ht;
 #endif
-	__align(PAGE_SIZE) u8 msr_bitmap[PAGE_SIZE];
-	__align(PAGE_SIZE) u8 io_bitmap_a[PAGE_SIZE];
-	__align(PAGE_SIZE) u8 io_bitmap_b[PAGE_SIZE];
+	void *msr_bitmap;
+	void *io_bitmap_a;
+	void *io_bitmap_b;
 };
 extern struct ksm ksm;
 
-#ifdef DBG
+#if defined(DBG) && !defined(__linux__)
 /* print.c  */
 extern NTSTATUS print_init(void);
 extern void print_exit(void);
@@ -474,25 +485,26 @@ extern void do_print(const char *fmt, ...);
 #endif
 
 /* ksm.c  */
-extern NTSTATUS ksm_init(void);
-extern NTSTATUS ksm_exit(void);
-extern NTSTATUS ksm_subvert(void);
-extern NTSTATUS ksm_unsubvert(void);
-extern NTSTATUS ksm_hook_idt(unsigned n, void *h);
-extern NTSTATUS ksm_free_idt(unsigned n);
+extern int ksm_init(void);
+extern int ksm_exit(void);
+extern int ksm_subvert(void);
+extern int ksm_unsubvert(void);
+extern int __ksm_init_cpu(struct ksm *k);
+extern int ksm_hook_idt(unsigned n, void *h);
+extern int ksm_free_idt(unsigned n);
 extern struct vcpu *ksm_current_cpu(void);
 
 #ifdef EPAGE_HOOK
 /* page.c  */
-extern NTSTATUS ksm_hook_epage(void *original, void *redirect);
-extern NTSTATUS ksm_unhook_page(void *original);
-extern NTSTATUS __ksm_unhook_page(struct page_hook_info *phi);
+extern int ksm_hook_epage(void *original, void *redirect);
+extern int ksm_unhook_page(void *original);
+extern int __ksm_unhook_page(struct page_hook_info *phi);
 extern struct page_hook_info *ksm_find_page(void *va);
 extern struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn);
 
 /* kprotect.c  */
-extern NTSTATUS kprotect_init(void);
-extern NTSTATUS kprotect_exit(void);
+extern int kprotect_init(void);
+extern int kprotect_exit(void);
 extern u16 kprotect_select_eptp(struct ept *ept, u64 rip, u8 ac);
 extern bool kprotect_init_eptp(struct vcpu *vcpu, uintptr_t gpa);
 #endif
@@ -503,10 +515,9 @@ extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_set_mtf(bool enable);
 extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
 extern bool ept_check_capabilitiy(void);
-extern uintptr_t *ept_alloc_page(uintptr_t *pml4, uint8_t access, uintptr_t phys);
-extern uintptr_t *ept_pte(uintptr_t *pml4, u64 gpa);
+extern u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa);
+extern u64 *ept_pte(u64 *pml4, u64 gpa);
 extern bool ept_handle_violation(struct vcpu *vcpu);
-extern void __ept_handle_violation(u64 cs, uintptr_t rip);
 
 struct h_vmfunc {
 	u32 eptp;
@@ -518,7 +529,7 @@ static inline u16 vcpu_eptp_idx(const struct vcpu *vcpu)
 	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VE)
 		return vmcs_read16(EPTP_INDEX);
 
-	const struct ve_except_info *ve = &vcpu->ve;
+	const struct ve_except_info *ve = vcpu->ve;
 	return ve->eptp;
 }
 
@@ -534,12 +545,13 @@ static inline u8 vcpu_vmfunc(u32 eptp, u32 func)
 	});
 }
 
+#ifndef __linux__
 /* Execute function on a CPU.  */
 typedef u64 (*oncpu_fn_t) (void *);
-static inline NTSTATUS exec_on_cpu(int cpu, oncpu_fn_t oncpu, void *param, u64 *ret)
+static inline int exec_on_cpu(int cpu, oncpu_fn_t oncpu, void *param, u64 *ret)
 {
 	PROCESSOR_NUMBER nr;
-	NTSTATUS status = KeGetProcessorNumberFromIndex(cpu, &nr);
+	int status = KeGetProcessorNumberFromIndex(cpu, &nr);
 	if (!NT_SUCCESS(status))
 		return status;
 
@@ -560,38 +572,39 @@ static inline NTSTATUS exec_on_cpu(int cpu, oncpu_fn_t oncpu, void *param, u64 *
 	return STATUS_SUCCESS;
 }
 
-static inline NTSTATUS sleep_ms(s32 ms)
+static inline int sleep_ms(s32 ms)
 {
 	return KeDelayExecutionThread(KernelMode, FALSE, &(LARGE_INTEGER) {
 		.QuadPart = -(10000 * ms)
 	});
 }
+#endif
 
 static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)
 {
 	struct kidt_entry64 *e = idt_entry(vcpu->idt.base, n);
 	memcpy(&vcpu->shadow_idt[n], e, sizeof(*e));
-	__set_intr_gate(n, cs, vcpu->idt.base, (uintptr_t)h);
+	set_intr_gate(n, cs, vcpu->idt.base, (uintptr_t)h);
 }
 
-static inline void __set_epte_pfn(uintptr_t *epte, uintptr_t pfn)
+static inline void __set_epte_pfn(u64 *epte, u64 pfn)
 {
-	*epte &= ~PAGE_MASK;
+	*epte &= ~PAGE_PA_MASK;
 	*epte |= (pfn & PTI_MASK) << PTI_SHIFT;
 }
 
-static inline void __set_epte_ar(uintptr_t *epte, uintptr_t ar)
+static inline void __set_epte_ar(u64 *epte, int ar)
 {
 	*epte &= ~(ar ^ EPT_ACCESS_ALL);
 	*epte |= ar & EPT_ACCESS_MAX_BITS;
 }
 
-static inline void __set_epte_ar_inplace(uintptr_t *epte, uintptr_t ar)
+static inline void __set_epte_ar_inplace(u64 *epte, int ar)
 {
 	__set_epte_ar(epte, ar | (*epte & EPT_ACCESS_MAX_BITS));
 }
 
-static inline void __set_epte_ar_pfn(uintptr_t *epte, uintptr_t ar, uintptr_t pfn)
+static inline void __set_epte_ar_pfn(u64 *epte, int ar, u64 pfn)
 {
 	__set_epte_pfn(epte, pfn);
 	__set_epte_ar(epte, ar);
@@ -601,6 +614,7 @@ static inline void __set_epte_ar_pfn(uintptr_t *epte, uintptr_t ar, uintptr_t pf
 static inline void ar_get_bits(u8 ar, char *p)
 {
 	p[0] = p[1] = p[2] = '-';
+	p[3] = '\0';
 	if (ar & EPT_ACCESS_READ)
 		p[0] = 'r';
 
@@ -611,12 +625,12 @@ static inline void ar_get_bits(u8 ar, char *p)
 		p[2] = 'x';
 }
 
-static inline void __get_epte_ar(uintptr_t *epte, char *p)
+static inline void __get_epte_ar(u64 *epte, char *p)
 {
 	return ar_get_bits((u8)*epte & EPT_ACCESS_MAX_BITS, p);
 }
 
-static inline void get_epte_ar(uintptr_t *pml4, u64 gpa, char *p)
+static inline void get_epte_ar(u64 *pml4, u64 gpa, char *p)
 {
 	return __get_epte_ar(ept_pte(pml4, gpa), p);
 }

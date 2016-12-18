@@ -1,4 +1,4 @@
-# ksm [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)
+# ksm [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=linux)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)
 
 A really simple and lightweight x64 hypervisor written in C for Intel processors.  
 KSM aims to be fully feature fledged and as general purpose as possible.  KSM uses
@@ -28,7 +28,7 @@ technique that I can relay on.
 ## Requirements
 
 - An Intel processor (with VT-x and EPT support)
-- A working C compiler (GCC or CLang or Microsoft compiler (CL)).  You can use VS 2015.
+- A working C compiler (GCC or CLang or Microsoft compiler (CL)).
 
 ## Unsupported features (hardware, etc.)
 
@@ -40,23 +40,22 @@ technique that I can relay on.
 Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it, you can now test under VMs with
 emulation for VMFUNC.
 
-Note: if you're live debugging then you may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in secondary controls,
-	otherwise it makes WinDBG go *maniac*.  I have not investigated the root cause, but it keeps loading GDT and LDT all the time,
-	which is _insane_.
+### Live debugger under Windows
+
+You may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in secondary controls,otherwise it makes WinDBG go *maniac*.  I have not investigated the root cause, but it keeps loading GDT and LDT all the time, which is _insane_.
 
 ## Supported Kernels
 
-All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested under Windows 7/8/8.1/10.
+- All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested under Windows 7/8/8.1/10.
+- Linux kernel (tested under 3.16)
 
-## Porting to other kernels (e.g. Linux or similar) guidelines
+##Porting to other kernels guidelines
 
-- Port `mm.h` functions (`mm_alloc_pool, mm_free_pool, __mm_free_pool`).  You'll need `__get_free_page` instead of `ExAllocatePool`.
+- Port `mm.h` functions (`mm_alloc_page`, `__mm_free_page`)
 - Port `acpi.c` (not really needed) for re-virtualization on S1-3 or S4 state (commenting it out is OK).
-- Port `main.c` for some internal windows stuff, e.g. `DriverEntry`, etc.  Perhaps even rename to something like main_windows.c or similar.
+- Write module for initialization
 - Port `page.c` for the hooking example (not required, but it's essential to demonstrate usage).
-- Port `print.c` for printing interface (it does not really have to be fully
-					 ported, just merely replacing
-					 `do_print` with `printk` should be OK)
+- Port `print.c` for printing interface (Some kernels may not require it)
 - Port `x64.S` for the assembly based stuff, please use macros for calling conventions, etc.
 
 Hopefully didn't miss something important, but these are definitely the mains.
@@ -81,22 +80,37 @@ It'd be appreciated if you use a separate branch for your submissions (other tha
 
 ## Building
 
-### Compiling under MinGW
+### Building for Linux
+
+Simply `make`.
+
+### Building for Windows
+
+#### Compiling under MinGW
 
 Simply `make C=1` (if cross compiling under Linux) or `mingw32-make` (under native).
 
-#### Makefile variables
+##### Makefile variables
 
 1. `C=1` - Prepare for cross-compiling.
 2. `V=1` - Verbose output (the default, pass 0 for quiet.)
 
-### Compiling under MSVC
+#### Compiling under MSVC
 
 The solution under `ksm/` directory is a VS 2015 solution, you can use it to build, you'll
 also need the Windows Driver Development Kit.
 
 ## Loading the driver
 
+### On Linux
+Loading:
+- `make load`
+Unloading:
+- `make unload`
+
+Output can be seen via `dmesg -wH`
+
+### On Windows
 In commandline as administrator:
 
 1. `sc create ksm type= kernel binPath= C:\path\to\your\ksm.sys`
@@ -105,9 +119,10 @@ In commandline as administrator:
 Unloading:
 - `sc stop ksm`
 
-You can also use [kload](https://github.com/asamy/kload)
+You can also use [kload](https://github.com/asamy/kload)  
+Output can be seen via DebugView or WinDBG if live debugging.
 
-## Technical information
+## Some technical information
 
 Note: If the processor does not support VMFUNC or #VE, they will be disabled and instead, emulated via VM-exit.
 
@@ -162,9 +177,9 @@ You can define one or more of the following:
 - `ENABLE_ACPI` - Enable S1-3-S4 power state monitoring for re-virtualization
 - `NESTED_VMX` - Enable experimental VT-x nesting
 - `ENABLE_FILEPRINT` - Available only when `DBG` is defined.  Enables loggin to
-disk
+disk (Windows only)
 - `ENABLE_DBGPRINT` - Available only when `DBG` is defined.  Enables `DbgPrint`
-log.
+log.  (Windows only)
 
 ## Reporting bugs (or similar)
 
@@ -176,9 +191,15 @@ You can report bugs by using Github issues, please provide the following:
 
 If it's a crash, please provide the following:
 
+### For Windows
+
 - A minidump (C:\windows\minidump) or a memory dump (C:\windows\memory.dmp).  Former prefered.
 - The compiled .sys and the .pdb/.dbg file
 - The Kernel executable if possible, e.g. ntoskrnl.exe from C:\Windows\System32
+
+### For Linux
+
+You're better off debugging it yourself.
 
 ## Thanks to...
 

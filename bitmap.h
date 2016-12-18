@@ -29,6 +29,8 @@
 #define __BITMAP_H
 
 typedef unsigned long bitmap_t;
+
+#ifndef __linux__
 #ifndef CHAR_BIT
 #define CHAR_BIT	8
 #endif
@@ -44,17 +46,17 @@ static inline unsigned long bit_at(unsigned long pos)
 	return pos / BITMAP_BITS;
 }
 
-static inline void set_bit(bitmap_t *bmp, unsigned long pos)
+static inline void set_bit(unsigned long pos, bitmap_t *bmp)
 {
 	bmp[bit_at(pos)] |= pos_bit(pos);
 }
 
-static inline void clear_bit(bitmap_t *bmp, unsigned long pos)
+static inline void clear_bit(unsigned long pos, bitmap_t *bmp)
 {
 	bmp[bit_at(pos)] &= ~pos_bit(pos);
 }
 
-static inline bool test_bit(bitmap_t *bmp, unsigned long pos)
+static inline bool test_bit(unsigned long pos, bitmap_t *bmp)
 {
 	return !!(bmp[bit_at(pos)] & pos_bit(pos));
 }
@@ -75,3 +77,5 @@ static inline void fill_bits(bitmap_t *bmp, unsigned long count, unsigned char b
 }
 
 #endif
+#endif
+
