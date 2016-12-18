@@ -66,7 +66,6 @@ static bool init_msr_bitmap(struct ksm *k)
 	 * We currently opt in for MSRs that are VT-x related, so that we can
 	 * emulate nesting.
 	 */
-#if 0
 	bitmap_t *read_lo = (bitmap_t *)k->msr_bitmap;
 	set_bit(MSR_IA32_FEATURE_CONTROL, read_lo);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
@@ -76,7 +75,6 @@ static bool init_msr_bitmap(struct ksm *k)
 	set_bit(MSR_IA32_FEATURE_CONTROL, write_lo);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		set_bit(msr, write_lo);
-#endif
 	return true;
 }
 

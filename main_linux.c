@@ -37,8 +37,6 @@ static void ksm_worker(struct work_struct *w)
 
 int __init ksm_start(void)
 {
-	int ret;
-
 	wq = create_singlethread_workqueue("worker_ksm");
 	if (!wq)
 		return -ENOMEM;
