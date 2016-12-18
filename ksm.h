@@ -351,7 +351,7 @@ struct ept {
 };
 
 struct vcpu {
-	__align(PAGE_SIZE) u8 stack[KERNEL_STACK_SIZE];
+	void *stack;
 	void *vapic_page;
 #ifdef ENABLE_PML
 	void *pml;
@@ -467,7 +467,6 @@ static inline size_t rehash(const void *e, void *unused)
 struct ksm {
 	int active_vcpus;
 	struct vcpu vcpu_list[KSM_MAX_VCPUS];
-	uintptr_t kernel_cr3;
 	uintptr_t origin_cr3;
 #ifdef EPAGE_HOOK
 	struct htable ht;
@@ -615,6 +614,7 @@ static inline void __set_epte_ar_pfn(u64 *epte, int ar, u64 pfn)
 static inline void ar_get_bits(u8 ar, char *p)
 {
 	p[0] = p[1] = p[2] = '-';
+	p[3] = '\0';
 	if (ar & EPT_ACCESS_READ)
 		p[0] = 'r';
 

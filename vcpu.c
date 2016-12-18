@@ -19,6 +19,11 @@
 #ifdef __linux__
 #include <linux/kernel.h>
 #include <linux/ioport.h>
+#include <linux/slab.h>
+#include <linux/highmem.h>
+#include <linux/kallsyms.h>
+
+extern struct resource iomem_resource;
 #else
 #include <ntddk.h>
 #endif
@@ -140,8 +145,6 @@ static void free_pml4_list(struct ept *ept)
 
 #ifdef __linux__
 /* FIXME: This is stupid...  */
-extern struct resource iomem_resource;
-
 static inline bool alloc_resource_pages(struct ept *ept, struct resource *r)
 {
 	VCPU_DEBUG("Allocating for %s (%p -> %p)\n",
@@ -373,7 +376,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	u16 eptp = vcpu_eptp_idx(vcpu);
 	u8 ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
 	u8 ac = exit & EPT_AR_MASK;
-	char sar[3], sac[3];
+	char sar[4], sac[4];
 	ar_get_bits(ar, sar);
 	ar_get_bits(ac, sac);
 
@@ -407,7 +410,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 	u16 eptp = info->eptp;
 	u8 ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
 	u8 ac = exit & EPT_AR_MASK;
-	char sar[3], sac[3];
+	char sar[4], sac[4];
 	ar_get_bits(ar, sar);
 	ar_get_bits(ac, sac);
 
@@ -444,12 +447,16 @@ static inline u32 __accessright(u16 selector)
 static inline void adjust_ctl_val(u32 msr, u32 *val)
 {
 	u64 v = __readmsr(msr);
-	*val &= (u32)(v >> 32);			/* bit == 0 in high word ==> must be zero  */
-	*val |= (u32)v;				/* bit == 1 in low word  ==> must be one  */
+	*val &= (u32)(v >> 32); 	/* bit == 0 in high word ==> must be zero  */
+	*val |= (u32)v; 		/* bit == 1 in low word  ==> must be one  */
 }
 
 static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 {
+	struct vmcs *vmcs, *vmxon;
+	struct gdtr gdtr, *idtr = &vcpu->g_idt;
+	struct ept *ept = &vcpu->ept;
+
 	u64 vmx = __readmsr(MSR_IA32_VMX_BASIC);
 	u16 es = __reades();
 	u16 cs = __readcs();
@@ -461,37 +468,28 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	u16 tr = __str();
 	u8 err = 0;
 
-	struct gdtr gdtr;
+	uintptr_t cr0;
+	uintptr_t cr4;
+	uintptr_t cr3 = __readcr3();
+
 	__sgdt(&gdtr);
+	__sidt(idtr);
 
-	struct gdtr idtr;
-	__sidt(&idtr);
-
-	struct ept *ept = &vcpu->ept;
-	vcpu->g_idt.base = idtr.base;
-	vcpu->g_idt.limit = idtr.limit;
-
-	struct kidt_entry64 *current_idt = (struct kidt_entry64 *)idtr.base;
+	struct kidt_entry64 *current_idt = (struct kidt_entry64 *)idtr->base;
 	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
-	unsigned count = idtr.limit / sizeof(*shadow);
+	unsigned count = idtr->limit / sizeof(*shadow);
 	for (unsigned n = 0; n < count; ++n)
 		memcpy(&shadow[n], &current_idt[n], sizeof(*shadow));
 
-	struct vmcs *vmxon = vcpu->vmxon;
+	vmxon = vcpu->vmxon;
 	vmxon->revision_id = (u32)vmx;
 
-	/*
-	 * Actually enter VMX root mode.
-	 *
-	 * If we're running nested on a hypervisor that does not
-	 * support VT-x, this will cause #GP.
-	 */
-	uintptr_t cr0 = __readcr0();
+	cr0 = __readcr0();
 	cr0 &= __readmsr(MSR_IA32_VMX_CR0_FIXED1);
 	cr0 |= __readmsr(MSR_IA32_VMX_CR0_FIXED0);
 	__writecr0(cr0);
 
-	uintptr_t cr4 = __readcr4();
+	cr4 = __readcr4();
 	cr4 &= __readmsr(MSR_IA32_VMX_CR4_FIXED1);
 	cr4 |= __readmsr(MSR_IA32_VMX_CR4_FIXED0);
 	__writecr4(cr4);
@@ -501,11 +499,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	if (__vmx_on(&pa))
 		return 3;
 
-	/*
-	 * Initialize VMCS (VM control structure) that we're going to use
-	 * to store stuff in it, see setup_vmcs().
-	 */
-	struct vmcs *vmcs = vcpu->vmcs;
+	vmcs = vcpu->vmcs;
 	vmcs->revision_id = (u32)vmx;
 
 	pa = __pa(vmcs);
@@ -529,7 +523,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 #endif
 
 	u32 msr_off = 0;
-	if (__readmsr(MSR_IA32_VMX_BASIC) & VMX_BASIC_TRUE_CTLS)
+	if (vmx & VMX_BASIC_TRUE_CTLS)
 		msr_off = 0xC;
 
 	u32 vm_entry = VM_ENTRY_IA32E_MODE
@@ -552,14 +546,16 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 	vcpu->pin_ctl = vm_pinctl;
 
-	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID |
-		SECONDARY_EXEC_XSAVES | SECONDARY_EXEC_UNRESTRICTED_GUEST
+	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID
+#if 0
+		| SECONDARY_EXEC_XSAVES | SECONDARY_EXEC_UNRESTRICTED_GUEST
+#endif
 #ifndef EMULATE_VMFUNC
 		| SECONDARY_EXEC_ENABLE_VMFUNC
 #endif
 		| SECONDARY_EXEC_ENABLE_VE
 		| /* apic virtualization  */ apicv
-#if !defined(__linux__) && _WIN32_WINNT == 0x0A00	/* w10 required features  */
+#if defined(_WIN32_WINNT) && _WIN32_WINNT == 0x0A00	/* w10 required features  */
 		| SECONDARY_EXEC_RDTSCP
 #endif
 #ifdef ENABLE_PML
@@ -696,7 +692,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write16(GUEST_LDTR_LIMIT, __segmentlimit(ldt));
 	err |= vmcs_write16(GUEST_TR_LIMIT, __segmentlimit(tr));
 	err |= vmcs_write16(GUEST_GDTR_LIMIT, gdtr.limit);
-	err |= vmcs_write16(GUEST_IDTR_LIMIT, idtr.limit);
+	err |= vmcs_write16(GUEST_IDTR_LIMIT, idtr->limit);
 	err |= vmcs_write32(GUEST_ES_AR_BYTES, __accessright(es));
 	err |= vmcs_write32(GUEST_CS_AR_BYTES, __accessright(cs));
 	err |= vmcs_write32(GUEST_SS_AR_BYTES, __accessright(ss));
@@ -706,11 +702,12 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write32(GUEST_LDTR_AR_BYTES, __accessright(ldt));
 	err |= vmcs_write32(GUEST_TR_AR_BYTES, __accessright(tr));
 	err |= vmcs_write32(GUEST_INTERRUPTIBILITY_INFO, 0);
-	err |= vmcs_write32(GUEST_ACTIVITY_STATE, 0);
+	err |= vmcs_write32(GUEST_ACTIVITY_STATE, GUEST_ACTIVITY_ACTIVE);
+	err |= vmcs_write32(GUEST_PENDING_DBG_EXCEPTIONS, 0);
 	err |= vmcs_write64(GUEST_IA32_DEBUGCTL, __readmsr(MSR_IA32_DEBUGCTLMSR));
 	err |= vmcs_write32(GUEST_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
 	err |= vmcs_write(GUEST_CR0, cr0);
-	err |= vmcs_write(GUEST_CR3, ksm.kernel_cr3);
+	err |= vmcs_write(GUEST_CR3, ksm.origin_cr3);
 	err |= vmcs_write(GUEST_CR4, cr4);
 	err |= vmcs_write(GUEST_ES_BASE, 0);
 	err |= vmcs_write(GUEST_CS_BASE, 0);
@@ -738,13 +735,13 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write16(HOST_GS_SELECTOR, gs & 0xf8);
 	err |= vmcs_write16(HOST_TR_SELECTOR, tr & 0xf8);
 	err |= vmcs_write(HOST_CR0, cr0);
-	err |= vmcs_write(HOST_CR3, ksm.kernel_cr3);
+	err |= vmcs_write(HOST_CR3, cr3);
 	err |= vmcs_write(HOST_CR4, cr4);
 	err |= vmcs_write(HOST_FS_BASE, __readmsr(MSR_IA32_FS_BASE));
 	err |= vmcs_write(HOST_GS_BASE, __readmsr(MSR_IA32_GS_BASE));
 	err |= vmcs_write(HOST_TR_BASE, __segmentbase(gdtr.base, tr));
 	err |= vmcs_write(HOST_GDTR_BASE, gdtr.base);
-	err |= vmcs_write(HOST_IDTR_BASE, idtr.base);
+	err |= vmcs_write(HOST_IDTR_BASE, idtr->base);
 	err |= vmcs_write(HOST_IA32_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
 	err |= vmcs_write(HOST_IA32_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
 	err |= vmcs_write(HOST_IA32_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
@@ -808,6 +805,10 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	if (!vcpu->vapic_page)
 		goto out;
 
+	vcpu->stack = mm_alloc_pool(KERNEL_STACK_SIZE);
+	if (!vcpu->stack)
+		goto out;
+
 #ifdef NESTED_VMX
 	vcpu->nested_vcpu.feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
 #endif
@@ -819,6 +820,11 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 */
 	vcpu->cr0_guest_host_mask = 0;
 	vcpu->cr4_guest_host_mask = 0; // X86_CR4_VMXE;
+
+#ifdef __linux__
+	unsigned long rflags;
+	local_irq_save(rflags);
+#endif
 
 	err = setup_vmcs(vcpu, sp, ip);
 	if (err) {
@@ -838,10 +844,15 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 		}
 	}
 
+#ifdef __linux__
+	local_irq_restore(rflags);
+#endif
+
 	/*
-	 * setup_vmcs()/__vmx_vmlaunch() failed if we got here, we had already overwritten the
-	 * IDT entry for #VE (X86_TRAP_VE), restore it now otherwise PatchGuard is gonna
-	 * notice and BSOD us.
+	 * setup_vmcs()/__vmx_vmlaunch() failed if we got here,
+	 * we had already overwritten the IDT entry for #VE (X86_TRAP_VE),
+	 * restore it now otherwise on Windows, PatchGuard is gonna
+	 * notice and crash the system.
 	 */
 	__lidt(&vcpu->g_idt);
 
@@ -870,6 +881,9 @@ void vcpu_free(struct vcpu *vcpu)
 
 	if (vcpu->vapic_page)
 		mm_free_page(vcpu->vapic_page);
+
+	if (vcpu->stack)
+		mm_free_pool(vcpu->stack, KERNEL_STACK_SIZE);
 
 	free_ept(&vcpu->ept);
 }

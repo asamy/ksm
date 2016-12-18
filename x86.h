@@ -1033,6 +1033,8 @@ static inline u64 __lar(u64 sel)
 }
 
 #ifdef __linux__
+#include <asm/tlbflush.h>
+
 static inline u64 __rdtsc(void)
 {
 	u32 eax, edx;
@@ -1049,26 +1051,24 @@ static inline u64 __rdtscp(u32 *cpu)
 	return (u64)eax | (u64)edx << 32;
 }
 
-#define __readmsr(msr) __extension__ ({		\
-	u32 eax, edx;	\
-	__asm __volatile("rdmsr\n\t"	\
-			 : "=a" (eax), "=d" (edx)	\
-			 : "c" (msr));	\
-	(u64)eax | (u64)edx << 32;	\
-})
+static inline unsigned long __readmsr(u32 msr)
+{
+	unsigned long x;
+	rdmsrl(msr, x);
+	return x;
+}
 
-#define __writemsr(msr, val) \
-	__asm __volatile("wrmsr\n\t"	\
-			 :: "a" ((u32)(val)), "d" ((u32)((val) >> 32)),	\
-			 "c" ((msr)))
+static inline void __writemsr(u32 msr, unsigned long val)
+{
+	wrmsr(msr, (u32)val, (u32)(val >> 32));
+}
 
-#define __readcr0()	__extension__ ({	\
-	uintptr_t cr0;	\
-	__asm("mov %%cr0, %0" : "=r" (cr0));	\
-	cr0;	\
-})
-#define __writecr0(cr0)		\
-	__asm("mov %0, %%cr0" :: "r"(cr0))
+#define __readcr0 	read_cr0
+#define __writecr0	write_cr0
+
+#define __readcr3 	read_cr3
+#define __writecr3	write_cr3
+
 #define __readcr2()	__extension__ ({	\
 	uintptr_t cr2;				\
 	__asm("mov %%cr2, %0" : "=r" (cr2));	\
@@ -1076,16 +1076,9 @@ static inline u64 __rdtscp(u32 *cpu)
 })
 #define __writecr2(cr2)		\
 	__asm("mov %0, %%cr2" :: "r"(cr2))
-#define __readcr3()	__extension__ ({	\
-	uintptr_t cr3;				\
-	__asm("mov %%cr3, %0" : "=r" (cr3));	\
-	cr3;	\
-})
-#define __writecr3(cr3)		\
-	__asm("mov %0, %%cr3" :: "r" (cr3))
 
-#define __readcr4	cr4_read_shadow
-#define __writecr4	cr4_set_bits
+#define __readcr4 	cr4_read_shadow
+#define __writecr4 	cr4_set_bits
 
 #define __inbytestring(port, addr, count)	insb(port, addr, count)
 #define __inwordstring(port, addr, count)	insw(port, addr, count)

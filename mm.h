@@ -21,6 +21,8 @@
 
 #ifdef __linux__
 #include <linux/mm.h>
+#include <linux/slab.h>
+#include <linux/highmem.h>
 #endif
 
 #ifndef PXI_SHIFT
@@ -130,12 +132,12 @@ static inline bool same_page(uintptr_t a1, uintptr_t a2)
 	return page_align(a1) == page_align(a2);
 }
 
-static inline u64 *page_addr(u64 *page)
+static inline u64 *page_addr(u64 *pte)
 {
-	if (!page || !*page)
+	if (!pte || !*pte)
 		return 0;
 
-	return __va(PAGE_PA(*page));
+	return __va(PAGE_PA(*pte));
 }
 
 #ifndef __linux
@@ -396,9 +398,8 @@ static inline void *mm_alloc_page(void)
 #endif
 }
 
-static inline void mm_free_page(void *v)
+static inline void __mm_free_page(void *v)
 {
-	__stosq(v, 0, PAGE_SIZE >> 3);
 #ifndef __linux__
 	ExFreePool(v);
 #else
@@ -406,12 +407,34 @@ static inline void mm_free_page(void *v)
 #endif
 }
 
-static inline void __mm_free_page(void *v)
+static inline void mm_free_page(void *v)
+{
+//	__stosq(v, 0, PAGE_SIZE >> 3);
+	__mm_free_page(v);
+}
+
+static inline void *mm_alloc_pool(size_t size)
 {
 #ifndef __linux__
-	ExFreePool(v);
+	void *v = ExAllocatePool(NonPagedPool, size);
+//	if (v)
+//		__stosq(v, 0, size >> 3);
+
+	return v;
 #else
-	free_page((unsigned long)v);
+	return kmalloc(size, GFP_KERNEL | __GFP_ZERO);
+#endif
+}
+
+static inline void mm_free_pool(void *v, size_t size)
+{
+//	if (size)
+//		__stosq(v, 0, size >> 3);
+
+#ifdef __linux__
+	kfree(v);
+#else
+	ExFreePool(v);
 #endif
 }
 
@@ -426,6 +449,7 @@ static inline void kunmap_iomem(void *addr, size_t size)
 	return MmUnmapIoSpace(addr, size);
 }
 #else
+/* FIXME: Those are definitely broken  */
 static inline void __iomem *kmap_iomem(unsigned long addr, unsigned long size)
 {
 	return ioremap(addr, size);

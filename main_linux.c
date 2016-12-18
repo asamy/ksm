@@ -21,19 +21,42 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
+#include <linux/workqueue.h>
 
 #include "ksm.h"
 
+static void ksm_worker(struct work_struct *);
+static struct workqueue_struct *wq;
+static DECLARE_DELAYED_WORK(work, ksm_worker);
+
+static void ksm_worker(struct work_struct *w)
+{
+	VCPU_DEBUG("in ksm_worker(): %s\n", current->comm);
+	VCPU_DEBUG("virtualizing: %d\n", ksm_init());
+}
+
 int __init ksm_start(void)
 {
-	int err = ksm_init();
-	printk(KERN_INFO "ksm startup: %d", err);
-	return err;
+	int ret;
+
+	wq = create_singlethread_workqueue("worker_ksm");
+	if (!wq)
+		return -ENOMEM;
+
+	if (!queue_delayed_work(wq, &work, 100)) {
+		destroy_workqueue(wq);
+		return -EINVAL;
+	}
+
+	VCPU_DEBUG_RAW("Done, wait for wq to fire\n");
+	return 0;
 }
 
 void __exit ksm_cleanup(void)
 {
-	ksm_exit();
+	destroy_workqueue(wq);
+	VCPU_DEBUG("exit: %d\n", ksm_exit());
+	VCPU_DEBUG("Bye\n");
 }
 
 module_init(ksm_start);

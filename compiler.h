@@ -96,6 +96,7 @@ typedef unsigned long long uintptr_t;
 typedef signed long long intptr_t;
 #define _INTPTR_T_DEFINED
 #endif
+#define ERR_EXIST 		STATUS_HV_NOT_PRESENT
 #define ERR_CPUID		STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR
 #define ERR_NESTED		STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE
 #define ERR_FEAT		STATUS_HV_FEATURE_UNAVAILABLE
@@ -109,6 +110,7 @@ typedef signed long long intptr_t;
 #define __align(alignment)	__attribute__((__aligned__(alignment)))
 #define KERNEL_STACK_SIZE	(6 << PAGE_SHIFT)
 
+#define ERR_EXIST 		-EEXIST
 #define ERR_CPUID		-EOPNOTSUPP
 #define ERR_NESTED		-ENODEV
 #define ERR_FEAT		-ENOENT

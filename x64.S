@@ -182,6 +182,7 @@ __vmx_vminit:
 	pushfq
 	PUSH_REGS
 
+ 	/* parameter one is pass-through (vcpu).  */
 	movq	%rsp, REG_A2
 	movabs	$do_resume, REG_A3
 	call	vcpu_init

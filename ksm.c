@@ -18,6 +18,8 @@
 */
 #ifdef __linux__
 #include <linux/kernel.h>
+#include <linux/tboot.h>
+#include <linux/cpu.h>
 #else
 #include <ntddk.h>
 #include <intrin.h>
@@ -30,9 +32,6 @@
 struct ksm ksm = {
 	.active_vcpus = 0,
 };
-
-/* Required MSR_IA32_FEATURE_CONTROL bits:  */
-static const u64 required_feat_bits = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
 
 /*
  * This file manages CPUs initialization, for per-cpu initializaiton
@@ -67,6 +66,7 @@ static bool init_msr_bitmap(struct ksm *k)
 	 * We currently opt in for MSRs that are VT-x related, so that we can
 	 * emulate nesting.
 	 */
+#if 0
 	bitmap_t *read_lo = (bitmap_t *)k->msr_bitmap;
 	set_bit(MSR_IA32_FEATURE_CONTROL, read_lo);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
@@ -76,7 +76,7 @@ static bool init_msr_bitmap(struct ksm *k)
 	set_bit(MSR_IA32_FEATURE_CONTROL, write_lo);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		set_bit(msr, write_lo);
-
+#endif
 	return true;
 }
 
@@ -116,6 +116,14 @@ static void free_io_bitmaps(struct ksm *k)
 
 int __ksm_init_cpu(struct ksm *k)
 {
+	/* Required MSR_IA32_FEATURE_CONTROL bits:  */
+	u64 required_feat_bits = FEATURE_CONTROL_LOCKED |
+		FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
+#ifdef __linux__
+	if (tboot_enabled())
+		required_feat_bits |= FEATURE_CONTROL_VMXON_ENABLED_INSIDE_SMX;
+#endif
+
 #ifndef __GNUC__
 	__try {
 #endif
@@ -129,8 +137,9 @@ int __ksm_init_cpu(struct ksm *k)
 				return ERR_DENIED;
 		}
 
-		k->kernel_cr3 = __readcr3();
-		if (__vmx_vminit(&k->vcpu_list[cpu_nr()])) {
+
+		bool ok = __vmx_vminit(&k->vcpu_list[cpu_nr()]);
+		if (ok) {
 			k->active_vcpus++;
 			return 0;
 		}
@@ -200,7 +209,8 @@ int ksm_init(void)
 
 static int __ksm_exit_cpu(struct ksm *k)
 {
-	size_t err;
+	u8 err;
+
 #ifndef __GNUC__
 	__try {
 #endif
@@ -214,13 +224,13 @@ static int __ksm_exit_cpu(struct ksm *k)
 	}
 #endif
 
-	if (err)
-		return ERR_FAIL;
+	if (err == 0) {
+		k->active_vcpus--;
+		vcpu_free(ksm_current_cpu());
+		__writecr4(__readcr4() & ~X86_CR4_VMXE);
+	}
 
-	k->active_vcpus--;
-	vcpu_free(ksm_current_cpu());
-	__writecr4(__readcr4() & ~X86_CR4_VMXE);
-	return 0;
+	return err;
 }
 
 STATIC_DEFINE_DPC(__call_exit, __ksm_exit_cpu, ctx);
@@ -232,12 +242,20 @@ int ksm_unsubvert(void)
 
 int ksm_exit(void)
 {
-	free_msr_bitmap(&ksm);
-	free_io_bitmaps(&ksm);
+	int err;
+	if (ksm.active_vcpus == 0)
+		return ERR_EXIST;
+
+	err = ksm_unsubvert();
+	if (err == 0) {
+		free_msr_bitmap(&ksm);
+		free_io_bitmaps(&ksm);
 #ifdef EPAGE_HOOK
-	htable_clear(&ksm.ht);
+		htable_clear(&ksm.ht);
 #endif
-	return ksm_unsubvert();
+	}
+
+	return 0;
 }
 
 STATIC_DEFINE_DPC(__call_idt_hook, __vmx_vmcall, HYPERCALL_IDT, ctx);
