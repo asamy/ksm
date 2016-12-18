@@ -68,7 +68,6 @@ extern uintptr_t pxe_base;
 extern uintptr_t ppe_base;
 extern uintptr_t pde_base;
 extern uintptr_t pte_base;
-#endif
 
 #define PAGE_PRESENT		0x1
 #define PAGE_WRITE		0x2
@@ -77,18 +76,19 @@ extern uintptr_t pte_base;
 #define PAGE_CACHEDISABLE	0x10
 #define PAGE_ACCESSED		0x20
 #define PAGE_DIRTY		0x40
-#define PAGE_LARGE		0x80
 #define PAGE_GLOBAL		0x100
 #define PAGE_COPYONWRITE	0x200
 #define PAGE_PROTOTYPE		0x400
 #define PAGE_TRANSIT		0x800
-#define PAGE_PA_MASK		(0xFFFFFFFFFULL << PAGE_SHIFT)
-#define PAGE_PA(page)		((page) & PAGE_PA_MASK)
-#define PAGE_FN(page)		(((page) >> PTI_SHIFT) & PTI_MASK)
 #define PAGE_SOFT_WS_IDX_SHIFT	52
 #define PAGE_SOFT_WS_IDX_MASK	0xFFF
 #define PAGE_NX			0x8000000000000000
 #define PAGE_LPRESENT		(PAGE_PRESENT | PAGE_LARGE)
+#endif
+#define PAGE_LARGE		0x80
+#define PAGE_PA_MASK		(0xFFFFFFFFFULL << PAGE_SHIFT)
+#define PAGE_PA(page)		((page) & PAGE_PA_MASK)
+#define PAGE_FN(page)		(((page) >> PTI_SHIFT) & PTI_MASK)
 
 #define PGF_PRESENT		0x1	/* present fault  */
 #define PGF_WRITE		0x2	/* write fault  */
@@ -112,6 +112,11 @@ extern uintptr_t pte_base;
 static inline bool page_aligned(uintptr_t addr)
 {
 	return (addr & (PAGE_SIZE - 1)) == 0;
+}
+
+static inline size_t round_to_pages(size_t size)
+{
+	return (size >> PAGE_SHIFT) + ((size & (PAGE_SIZE - 1)) != 0);
 }
 
 static inline u16 addr_offset(uintptr_t addr)
@@ -387,7 +392,8 @@ static inline void *mm_alloc_page(void)
 
 	return v;
 #else
-	return get_zeroed_page(GFP_KERNEL);
+<<<<<<< HEAD
+	return (void *)get_zeroed_page(GFP_KERNEL);
 #endif
 }
 

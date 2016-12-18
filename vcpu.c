@@ -18,6 +18,7 @@
 */
 #ifdef __linux__
 #include <linux/kernel.h>
+#include <linux/ioport.h>
 #else
 #include <ntddk.h>
 #endif
@@ -137,6 +138,41 @@ static void free_pml4_list(struct ept *ept)
 			free_entries(EPT4(ept, i), 4);
 }
 
+#ifdef __linux__
+/* FIXME: This is stupid...  */
+extern struct resource iomem_resource;
+
+static inline bool alloc_resource_pages(struct ept *ept, struct resource *r)
+{
+	VCPU_DEBUG("Allocating for %s (%p -> %p)\n",
+		   r->name, r->start, r->end);
+
+	for (unsigned long x = r->start; x < r->end; x += PAGE_SIZE)
+		for_each_eptp(i)
+			if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, x, x))
+				return false;
+	return true;
+}
+
+static bool iter_resource(struct ept *ept,
+			  struct resource *resource,
+			  const char *match)
+{
+	struct resource *tmp;
+
+	for (tmp = resource; tmp; tmp = tmp->child) {
+		if (strcmp(tmp->name, match) == 0 &&
+		    !alloc_resource_pages(ept, tmp))
+			return false;
+
+		if (tmp->sibling && !iter_resource(ept, tmp->sibling, match))
+			return false;
+	}
+
+	return true;
+}
+#endif
+
 static bool setup_pml4(struct ept *ept)
 {
 	bool ret = false;
@@ -147,19 +183,53 @@ static bool setup_pml4(struct ept *ept)
 		return false;
 
 	for (int run = 0;; ++run) {
-		uintptr_t base_addr = pm_ranges[run].BaseAddress.QuadPart;
-		uintptr_t bytes = pm_ranges[run].NumberOfBytes.QuadPart;
-		if (!base_addr || !bytes)
+		uintptr_t addr = pm_ranges[run].BaseAddress.QuadPart;
+		uintptr_t size = pm_ranges[run].NumberOfBytes.QuadPart;
+		if (!addr && !size)
 			break;
 
-		uintptr_t nr_pages = BYTES_TO_PAGES(bytes);
+		uintptr_t nr_pages = round_to_pages(size);
 		for (uintptr_t page = 0; page < nr_pages; ++page) {
-			uintptr_t page_addr = base_addr + page * PAGE_SIZE;
+			uintptr_t page_addr = addr + page * PAGE_SIZE;
 			for_each_eptp(i)
 				if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, page_addr, page_addr))
 					goto out;
 		}
 	}
+#else
+	/*
+	 * This is kinda bad, but I can't find a better way
+	 * to iterate through available physical memory ranges.
+	 * Maybe even removing this completely should be OK, and
+	 * simply hot-allocating every page needed via EPT violations.
+	 * Later on a lot come as EPT violations (DMA etc).  It's
+	 * unlikely that we'll have to allocate all the underlying
+	 * page tables (PML4, PDPT, PDT, etc.) but most likely will
+	 * just set the page to the required GPA, see ept_alloc_page().
+	 *
+	 * We're only interested in System RAM ranges, not PCI
+	 * ranges or similar, to run the guest for now, the device
+	 * ranges will fault later and will be allocated by us as
+	 * needed, otherwise if we allocate all we're probably wasting
+	 * a lot of space because not all ranges are used, see:
+	 *	cat /proc/iomem
+	 *	linux/resource.h
+	 *	kernel/resource.c
+	 * for more info.
+	 *
+	 * Linux uses resources for this kind of stuff, and an io port
+	 * resource, which isn't our interest, we're only interested
+	 * in physical memory, however, such resource is called
+	 * iomem resource, which starts off with "PCI Mem", we iterate
+	 * through the sibling of that resource to find the System RAM
+	 * resource, there are a lot more (mostly PCI ranges).
+	 *
+	 * See also:
+	 *	ept_alloc_page()
+	 *	do_ept_violation()
+	 */
+	if (!iter_resource(ept, &iomem_resource, "System RAM"))
+		return false;
 #endif
 
 	/* Allocate APIC page  */
@@ -188,6 +258,10 @@ static inline void setup_eptp(u64 *ptr, u64 pml4)
 
 static inline bool init_ept(struct ept *ept)
 {
+	ept->ptr_list = (u64 *)mm_alloc_page();
+	if (!ept->ptr_list)
+		return false;
+
 	for_each_eptp(i) {
 		u64 **pml4 = &EPT4(ept, i);
 		if (!(*pml4 = mm_alloc_page()))
@@ -201,12 +275,20 @@ static inline bool init_ept(struct ept *ept)
 
 err_pml4_list:
 	free_pml4_list(ept);
+
+	if (ept->ptr_list) {
+		mm_free_page(ept->ptr_list);
+		ept->ptr_list = NULL;
+	}
+
 	return false;
 }
 
 static inline void free_ept(struct ept *ept)
 {
 	free_pml4_list(ept);
+	if (ept->ptr_list)
+		mm_free_page(ept->ptr_list);
 }
 
 /*
@@ -241,10 +323,12 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
 	return &pd[__pte_idx(gpa)];	/* 4 KB  */
 }
 
-static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa, u64 gva, u16 eptp, u8 ar, u8 ac)
+static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa,
+			    u64 gva, u16 eptp, u8 ar, u8 ac)
 {
 	struct ept *ept = &vcpu->ept;
 	if (ar == EPT_ACCESS_NONE) {
+		/* Most likely device memory  */
 		for_each_eptp(i)
 			if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, gpa, gpa))
 				return EPT_MAX_EPTP_LIST;
@@ -256,9 +340,21 @@ static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa, u64 gva, u16 ep
 			VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
 			return eptp_switch;
 		} else {
+			/*
+			 * kprotect special handling
+			 * although should be part of epage.
+			 */
 			return kprotect_select_eptp(ept, rip, ac);
 		}
 #else
+#ifndef NESTED_VMX
+		u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
+		if (epte) {
+			__set_epte_ar_inplace(epte, ac);
+			return eptp;
+		}
+#endif
+		/* Unhandled violation  */
 		return EPT_MAX_EPTP_LIST;
 #endif
 	}
@@ -273,13 +369,16 @@ bool ept_handle_violation(struct vcpu *vcpu)
 {
 	u64 exit = vmcs_read(EXIT_QUALIFICATION);
 	u64 gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
-	u64 gva = vmcs_read(GUEST_LINEAR_ADDRESS);
+	u64 gva = 0;
 	u16 eptp = vcpu_eptp_idx(vcpu);
 	u8 ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
 	u8 ac = exit & EPT_AR_MASK;
 	char sar[3], sac[3];
 	ar_get_bits(ar, sar);
 	ar_get_bits(ac, sac);
+
+	if (exit & EPT_VE_VALID_GLA)
+		gva = vmcs_read(GUEST_LINEAR_ADDRESS);
 
 	VCPU_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   eptp, gpa, gva, ar, sar, ac, sac);
@@ -295,15 +394,15 @@ bool ept_handle_violation(struct vcpu *vcpu)
 
 /*
  * This is called from the IDT handler (__ept_violation) see x64.{S,asm}
- * We're inside Guest here
+ * We're inside guest here
  */
 void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 {
 	struct vcpu *vcpu = ksm_current_cpu();
-	struct ve_except_info *info = &vcpu->ve;
+	struct ve_except_info *info = vcpu->ve;
 
 	u64 gpa = info->gpa;
-	u64 gva = info->gla;
+	u64 gva = info->exit & EPT_VE_VALID_GLA ? info->gla : 0;
 	u64 exit = info->exit;
 	u16 eptp = info->eptp;
 	u8 ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
@@ -378,7 +477,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	for (unsigned n = 0; n < count; ++n)
 		memcpy(&shadow[n], &current_idt[n], sizeof(*shadow));
 
-	struct vmcs *vmxon = &vcpu->vmxon;
+	struct vmcs *vmxon = vcpu->vmxon;
 	vmxon->revision_id = (u32)vmx;
 
 	/*
@@ -406,7 +505,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	 * Initialize VMCS (VM control structure) that we're going to use
 	 * to store stuff in it, see setup_vmcs().
 	 */
-	struct vmcs *vmcs = &vcpu->vmcs;
+	struct vmcs *vmcs = vcpu->vmcs;
 	vmcs->revision_id = (u32)vmx;
 
 	pa = __pa(vmcs);
@@ -548,7 +647,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	/* See if we need to emulate VMFUNC via a VMCALL  */
 	if (vm_2ndctl & SECONDARY_EXEC_ENABLE_VMFUNC) {
 		err |= vmcs_write(VM_FUNCTION_CTRL, VM_FUNCTION_CTL_EPTP_SWITCHING);
-		err |= vmcs_write64(EPTP_LIST_ADDRESS, __pa(&ept->ptr_list));
+		err |= vmcs_write64(EPTP_LIST_ADDRESS, __pa(ept->ptr_list));
 	} else {
 		/* Enable emulation for VMFUNC  */
 		vcpu->vm_func_ctl |= VM_FUNCTION_CTL_EPTP_SWITCHING;
@@ -560,11 +659,11 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	 */
 	if (vm_2ndctl & SECONDARY_EXEC_ENABLE_VE) {
 		err |= vmcs_write16(EPTP_INDEX, EPTP_DEFAULT);
-		err |= vmcs_write64(VE_INFO_ADDRESS, __pa(&vcpu->ve));
+		err |= vmcs_write64(VE_INFO_ADDRESS, __pa(vcpu->ve));
 		vcpu_put_idt(vcpu, cs, X86_TRAP_VE, __ept_violation);
 	} else {
 		/* Emulate EPTP Index  */
-		struct ve_except_info *ve = &vcpu->ve;
+		struct ve_except_info *ve = vcpu->ve;
 		ve->eptp = EPTP_DEFAULT;
 	}
 
@@ -574,7 +673,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 #ifdef ENABLE_PML
 	/* PML if supported  */
 	if (vm_2ndctl & SECONDARY_EXEC_ENABLE_PML) {
-		err |= vmcs_write64(PML_ADDRESS, __pa(&vcpu->pml));
+		err |= vmcs_write64(PML_ADDRESS, __pa(vcpu->pml));
 		err |= vmcs_write16(GUEST_PML_INDEX, PML_MAX_ENTRIES - 1);
 	}
 #endif
@@ -588,16 +687,16 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write16(GUEST_GS_SELECTOR, gs);
 	err |= vmcs_write16(GUEST_LDTR_SELECTOR, ldt);
 	err |= vmcs_write16(GUEST_TR_SELECTOR, tr);
-	err |= vmcs_write32(GUEST_ES_LIMIT, __segmentlimit(es));
-	err |= vmcs_write32(GUEST_CS_LIMIT, __segmentlimit(cs));
-	err |= vmcs_write32(GUEST_SS_LIMIT, __segmentlimit(ss));
-	err |= vmcs_write32(GUEST_DS_LIMIT, __segmentlimit(ds));
-	err |= vmcs_write32(GUEST_FS_LIMIT, __segmentlimit(fs));
-	err |= vmcs_write32(GUEST_GS_LIMIT, __segmentlimit(gs));
-	err |= vmcs_write32(GUEST_LDTR_LIMIT, __segmentlimit(ldt));
-	err |= vmcs_write32(GUEST_TR_LIMIT, __segmentlimit(tr));
-	err |= vmcs_write32(GUEST_GDTR_LIMIT, gdtr.limit);
-	err |= vmcs_write32(GUEST_IDTR_LIMIT, idtr.limit);
+	err |= vmcs_write16(GUEST_ES_LIMIT, __segmentlimit(es));
+	err |= vmcs_write16(GUEST_CS_LIMIT, __segmentlimit(cs));
+	err |= vmcs_write16(GUEST_SS_LIMIT, __segmentlimit(ss));
+	err |= vmcs_write16(GUEST_DS_LIMIT, __segmentlimit(ds));
+	err |= vmcs_write16(GUEST_FS_LIMIT, __segmentlimit(fs));
+	err |= vmcs_write16(GUEST_GS_LIMIT, __segmentlimit(gs));
+	err |= vmcs_write16(GUEST_LDTR_LIMIT, __segmentlimit(ldt));
+	err |= vmcs_write16(GUEST_TR_LIMIT, __segmentlimit(tr));
+	err |= vmcs_write16(GUEST_GDTR_LIMIT, gdtr.limit);
+	err |= vmcs_write16(GUEST_IDTR_LIMIT, idtr.limit);
 	err |= vmcs_write32(GUEST_ES_AR_BYTES, __accessright(es));
 	err |= vmcs_write32(GUEST_CS_AR_BYTES, __accessright(cs));
 	err |= vmcs_write32(GUEST_SS_AR_BYTES, __accessright(ss));
@@ -611,7 +710,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write64(GUEST_IA32_DEBUGCTL, __readmsr(MSR_IA32_DEBUGCTLMSR));
 	err |= vmcs_write32(GUEST_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
 	err |= vmcs_write(GUEST_CR0, cr0);
-	err |= vmcs_write(GUEST_CR3, ksm.origin_cr3);
+	err |= vmcs_write(GUEST_CR3, ksm.kernel_cr3);
 	err |= vmcs_write(GUEST_CR4, cr4);
 	err |= vmcs_write(GUEST_ES_BASE, 0);
 	err |= vmcs_write(GUEST_CS_BASE, 0);
@@ -687,6 +786,28 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	if (!vcpu->idt.base)
 		return free_ept(&vcpu->ept);
 
+	vcpu->vmxon = mm_alloc_page();
+	if (!vcpu->vmxon)
+		goto out;
+
+	vcpu->vmcs = mm_alloc_page();
+	if (!vcpu->vmcs)
+		goto out;
+
+	vcpu->ve = mm_alloc_page();
+	if (!vcpu->ve)
+		goto out;
+
+#ifdef ENABLE_PML
+	vcpu->pml = mm_alloc_page();
+	if (!vcpu->pml)
+		goto out;
+#endif
+
+	vcpu->vapic_page = mm_alloc_page();
+	if (!vcpu->vapic_page)
+		goto out;
+
 #ifdef NESTED_VMX
 	vcpu->nested_vcpu.feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
 #endif
@@ -697,7 +818,7 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 * they try to set that bit.
 	 */
 	vcpu->cr0_guest_host_mask = 0;
-	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;
+	vcpu->cr4_guest_host_mask = 0; // X86_CR4_VMXE;
 
 	err = setup_vmcs(vcpu, sp, ip);
 	if (err) {
@@ -723,6 +844,8 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 * notice and BSOD us.
 	 */
 	__lidt(&vcpu->g_idt);
+
+out:
 	vcpu_free(vcpu);
 }
 
@@ -731,8 +854,24 @@ void vcpu_free(struct vcpu *vcpu)
 	if (vcpu->idt.base)
 		mm_free_page((void *)vcpu->idt.base);
 
+	if (vcpu->vmxon)
+		mm_free_page(vcpu->vmxon);
+
+	if (vcpu->vmcs)
+		mm_free_page(vcpu->vmcs);
+
+	if (vcpu->ve)
+		mm_free_page(vcpu->ve);
+
+#ifdef ENABLE_PML
+	if (vcpu->pml)
+		mm_free_page(vcpu->pml);
+#endif
+
+	if (vcpu->vapic_page)
+		mm_free_page(vcpu->vapic_page);
+
 	free_ept(&vcpu->ept);
-	__stosq((unsigned long long *)vcpu, 0x00, sizeof(*vcpu) >> 3);
 }
 
 void vcpu_set_mtf(bool enable)
@@ -754,7 +893,7 @@ void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 		vmcs_write16(EPTP_INDEX, index);
 	} else {
 		/* Emulated  */
-		struct ve_except_info *ve = &vcpu->ve;
+		struct ve_except_info *ve = vcpu->ve;
 		ve->eptp = index;
 	}
 

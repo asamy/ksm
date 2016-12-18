@@ -1060,7 +1060,7 @@ static inline u64 __rdtscp(u32 *cpu)
 #define __writemsr(msr, val) \
 	__asm __volatile("wrmsr\n\t"	\
 			 :: "a" ((u32)(val)), "d" ((u32)((val) >> 32)),	\
-			 "c" ((msr)))	\
+			 "c" ((msr)))
 
 #define __readcr0()	__extension__ ({	\
 	uintptr_t cr0;	\
@@ -1069,6 +1069,11 @@ static inline u64 __rdtscp(u32 *cpu)
 })
 #define __writecr0(cr0)		\
 	__asm("mov %0, %%cr0" :: "r"(cr0))
+#define __readcr2()	__extension__ ({	\
+	uintptr_t cr2;				\
+	__asm("mov %%cr2, %0" : "=r" (cr2));	\
+	cr2;	\
+})
 #define __writecr2(cr2)		\
 	__asm("mov %0, %%cr2" :: "r"(cr2))
 #define __readcr3()	__extension__ ({	\
@@ -1078,13 +1083,9 @@ static inline u64 __rdtscp(u32 *cpu)
 })
 #define __writecr3(cr3)		\
 	__asm("mov %0, %%cr3" :: "r" (cr3))
-#define __readcr4()	__extension__ ({	\
-	uintptr_t cr4;				\
-	__asm("mov %%cr4, %0" : "=r" (cr4));	\
-	cr4;	\
-})
-#define __writecr4(cr4)		\
-	__asm("mov %0, %%cr4" :: "r"(cr4))
+
+#define __readcr4	cr4_read_shadow
+#define __writecr4	cr4_set_bits
 
 #define __inbytestring(port, addr, count)	insb(port, addr, count)
 #define __inwordstring(port, addr, count)	insw(port, addr, count)
@@ -1286,7 +1287,7 @@ static inline void set_intr_gate(unsigned n, u16 selector, uintptr_t base, uintp
 	put_entry(base, n, &entry);
 }
 
-typedef union {
+typedef union __packed {
 	u64 all;
 	struct {
 		u64 limit_low : 16;
@@ -1305,7 +1306,7 @@ typedef union {
 	};
 } segmentdesc_t;
 
-typedef struct {
+typedef struct __packed {
 	segmentdesc_t d32;
 	u32 base_upper32;
 	u32 reserved;

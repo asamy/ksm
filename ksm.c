@@ -41,8 +41,12 @@ static const u64 required_feat_bits = FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_V
  * For the macro magic (aka STATIC_DEFINE_DPC, etc.) see dpc.h,
  * DPCs are for per-processor callbacks.
  */
-static void init_msr_bitmap(struct ksm *k)
+static bool init_msr_bitmap(struct ksm *k)
 {
+	k->msr_bitmap = mm_alloc_page();
+	if (!k->msr_bitmap)
+		return false;
+
 	/*
 	 * Setup the MSR bitmap, opt-in for VM-exit for some MSRs
 	 * Mostly the VMX msrs so we don't cause too much havoc.
@@ -72,15 +76,42 @@ static void init_msr_bitmap(struct ksm *k)
 	set_bit(MSR_IA32_FEATURE_CONTROL, write_lo);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		set_bit(msr, write_lo);
+
+	return true;
 }
 
-static void init_io_bitmaps(struct ksm *k)
+static bool init_io_bitmaps(struct ksm *k)
 {
+	k->io_bitmap_a = mm_alloc_page();
+	if (!k->io_bitmap_a)
+		return false;
+
+	k->io_bitmap_b = mm_alloc_page();
+	if (!k->io_bitmap_b) {
+		mm_free_page(k->io_bitmap_b);
+		return false;
+	}
+
 #if 0	/* This can be anonying  */
 	bitmap_t *bitmap_a = (bitmap_t *)(k->io_bitmap_a);
 	set_bit(0x60, bitmap_a);	/* PS/2 Mice  */
 	set_bit(0x64, bitmap_a);	/* PS/2 Mice and keyboard  */
 #endif
+	return true;
+}
+
+static void free_msr_bitmap(struct ksm *k)
+{
+	if (k->msr_bitmap)
+		mm_free_page(k->msr_bitmap);
+}
+
+static void free_io_bitmaps(struct ksm *k)
+{
+	if (k->io_bitmap_a)
+		mm_free_page(k->io_bitmap_a);
+	if (k->io_bitmap_b)
+		mm_free_page(k->io_bitmap_b);
 }
 
 int __ksm_init_cpu(struct ksm *k)
@@ -124,6 +155,7 @@ int ksm_subvert(void)
 
 int ksm_init(void)
 {
+	int err;
 	int info[4];
 	__cpuidex(info, 1, 0);
 
@@ -149,9 +181,21 @@ int ksm_init(void)
 	htable_init(&ksm.ht, rehash, NULL);
 #endif
 
-	init_msr_bitmap(&ksm);
-	init_io_bitmaps(&ksm);
-	return ksm_subvert();
+	if (!init_msr_bitmap(&ksm))
+		return ERR_NOMEM;
+
+	if (!init_io_bitmaps(&ksm)) {
+		free_msr_bitmap(&ksm);
+		return ERR_NOMEM;
+	}
+
+	err = ksm_subvert();
+	if (err < 0) {
+		free_msr_bitmap(&ksm);
+		free_io_bitmaps(&ksm);
+	}
+
+	return err;
 }
 
 static int __ksm_exit_cpu(struct ksm *k)
@@ -188,6 +232,8 @@ int ksm_unsubvert(void)
 
 int ksm_exit(void)
 {
+	free_msr_bitmap(&ksm);
+	free_io_bitmaps(&ksm);
 #ifdef EPAGE_HOOK
 	htable_clear(&ksm.ht);
 #endif

@@ -100,16 +100,16 @@
 
 #ifdef DBG
 #ifdef __linux__
-#define VCPU_DEBUG(fmt, args...)	printk(KERN_INFO "CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
-#define VCPU_DEBUG_RAW(str)		printk(KERN_INFO "CPU %d: %s: " str, cpu_nr(), __func__)
+#define VCPU_DEBUG(fmt, args...)	printk(KERN_INFO "ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
+#define VCPU_DEBUG_RAW(str)		printk(KERN_INFO "ksm: CPU %d: %s: " str, cpu_nr(), __func__)
 #else
 #ifdef _MSC_VER
-#define VCPU_DEBUG(fmt, ...)		do_print("CPU %d: " __func__ ": " fmt, cpu_nr(), __VA_ARGS__)
-#define VCPU_DEBUG_RAW(str)		do_print("CPU %d: " __func__ ": " str, cpu_nr())
+#define VCPU_DEBUG(fmt, ...)		do_print("ksm: CPU %d: " __func__ ": " fmt, cpu_nr(), __VA_ARGS__)
+#define VCPU_DEBUG_RAW(str)		do_print("ksm: CPU %d: " __func__ ": " str, cpu_nr())
 #else
 /* avoid warning on empty argument list  */
-#define VCPU_DEBUG(fmt, args...)	do_print("CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
-#define VCPU_DEBUG_RAW(str)		do_print("CPU %d: %s: " str, cpu_nr(), __func__)
+#define VCPU_DEBUG(fmt, args...)	do_print("ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
+#define VCPU_DEBUG_RAW(str)		do_print("ksm: CPU %d: %s: " str, cpu_nr(), __func__)
 #endif
 #endif
 #else
@@ -238,7 +238,7 @@ struct pi_desc {
 		u64 control;
 	};
 	u32 rsvd[6];
-};
+} __align(64);
 
 static inline bool pi_test_bit(struct pi_desc *d, int vector)
 {
@@ -256,21 +256,6 @@ static inline void pi_clear_irq(struct pi_desc *d, int vector)
 	clear_bit(vector, (bitmap_t *)d->pir);
 	d->on = 0;
 }
-
-/* #VE (EPT Violation via IDT exception informaiton)  */
-struct ve_except_info {
-	u32 reason;		/* EXIT_REASON_EPT_VIOLATION  */
-	u32 except_mask;	/* FFFFFFFF (set to 0 to deliver more)  */
-	u64 exit;		/* normal exit qualification bits, see above  */
-	u64 gla;		/* guest linear address */
-	u64 gpa;		/* guest physical address  */
-	u16 eptp;		/* current EPTP index  */
-};
-
-struct ept {
-	__align(PAGE_SIZE) u64 ptr_list[EPT_MAX_EPTP_LIST];
-	u64 *pml4_list[EPTP_USED];
-};
 
 #ifdef NESTED_VMX
 #define VMCS_LAUNCH_STATE_NONE		0	/* no state  */
@@ -350,16 +335,31 @@ struct pending_irq {
 #define PML_MAX_ENTRIES		512
 #endif
 
+/* #VE (EPT Violation via IDT exception informaiton)  */
+struct ve_except_info {
+	u32 reason;		/* EXIT_REASON_EPT_VIOLATION  */
+	u32 except_mask;	/* FFFFFFFF (set to 0 to deliver more)  */
+	u64 exit;		/* normal exit qualification bits, see above  */
+	u64 gla;		/* guest linear address */
+	u64 gpa;		/* guest physical address  */
+	u16 eptp;		/* current EPTP index  */
+};
+
+struct ept {
+	u64 *ptr_list;
+	u64 *pml4_list[EPTP_USED];
+};
+
 struct vcpu {
 	__align(PAGE_SIZE) u8 stack[KERNEL_STACK_SIZE];
-	__align(PAGE_SIZE) u8 vapic_page[PAGE_SIZE];
+	void *vapic_page;
 #ifdef ENABLE_PML
-	__align(PAGE_SIZE) uintptr_t pml[PML_MAX_ENTRIES];
+	void *pml;
 #endif
-	__align(PAGE_SIZE) struct vmcs vmxon;
-	__align(PAGE_SIZE) struct vmcs vmcs;
-	__align(PAGE_SIZE) struct ve_except_info ve;
-	__align(64) struct pi_desc pi_desc;
+	struct vmcs *vmxon;
+	struct vmcs *vmcs;
+	struct ve_except_info *ve;
+	struct pi_desc pi_desc;
 	u32 entry_ctl;
 	u32 exit_ctl;
 	u32 pin_ctl;
@@ -472,9 +472,9 @@ struct ksm {
 #ifdef EPAGE_HOOK
 	struct htable ht;
 #endif
-	__align(PAGE_SIZE) u8 msr_bitmap[PAGE_SIZE];
-	__align(PAGE_SIZE) u8 io_bitmap_a[PAGE_SIZE];
-	__align(PAGE_SIZE) u8 io_bitmap_b[PAGE_SIZE];
+	void *msr_bitmap;
+	void *io_bitmap_a;
+	void *io_bitmap_b;
 };
 extern struct ksm ksm;
 
@@ -530,7 +530,7 @@ static inline u16 vcpu_eptp_idx(const struct vcpu *vcpu)
 	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VE)
 		return vmcs_read16(EPTP_INDEX);
 
-	const struct ve_except_info *ve = &vcpu->ve;
+	const struct ve_except_info *ve = vcpu->ve;
 	return ve->eptp;
 }
 
