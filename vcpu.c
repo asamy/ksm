@@ -468,8 +468,8 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	u16 tr = __str();
 	u8 err = 0;
 
-	uintptr_t cr0;
-	uintptr_t cr4;
+	uintptr_t cr0 = __readcr0();
+	uintptr_t cr4 = __readcr4();
 	uintptr_t cr3 = __readcr3();
 
 	__sgdt(&gdtr);
@@ -484,12 +484,10 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	vmxon = vcpu->vmxon;
 	vmxon->revision_id = (u32)vmx;
 
-	cr0 = __readcr0();
 	cr0 &= __readmsr(MSR_IA32_VMX_CR0_FIXED1);
 	cr0 |= __readmsr(MSR_IA32_VMX_CR0_FIXED0);
 	__writecr0(cr0);
 
-	cr4 = __readcr4();
 	cr4 &= __readmsr(MSR_IA32_VMX_CR4_FIXED1);
 	cr4 |= __readmsr(MSR_IA32_VMX_CR4_FIXED0);
 	__writecr4(cr4);
@@ -547,9 +545,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	vcpu->pin_ctl = vm_pinctl;
 
 	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID
-#if 0
 		| SECONDARY_EXEC_XSAVES | SECONDARY_EXEC_UNRESTRICTED_GUEST
-#endif
 #ifndef EMULATE_VMFUNC
 		| SECONDARY_EXEC_ENABLE_VMFUNC
 #endif

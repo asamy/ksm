@@ -380,8 +380,8 @@ static inline uintptr_t subst_addr(uintptr_t *pte)
 #ifdef __linux__
 static inline void __stosq(unsigned long long *a, unsigned long x, unsigned long count)
 {
-	__asm __volatile("rep; stosq\n\t"
-			 :: "c" (count), "a" (x), "D" (a));
+	/* Generates stosq anyway...  */
+	memset(a, x, count << 3);
 }
 #endif
 
@@ -409,7 +409,7 @@ static inline void __mm_free_page(void *v)
 
 static inline void mm_free_page(void *v)
 {
-//	__stosq(v, 0, PAGE_SIZE >> 3);
+	__stosq(v, 0, PAGE_SIZE >> 3);
 	__mm_free_page(v);
 }
 
@@ -417,8 +417,8 @@ static inline void *mm_alloc_pool(size_t size)
 {
 #ifndef __linux__
 	void *v = ExAllocatePool(NonPagedPool, size);
-//	if (v)
-//		__stosq(v, 0, size >> 3);
+	if (v)
+		__stosq(v, 0, size >> 3);
 
 	return v;
 #else
@@ -428,8 +428,8 @@ static inline void *mm_alloc_pool(size_t size)
 
 static inline void mm_free_pool(void *v, size_t size)
 {
-//	if (size)
-//		__stosq(v, 0, size >> 3);
+	if (size)
+		__stosq(v, 0, size >> 3);
 
 #ifdef __linux__
 	kfree(v);
