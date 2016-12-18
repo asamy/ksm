@@ -23,12 +23,41 @@
 #include <linux/init.h>
 #include <linux/workqueue.h>
 #include <linux/sched.h>
+#include <linux/cpu.h>
 
 #include "ksm.h"
 
 static void ksm_worker(struct work_struct *);
 static struct workqueue_struct *wq;
 static DECLARE_DELAYED_WORK(work, ksm_worker);
+
+static inline void do_cpu(void *v)
+{
+	int (*f) (struct ksm *) = v;
+	VCPU_DEBUG("On CPU calling %p\n", f);
+	f(&ksm);
+}
+
+static int cpu_callback(struct notifier_block *nfb, unsigned long action, void *hcpu)
+{
+	unsigned long cpu = (unsigned long)hcpu;
+
+	VCPU_DEBUG("CPU %d action: %d\n", cpu, action);
+	switch (action) {
+	case CPU_ONLINE:
+		smp_call_function_single(cpu, do_cpu, __ksm_init_cpu, 1);
+		break;
+	case CPU_DOWN_PREPARE:
+		smp_call_function_single(cpu, do_cpu, __ksm_exit_cpu, 1);
+		break;
+	}
+
+	return NOTIFY_OK;
+}
+
+static struct notifier_block cpu_notify = {
+	.notifier_call = cpu_callback
+};
 
 static void ksm_worker(struct work_struct *w)
 {
@@ -48,11 +77,13 @@ int __init ksm_start(void)
 	}
 
 	VCPU_DEBUG_RAW("Done, wait for wq to fire\n");
+	register_hotcpu_notifier(&cpu_notify);
 	return 0;
 }
 
 void __exit ksm_cleanup(void)
 {
+	unregister_hotcpu_notifier(&cpu_notify);
 	destroy_workqueue(wq);
 	VCPU_DEBUG("exit: %d\n", ksm_exit());
 	VCPU_DEBUG("Bye\n");

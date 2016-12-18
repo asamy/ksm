@@ -103,7 +103,7 @@ typedef signed long long intptr_t;
 #define STATUS_HV_ACCESS_DENIED				((NTSTATUS)0xC0350006L)
 #define STATUS_HV_NOT_PRESENT				((NTSTATUS)0xC0351000L)
 #endif
-#define ERR_EXIST 		STATUS_HV_NOT_PRESENT
+#define ERR_NOTH 		STATUS_HV_NOT_PRESENT
 #define ERR_CPUID		STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR
 #define ERR_NESTED		STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE
 #define ERR_FEAT		STATUS_HV_FEATURE_UNAVAILABLE
@@ -117,7 +117,7 @@ typedef signed long long intptr_t;
 #define __align(alignment)	__attribute__((__aligned__(alignment)))
 #define KERNEL_STACK_SIZE	(6 << PAGE_SHIFT)
 
-#define ERR_EXIST 		-EEXIST
+#define ERR_NOTH 		-EEXIST
 #define ERR_CPUID		-EOPNOTSUPP
 #define ERR_NESTED		-ENODEV
 #define ERR_FEAT		-ENOENT

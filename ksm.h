@@ -490,6 +490,7 @@ extern int ksm_exit(void);
 extern int ksm_subvert(void);
 extern int ksm_unsubvert(void);
 extern int __ksm_init_cpu(struct ksm *k);
+extern int __ksm_exit_cpu(struct ksm *k);
 extern int ksm_hook_idt(unsigned n, void *h);
 extern int ksm_free_idt(unsigned n);
 extern struct vcpu *ksm_current_cpu(void);

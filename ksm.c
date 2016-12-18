@@ -137,6 +137,8 @@ int __ksm_init_cpu(struct ksm *k)
 
 
 		bool ok = __vmx_vminit(&k->vcpu_list[cpu_nr()]);
+		VCPU_DEBUG("Started: %d\n", ok);
+
 		if (ok) {
 			k->active_vcpus++;
 			return 0;
@@ -205,7 +207,7 @@ int ksm_init(void)
 	return err;
 }
 
-static int __ksm_exit_cpu(struct ksm *k)
+int __ksm_exit_cpu(struct ksm *k)
 {
 	u8 err;
 
@@ -242,7 +244,7 @@ int ksm_exit(void)
 {
 	int err;
 	if (ksm.active_vcpus == 0)
-		return ERR_EXIST;
+		return ERR_NOTH;
 
 	err = ksm_unsubvert();
 	if (err == 0) {
