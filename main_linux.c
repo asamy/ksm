@@ -22,6 +22,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/workqueue.h>
+#include <linux/sched.h>
 
 #include "ksm.h"
 
