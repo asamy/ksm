@@ -1,4 +1,4 @@
-# ksm [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=linux)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)
+# ksm [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)
 
 A really simple and lightweight x64 hypervisor written in C for Intel processors.  
 KSM aims to be fully feature fledged and as general purpose as possible.  KSM uses
@@ -88,7 +88,7 @@ Simply `make`.
 
 #### Compiling under MinGW
 
-Simply `make C=1` (if cross compiling under Linux) or `mingw32-make` (under native).
+Simply `make -f Makefile.windows C=1` (if cross compiling under Linux) or `mingw32-make -f Makefile.windows` (under native).
 
 ##### Makefile variables
 
@@ -104,7 +104,8 @@ also need the Windows Driver Development Kit.
 
 ### On Linux
 Loading:
-- `make load`
+- `make load`  
+
 Unloading:
 - `make unload`
 
@@ -199,7 +200,8 @@ If it's a crash, please provide the following:
 
 ### For Linux
 
-You're better off debugging it yourself.
+You're better off debugging it yourself or report the stack dump reported via
+dmeg or kernel panic.
 
 ## Thanks to...
 

@@ -1076,9 +1076,13 @@ static inline void __writemsr(u32 msr, unsigned long val)
 })
 #define __writecr2(cr2)		\
 	__asm("mov %0, %%cr2" :: "r"(cr2))
-
-#define __readcr4 	cr4_read_shadow
-#define __writecr4 	cr4_set_bits
+#define __readcr4 	__extension__ ({	\
+	uintptr_t cr4;				\
+	__asm("mov %%cr4, %0" : "=r" (cr4));	\
+	cr4;	\
+})
+#define __writecr4(cr4)				\
+	__asm("mov %0, %%cr4" :: "r"(cr4))
 
 #define __inbytestring(port, addr, count)	insb(port, addr, count)
 #define __inwordstring(port, addr, count)	insw(port, addr, count)
