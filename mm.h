@@ -488,7 +488,37 @@ static inline void kunmap_iomem(void *addr, unsigned long size)
 	/* Do nothing  */
 }
 
-/* Taken from KSplice  */
+/*
+ * From KSplice:
+ *
+ *  Original:
+ *	 * map_writable creates a shadow page mapping of the range
+ *	 [addr, addr + len) so that we can write to code mapped read-only.
+ *
+ *	 It is similar to a generalized version of x86's text_poke.  But
+ *	 because one cannot use vmalloc/vfree() inside stop_machine, we use
+ *	 map_writable to map the pages before stop_machine, then use the
+ *	 mapping inside stop_machine, and unmap the pages afterwards.
+ *
+ *	https://github.com/jirislaby/ksplice/tree/master
+ *	kmodsrc/ksplice.c
+ *
+ *  Copyright (C) 2007-2009  Ksplice, Inc.
+ *  Authors: Jeff Arnold, Anders Kaseorg, Tim Abbott
+ *
+ *  This program is free software; you can redistribute it and/or modify
+ *  it under the terms of the GNU General Public License, version 2.
+ *
+ *  This program is distributed in the hope that it will be useful,
+ *  but WITHOUT ANY WARRANTY; without even the implied warranty of
+ *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ *  GNU General Public License for more details.
+ *
+ *  You should have received a copy of the GNU General Public License
+ *  along with this program; if not, write to the Free Software
+ *  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
+ *  02110-1301, USA.
+ */
 static void *map_exec(void *addr, size_t len)
 {
 	int i;

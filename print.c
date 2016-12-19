@@ -79,6 +79,8 @@ static HANDLE file;
 /*
  * Taken from:
  * 	https://searchcode.com/codesearch/view/20802857/
+ *
+ * public domain.
 */
 typedef char *STRSAFE_LPSTR;
 typedef const char *STRSAFE_LPCSTR;

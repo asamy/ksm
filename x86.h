@@ -1,5 +1,10 @@
-/* Mostly MSR indices and other stuff,
- * Hacked off the Linux Kernel.  */
+/*
+ * Mostly MSR indices, APIC stuff, etc.
+ * Hacked off the Linux Kernel.
+ *
+ * From:
+ *	arch/x86/include/uapi/asm
+ */
 #ifndef __X86_H
 #define __X86_H
 

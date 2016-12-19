@@ -1,5 +1,25 @@
-/* VT-x based stuff here, only defines, etc...
- * Hacked from the Linux kernel.  */
+/*
+ * VT-x based stuff here, only defines, etc...
+ * Hacked from the Linux kernel.
+ *
+ * Partially taken from arch/x86/include/asm/virtext.h:
+ *	CPU virtualization extensions handling
+ *
+ *	This should carry the code for handling CPU virtualization extensions
+ *	that needs to live in the kernel core.
+ *
+ *	Author: Eduardo Habkost <ehabkost@redhat.com>
+ *
+ *	Copyright (C) 2008, Red Hat Inc.
+ *	Contains code from KVM, Copyright (C) 2006 Qumranet, Inc.
+ *
+ *	This work is licensed under the terms of the GNU GPL, version 2.  See
+ *	the COPYING file in the top-level directory.
+ *
+ * Along with modification from:
+ *	Ahmed Samy, 2016 <f.fallen45@gmail.com>
+ * Windows fixes, and updates from the Intel manual tables.
+ */
 #ifndef __VMX_H
 #define __VMX_H
 
