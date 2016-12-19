@@ -25,6 +25,7 @@
 #include <linux/highmem.h>
 #include <linux/vmalloc.h>
 #include <linux/module.h>
+#include <linux/sched.h>
 #endif
 
 #ifndef PXI_SHIFT
@@ -72,6 +73,7 @@ extern uintptr_t pxe_base;
 extern uintptr_t ppe_base;
 extern uintptr_t pde_base;
 extern uintptr_t pte_base;
+#endif
 
 #define PAGE_PRESENT		0x1
 #define PAGE_WRITE		0x2
@@ -80,19 +82,18 @@ extern uintptr_t pte_base;
 #define PAGE_CACHEDISABLE	0x10
 #define PAGE_ACCESSED		0x20
 #define PAGE_DIRTY		0x40
+#define PAGE_LARGE		0x80
 #define PAGE_GLOBAL		0x100
 #define PAGE_COPYONWRITE	0x200
 #define PAGE_PROTOTYPE		0x400
 #define PAGE_TRANSIT		0x800
+#define PAGE_PA_MASK		(0xFFFFFFFFFULL << PAGE_SHIFT)
+#define PAGE_PA(page)		((page) & PAGE_PA_MASK)
+#define PAGE_FN(page)		(((page) >> PTI_SHIFT) & PTI_MASK)
 #define PAGE_SOFT_WS_IDX_SHIFT	52
 #define PAGE_SOFT_WS_IDX_MASK	0xFFF
 #define PAGE_NX			0x8000000000000000
 #define PAGE_LPRESENT		(PAGE_PRESENT | PAGE_LARGE)
-#endif
-#define PAGE_LARGE		0x80
-#define PAGE_PA_MASK		(0xFFFFFFFFFULL << PAGE_SHIFT)
-#define PAGE_PA(page)		((page) & PAGE_PA_MASK)
-#define PAGE_FN(page)		(((page) >> PTI_SHIFT) & PTI_MASK)
 
 #define PGF_PRESENT		0x1	/* present fault  */
 #define PGF_WRITE		0x2	/* write fault  */
@@ -134,6 +135,11 @@ static inline bool same_page(uintptr_t a1, uintptr_t a2)
 	return page_align(a1) == page_align(a2);
 }
 
+static inline bool is_canonical_addr(u64 addr)
+{
+	return (s64)addr >> 47 == (s64)addr >> 63;
+}
+
 static inline u64 *page_addr(u64 *pte)
 {
 	if (!pte || !*pte)
@@ -142,40 +148,35 @@ static inline u64 *page_addr(u64 *pte)
 	return __va(PAGE_PA(*pte));
 }
 
-#ifndef __linux
 static inline int pte_soft_ws_idx(u64 *pte)
 {
 	return (*pte >> PAGE_SOFT_WS_IDX_SHIFT) & PAGE_SOFT_WS_IDX_MASK;
 }
 
-static inline bool pte_present(uintptr_t *pte)
-{
-	return *pte & PAGE_PRESENT;
-}
-
-static inline bool pte_large(uintptr_t *pte)
+static inline bool pte_large(u64 *pte)
 {
 	return *pte & PAGE_LARGE;
 }
 
-static inline bool pte_trans(uintptr_t *pte)
+#ifndef __linux__
+static inline bool pte_trans(u64 *pte)
 {
 	return *pte & PAGE_TRANSIT;
 }
 
-static inline bool pte_prototype(uintptr_t *pte)
+static inline bool pte_prototype(u64 *pte)
 {
 	return *pte & PAGE_PROTOTYPE;
 }
 
-static inline bool pte_large_present(uintptr_t *pte)
+static inline bool pte_large_present(u64 *pte)
 {
 	return (*pte & PAGE_LPRESENT) == PAGE_LPRESENT;
 }
 
-static inline bool pte_swapper(uintptr_t *pte)
+static inline bool pte_swapper(u64 *pte)
 {
-	if (pte_present(pte))
+	if (*pte & PAGE_PRESENT)
 		return false;
 
 	return pte_trans(pte) && !pte_prototype(pte);
@@ -221,7 +222,7 @@ static inline uintptr_t va_to_pa(uintptr_t va)
 	if (!pte_large(pte))
 		pte = va_to_pte(va);
 
-	if (!pte_present(pte))
+	if (!(*pte & PAGE_PRESENT))
 		return 0;
 
 	return PAGE_PA(*pte) | addr_offset(va);
@@ -242,7 +243,7 @@ static inline u64 *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
 		return 0;
 
 	u64 *pdte = &pdt[__pde_idx(va)];
-	if (!pte_present(pdte))
+	if (!(*pdte & PAGE_PRESENT))
 		return 0;
 
 	if (pte_large(pdte))
@@ -255,18 +256,9 @@ static inline u64 *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
 	return 0;
 }
 
-static inline u64 cr3_resolve_va(uintptr_t cr3, uintptr_t va)
-{
-	u64 *page = __cr3_resolve_va(cr3, va);
-	if (!pte_present(page))
-		return 0;
-
-	return PAGE_PA(*page) | addr_offset(va);
-}
-
 static inline bool consult_vad(uintptr_t va)
 {
-	return !pte_present(va_to_pde(va)) || *va_to_pte(va) == 0;
+	return !(*va_to_pde(va) & PAGE_PRESENT) || *va_to_pte(va) == 0;
 }
 
 static inline bool is_software_pte(uintptr_t *pte)
@@ -276,18 +268,18 @@ static inline bool is_software_pte(uintptr_t *pte)
 
 static inline bool is_subsection_pte(uintptr_t *pte)
 {
-	return !pte_present(pte) && pte_prototype(pte);
+	return !(*pte & PAGE_PRESENT) && pte_prototype(pte);
 }
 
 static inline bool is_demandzero_pte(uintptr_t *pte)
 {
-	return !pte_present(pte) && !pte_prototype(pte) && !pte_trans(pte);
+	return !(*pte & PAGE_PRESENT) && !pte_prototype(pte) && !pte_trans(pte);
 }
 
 static inline bool is_phys(uintptr_t va)
 {
-	return pte_present(va_to_pxe(va)) && pte_present(va_to_ppe(va)) &&
-		(pte_large_present(va_to_pde(va)) || pte_present(va_to_pte(va)));
+	return (*va_to_pxe(va) & PAGE_PRESENT) && (*va_to_ppe(va) & PAGE_PRESENT) &&
+		(pte_large_present(va_to_pde(va)) || (*va_to_pte(va) & PAGE_PRESENT));
 }
 
 /* Transitition page  (Unique defines only...)  */
@@ -377,15 +369,45 @@ static inline uintptr_t subst_addr(uintptr_t *pte)
 	return (*pte >> SSP_SUBST_ADDR_SHIFT) & SSP_SUBST_ADDR_MASK;
 }
 #endif
-#endif
+#else
+static inline u64 *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
+{
+	pgd_t *pgd;
+	pud_t *pud;
+	pmd_t *pmd;
+	pte_t *pte;
 
-#ifdef __linux__
+	pgd = pgd_offset(current->mm, va);
+	if (pgd_none(*pgd) || pgd_bad(*pgd))
+		return 0;
+
+	pud = pud_offset(pgd, va);
+	if (pud_none(*pud) || pud_bad(*pud))
+		return 0;
+
+	pmd = pmd_offset(pud, va);
+	if (pmd_none(*pmd) || pmd_bad(*pmd))
+		return 0;
+
+	pte = pte_offset_kernel(pmd, va);
+	return (u64 *)pte;
+}
+
 static inline void __stosq(unsigned long long *a, unsigned long x, unsigned long count)
 {
 	/* Generates stosq anyway...  */
 	memset(a, x, count << 3);
 }
 #endif
+
+static inline u64 cr3_resolve_va(uintptr_t cr3, uintptr_t va)
+{
+	u64 *page = __cr3_resolve_va(cr3, va);
+	if (!page)
+		return 0;
+
+	return PAGE_PA(*page) | addr_offset(va);
+}
 
 static inline void *mm_alloc_page(void)
 {

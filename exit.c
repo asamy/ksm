@@ -389,6 +389,9 @@ static inline u64 __nested_vmcs_read(uintptr_t vmcs, u32 field)
 		if (field & 1)	/* _HIGH  */
 			v >>= 32;
 		break;
+	case FIELD_NATURAL:
+	default:
+		break;
 	}
 
 	return v;
@@ -545,7 +548,7 @@ static inline u64 gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3, uintptr_t gva, u3
 	if (ac & PAGE_WRITE)
 		pgf |= PGF_WRITE;
 
-	if (!pte || (*pte & pgf) != pgf) {
+	if (!pte || (*pte & ac) != ac) {
 		vcpu_inject_pf(vcpu, gva, pgf);
 		return 0;
 	}
@@ -556,7 +559,7 @@ static inline u64 gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3, uintptr_t gva, u3
 static inline bool gpa_to_hpa(struct vcpu *vcpu, u64 gpa, u64 *hpa)
 {
 	struct ept *ept = &vcpu->ept;
-	uintptr_t *epte = ept_pte(EPT4(ept, vcpu_eptp_idx(vcpu)), gpa);
+	u64 *epte = ept_pte(EPT4(ept, vcpu_eptp_idx(vcpu)), gpa);
 	if (!(*epte & EPT_ACCESS_RW))
 		return false;
 
@@ -603,7 +606,7 @@ static inline bool nested_inject_ve(struct vcpu *vcpu)
 
 	/* Set appropriate data in VE structure  */
 	info->eptp = __nested_vmcs_read16(vmcs, EPTP_INDEX);
-	info->except_mask = ~0UL;
+	info->except_mask = (u32)~0UL;
 	info->reason = EXIT_REASON_EPT_VIOLATION;
 	info->gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
 	info->gla = vmcs_read(GUEST_LINEAR_ADDRESS);
@@ -1062,8 +1065,6 @@ static inline void nested_save_guest_state(struct nested_vcpu *nested)
 
 static inline bool nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 {
-	struct nested_vcpu *nested = &vcpu->nested_vcpu;
-	bool secondary = nested_has_primary(nested, CPU_BASED_ACTIVATE_SECONDARY_CONTROLS);
 	u8 err = 0;
 
 	err |= vmcs_write(GUEST_RIP, __nested_vmcs_read(vmcs, HOST_RIP));
@@ -1143,9 +1144,8 @@ static inline bool nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 	err |= vmcs_write16(VIRTUAL_PROCESSOR_ID, vpid_nr());
 
 	vcpu_switch_root_eptp(vcpu, vcpu_eptp_idx(vcpu));
-	if (err == 0) {
+	if (err == 0)
 		__invvpid_all();
-	}
 
 	return err == 0;
 }
@@ -1502,19 +1502,8 @@ static inline bool nested_translate_gva(struct vcpu *vcpu, u64 gva, u64 mask, u6
 	if (mask & PAGE_WRITE)
 		ec |= PGF_WRITE;
 
-	uintptr_t *pte = va_to_pxe(gva);
-	if (!pte || !pte_present(pte))
-		goto fault;
-
-	pte = va_to_ppe(gva);
-	if (!pte || !pte_present(pte))
-		goto fault;
-
-	pte = va_to_pde(gva);
-	if (!pte_present(pte))
-		goto fault;
-
-	if (!pte_large(pte) && !(pte = va_to_pte(gva)))
+	u64 *pte = __cr3_resolve_va(vmcs_read(GUEST_CR3), gva);
+	if (!pte)
 		goto fault;
 
 	if ((*pte & mask) == mask) {
@@ -1526,11 +1515,6 @@ static inline bool nested_translate_gva(struct vcpu *vcpu, u64 gva, u64 mask, u6
 fault:
 	vcpu_inject_pf(vcpu, gva, ec);
 	return false;
-}
-
-static inline bool is_canonical_addr(u64 gva)
-{
-	return (s64)gva >> 47 == (s64)gva >> 63;
 }
 
 static inline bool vcpu_parse_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst, u64 *out)
@@ -1710,8 +1694,6 @@ static bool vcpu_handle_vmptrst(struct vcpu *vcpu)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	u64 gva = 0;
-	u64 gpa = 0;
-	u64 hpa = 0;
 
 	if (!nested_can_exec_vmx(vcpu))
 		goto out;
@@ -1783,9 +1765,7 @@ static bool vcpu_handle_vmwrite(struct vcpu *vcpu)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	uintptr_t vmcs = nested->vmcs;
-	u64 gpa = 0;
 	u64 gva = 0;
-	u64 hpa = 0;
 
 	if (!nested_can_exec_vmx(vcpu) || vmcs == 0)
 		goto out;
@@ -1823,9 +1803,6 @@ out:
 static bool vcpu_handle_vmoff(struct vcpu *vcpu)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
-	uintptr_t vmcs = nested->vmcs;
-	u64 gpa = 0;
-	u64 gva = 0;
 
 	/* can only be executed from root  */
 	if (!nested_can_exec_vmx(vcpu))
@@ -1927,7 +1904,7 @@ static bool vcpu_handle_invept(struct vcpu *vcpu)
 	u64 disp = vmcs_read(EXIT_QUALIFICATION);
 	u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
 	if (!vcpu_parse_vmx_addr(vcpu, disp, inst, &gva) ||
-	    !vcpu_read_vmx_addr(vcpu, gva, &ept))
+	    !vcpu_read_vmx_addr(vcpu, gva, (u64 *)&ept))
 		goto out;
 
 	u32 info = vmcs_read32(VMX_INSTRUCTION_INFO);
@@ -1966,7 +1943,7 @@ static bool vcpu_handle_invvpid(struct vcpu *vcpu)
 	u64 disp = vmcs_read(EXIT_QUALIFICATION);
 	u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
 	if (!vcpu_parse_vmx_addr(vcpu, disp, inst, &gva) ||
-	    !vcpu_read_vmx_addr(vcpu, gva, &vpid))
+	    !vcpu_read_vmx_addr(vcpu, gva, (u64 *)&vpid))
 		goto out;
 
 	u32 info = vmcs_read32(VMX_INSTRUCTION_INFO);

@@ -817,12 +817,7 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 * they try to set that bit.
 	 */
 	vcpu->cr0_guest_host_mask = 0;
-	vcpu->cr4_guest_host_mask = 0; // X86_CR4_VMXE;
-
-#ifdef __linux__
-	unsigned long rflags;
-	local_irq_save(rflags);
-#endif
+	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;
 
 	err = setup_vmcs(vcpu, sp, ip);
 	if (err) {
@@ -841,10 +836,6 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 			VCPU_DEBUG("__vmx_vmlaunch(): failed %d\n", vm_err);
 		}
 	}
-
-#ifdef __linux__
-	local_irq_restore(rflags);
-#endif
 
 	/*
 	 * setup_vmcs()/__vmx_vmlaunch() failed if we got here,

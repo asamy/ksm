@@ -1504,12 +1504,14 @@ enum ioapic_dest {
 	IOAPIC_DEST_RSVD2 = 6,
 	IOAPIC_DEST_EXTINTR = 7,
 };
+#endif
 
 static inline bool lapic_in_kernel(void)
 {
 	return __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_ENABLE;
 }
 
+#ifndef __linux__
 static inline bool x2apic_enabled(void)
 {
 	return __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_X2APIC;
