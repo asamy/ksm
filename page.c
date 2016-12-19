@@ -2,19 +2,17 @@
  * ksm - a really simple and fast x64 hypervisor
  * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * You should have received a copy of the GNU General Public License along with
+ * this program; If not, see <http://www.gnu.org/licenses/>.
 */
 #ifdef EPAGE_HOOK
 #ifdef __linux__
@@ -94,12 +92,15 @@ int ksm_hook_epage(void *original, void *redirect)
 	void *tmp = mm_alloc_page();
 	phi->backing_page = tmp;
 
-	u8 *code_page = map_exec(tmp, PAGE_SIZE);
+	u8 *code_page = kmap_exec(tmp, PAGE_SIZE);
 #else
 	u8 *code_page = MmAllocateContiguousMemory(PAGE_SIZE,
 						  (PHYSICAL_ADDRESS) { .QuadPart = -1 });
 #endif
 	if (!code_page) {
+#ifdef __linux__
+		mm_free_page(tmp);
+#endif
 		mm_free_pool(phi, sizeof(*phi));
 		return ERR_NOMEM;
 	}

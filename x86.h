@@ -981,15 +981,21 @@ complete list. */
 #define MSR_VM_IGNNE                    0xc0010115
 #define MSR_VM_HSAVE_PA                 0xc0010117
 
-#define __cli()			_disable()
-#define __sti()			_enable()
 #ifndef _MSC_VER
+#ifndef __cli
+#define __cli			__asm("cli")
+#endif
+#ifndef __sti
+#define __sti			__asm("sti")
+#endif
 #define __return_addr()		__builtin_return_address(0)
 #define cpu_relax()		__asm __volatile("pause\n\t" ::: "memory")
 #ifndef __linux__
 #define barrier() 		__asm __volatile("lock orq $0, 0(%%rsp)" ::: "memory")
 #endif
 #else
+#define __cli()			_disable()
+#define __sti()			_enable()
 #define __return_addr()		_ReturnAddress()
 #define cpu_relax()		_mm_pause()
 #define barrier() 		_ReadWriteBarrier()
@@ -1061,7 +1067,7 @@ static inline unsigned long __readmsr(u32 msr)
 	return x;
 }
 
-static inline void __writemsr(u32 msr, unsigned long val)
+static inline void __writemsr(u32 msr, u64 val)
 {
 	wrmsr(msr, (u32)val, (u32)(val >> 32));
 }

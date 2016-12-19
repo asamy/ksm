@@ -8,19 +8,17 @@
  *	2) injects an exception into guest
  * Otherwise it returns execution to guest.
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * You should have received a copy of the GNU General Public License along with
+ * this program; If not, see <http://www.gnu.org/licenses/>.
 */
 #ifdef __linux__
 #include <linux/kernel.h>
@@ -242,6 +240,10 @@ static const u32 supported_fields[] = {
  * From XEN:
  *	include/asm-x86/hvm/vmx/vvmx.h
  *	arch/x86/hvm/vmx/vvmx.c
+ *
+ * Copyright (c) 2010, Intel Corporation.
+ * Author: Qing He <qing.he@intel.com>
+ *         Eddie Dong <eddie.dong@intel.com>
  *
  * Virtual VMCS layout
  *
@@ -569,17 +571,12 @@ static inline bool gpa_to_hpa(struct vcpu *vcpu, u64 gpa, u64 *hpa)
 
 static inline bool nested_inject_ve(struct vcpu *vcpu)
 {
-	/*
-	 * Shouldn't really call this function at all unless
-	 * "fake" injection is really required, otherwise this is going
-	 * to cause a unneeded overhead.
-	 */
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	uintptr_t vmcs = nested->vmcs;
 
 	/*
 	 * First see if nested opt'd in for #VE handling, then
-	 * write the required fields to whatever ve info address poitns
+	 * write the required fields to whatever ve info address points
 	 * to then inject #VE as a normal IDT injection.
 	 */
 	u32 secondary_ctl = __nested_vmcs_read32(vmcs, SECONDARY_VM_EXEC_CONTROL);
@@ -2349,7 +2346,6 @@ static bool vcpu_handle_mtf(struct vcpu *vcpu)
 {
 	/* Monitor Trap Flag, it's not recommended to use this at all.  */
 	VCPU_TRACER_START();
-	vcpu_set_mtf(false);
 	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;

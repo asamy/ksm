@@ -2,19 +2,17 @@
  * ksm - a really simple and fast x64 hypervisor
  * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
  *
- * This program is free software; you can redistribute it and/or modify
- * it under the terms of the GNU General Public License as published by
- * the Free Software Foundation; either version 2 of the License, or
- * (at your option) any later version.
+ * This program is free software; you can redistribute it and/or modify it
+ * under the terms and conditions of the GNU General Public License,
+ * version 2, as published by the Free Software Foundation.
  *
- * This program is distributed in the hope that it will be useful,
- * but WITHOUT ANY WARRANTY; without even the implied warranty of
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- * GNU General Public License for more details.
+ * This program is distributed in the hope it will be useful, but WITHOUT
+ * ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or
+ * FITNESS FOR A PARTICULAR PURPOSE.  See the GNU General Public License for
+ * more details.
  *
- * You should have received a copy of the GNU General Public License along
- * with this program; if not, write to the Free Software Foundation, Inc.,
- * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
+ * You should have received a copy of the GNU General Public License along with
+ * this program; If not, see <http://www.gnu.org/licenses/>.
 */
 #ifdef __linux__
 #include <linux/kernel.h>
@@ -68,6 +66,9 @@ static inline void init_epte(u64 *entry, int access, u64 hpa)
  * page_addr() to obtain the virtual address for that specific table, what page_addr()
  * does is quite simple, it checks if the entry is not NULL and is present, then does
  * __va(PAGE_PA(entry)).
+ *
+ * We currently just do a 1:1 mapping, except for the executable page
+ * redirection case, see page.c, kprotect.c.
  */
 u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 {
@@ -460,6 +461,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	struct ept *ept = &vcpu->ept;
 
 	u64 vmx = __readmsr(MSR_IA32_VMX_BASIC);
+	u32 verr;
 	u16 es = __reades();
 	u16 cs = __readcs();
 	u16 ss = __readss();
@@ -496,8 +498,9 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 
 	/* Enter VMX root operation  */
 	u64 pa = __pa(vmxon);
-	if (__vmx_on(&pa))
-		return 3;
+	err = __vmx_on(&pa);
+	if (err)
+		return err;
 
 	vmcs = vcpu->vmcs;
 	vmcs->revision_id = (u32)vmx;
@@ -505,11 +508,11 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	pa = __pa(vmcs);
 	err = __vmx_vmclear(&pa);
 	if (err)
-		return err;
+		goto off;
 
 	err = __vmx_vmptrld(&pa);
 	if (err)
-		return err;
+		goto off;
 
 	u32 apicv = 0;
 #if 0
@@ -749,12 +752,17 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	if (err == 0) {
 		/*
 		 * This is necessary here or just before we exit the VM,
-		 * we do it here as it's easier.
+		 * we do it both just incase.
 		 */
 		__invept_all();
 		__invvpid_all();
+		return 0;
 	}
 
+off:
+	verr = vmcs_read32(VM_INSTRUCTION_ERROR);
+	__vmx_off();
+	VCPU_DEBUG("something went wrong: %d\n", verr);
 	return err;
 }
 
@@ -771,7 +779,7 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 	 *	- Setup VMCS (shadow IDT initialized here)
 	 *	- Launch VM
 	 */
-	u32 vm_err;
+	u32 verr;
 	u8 err;
 	if (!init_ept(&vcpu->ept))
 		return;
@@ -821,19 +829,15 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 
 	err = setup_vmcs(vcpu, sp, ip);
 	if (err) {
-		if (err != 3) {
-			vm_err = vmcs_read32(VM_INSTRUCTION_ERROR);
-			__vmx_off();
-			VCPU_DEBUG("setup_vmcs(): failed %d\n", vm_err);
-		}
-
+		/* Some field isn't supported, or similar, error already
+		 * printed out.  */
 		VCPU_DEBUG("setup_vmcs(): failed with error %d\n", err);
 	} else {
 		err = __vmx_vmlaunch();
 		if (err) {
-			vm_err = vmcs_read32(VM_INSTRUCTION_ERROR);
+			verr = vmcs_read32(VM_INSTRUCTION_ERROR);
 			__vmx_off();
-			VCPU_DEBUG("__vmx_vmlaunch(): failed %d\n", vm_err);
+			VCPU_DEBUG("__vmx_vmlaunch(): failed %d\n", verr);
 		}
 	}
 
@@ -875,18 +879,6 @@ void vcpu_free(struct vcpu *vcpu)
 		mm_free_pool(vcpu->stack, KERNEL_STACK_SIZE);
 
 	free_ept(&vcpu->ept);
-}
-
-void vcpu_set_mtf(bool enable)
-{
-	/* BAD BAD BAD!  Do not use.  */
-	u64 vm_cpuctl = vmcs_read32(CPU_BASED_VM_EXEC_CONTROL);
-	if (enable)
-		vm_cpuctl |= CPU_BASED_MONITOR_TRAP_FLAG;
-	else
-		vm_cpuctl &= ~CPU_BASED_MONITOR_TRAP_FLAG;
-
-	vmcs_write32(CPU_BASED_VM_EXEC_CONTROL, vm_cpuctl);
 }
 
 void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
