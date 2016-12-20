@@ -107,8 +107,10 @@ extern uintptr_t pte_base;
 #define __pte_idx(addr)		(((addr) >> PTI_SHIFT) & PTX_MASK)
 
 #ifndef __linux__
-#define __pa(va)		MmGetPhysicalAddress((void *)(va)).QuadPart
-#define __va(pa)		(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (pa) })
+#define __pa(va)	\
+	MmGetPhysicalAddress((void *)(va)).QuadPart
+#define __va(pa)	\
+	(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (uintptr_t)(pa) })
 #endif
 
 #define page_align(addr)	((uintptr_t)(addr) & ~(PAGE_SIZE - 1))
@@ -430,7 +432,7 @@ static inline void *mm_alloc_page(void)
 #ifndef __linux__
 	void *v = ExAllocatePool(NonPagedPool, PAGE_SIZE);
 	if (v)
-		__stosq(v, 00, PAGE_SIZE >> 3);
+		__stosq(v, 0, PAGE_SIZE >> 3);
 
 	return v;
 #else

@@ -400,7 +400,6 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	if (eptp_switch != eptp)
 		vcpu_switch_root_eptp(vcpu, eptp_switch);
 
-	__invept_all();
 	return true;
 }
 
@@ -475,7 +474,6 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	struct ept *ept = &vcpu->ept;
 
 	u64 vmx = __readmsr(MSR_IA32_VMX_BASIC);
-	u32 verr;
 	u16 es = __reades();
 	u16 cs = __readcs();
 	u16 ss = __readss();
@@ -484,6 +482,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	u16 gs = __readgs();
 	u16 ldt = __sldt();
 	u16 tr = __str();
+	u32 verr;
 	u8 err = 0;
 
 	uintptr_t cr0 = __readcr0();
@@ -564,7 +563,9 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		| SECONDARY_EXEC_ENABLE_VMFUNC
 #endif
 		| SECONDARY_EXEC_ENABLE_VE
+#if 0
 		| /* apic virtualization  */ apicv
+#endif
 #if defined(_WIN32_WINNT) && _WIN32_WINNT == 0x0A00	/* w10 required features  */
 		| SECONDARY_EXEC_RDTSCP
 #endif
@@ -584,8 +585,10 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 
 	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
 		CPU_BASED_USE_IO_BITMAPS;
+#if 0
 	if (vm_2ndctl & apicv)
 		vm_cpuctl |= CPU_BASED_TPR_SHADOW;
+#endif
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
 	vcpu->cpu_ctl = vm_cpuctl;
 
@@ -620,7 +623,6 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		err |= vmcs_write16(POSTED_INTR_NV, 0);
 		err |= vmcs_write64(POSTED_INTR_DESC_ADDR, __pa(&vcpu->pi_desc));
 	}
-#endif
 
 	/* Full APIC virtualization if any available.  */
 	if (vm_2ndctl & apicv) {
@@ -641,6 +643,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 						    __readmsr(MSR_IA32_APICBASE_BASE) & MSR_IA32_APICBASE_BASE);
 		}
 	}
+#endif
 
 	/* CR0/CR4 controls  */
 	err |= vmcs_write(CR0_GUEST_HOST_MASK, vcpu->cr0_guest_host_mask);
@@ -654,7 +657,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 
 	/* See if we need to emulate VMFUNC via a VMCALL  */
 	if (vm_2ndctl & SECONDARY_EXEC_ENABLE_VMFUNC) {
-		err |= vmcs_write(VM_FUNCTION_CTRL, VM_FUNCTION_CTL_EPTP_SWITCHING);
+		err |= vmcs_write64(VM_FUNCTION_CTRL, VM_FUNCTION_CTL_EPTP_SWITCHING);
 		err |= vmcs_write64(EPTP_LIST_ADDRESS, __pa(ept->ptr_list));
 	} else {
 		/* Enable emulation for VMFUNC  */
@@ -695,16 +698,16 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write16(GUEST_GS_SELECTOR, gs);
 	err |= vmcs_write16(GUEST_LDTR_SELECTOR, ldt);
 	err |= vmcs_write16(GUEST_TR_SELECTOR, tr);
-	err |= vmcs_write16(GUEST_ES_LIMIT, __segmentlimit(es));
-	err |= vmcs_write16(GUEST_CS_LIMIT, __segmentlimit(cs));
-	err |= vmcs_write16(GUEST_SS_LIMIT, __segmentlimit(ss));
-	err |= vmcs_write16(GUEST_DS_LIMIT, __segmentlimit(ds));
-	err |= vmcs_write16(GUEST_FS_LIMIT, __segmentlimit(fs));
-	err |= vmcs_write16(GUEST_GS_LIMIT, __segmentlimit(gs));
-	err |= vmcs_write16(GUEST_LDTR_LIMIT, __segmentlimit(ldt));
-	err |= vmcs_write16(GUEST_TR_LIMIT, __segmentlimit(tr));
-	err |= vmcs_write16(GUEST_GDTR_LIMIT, gdtr.limit);
-	err |= vmcs_write16(GUEST_IDTR_LIMIT, idtr->limit);
+	err |= vmcs_write32(GUEST_ES_LIMIT, __segmentlimit(es));
+	err |= vmcs_write32(GUEST_CS_LIMIT, __segmentlimit(cs));
+	err |= vmcs_write32(GUEST_SS_LIMIT, __segmentlimit(ss));
+	err |= vmcs_write32(GUEST_DS_LIMIT, __segmentlimit(ds));
+	err |= vmcs_write32(GUEST_FS_LIMIT, __segmentlimit(fs));
+	err |= vmcs_write32(GUEST_GS_LIMIT, __segmentlimit(gs));
+	err |= vmcs_write32(GUEST_LDTR_LIMIT, __segmentlimit(ldt));
+	err |= vmcs_write32(GUEST_TR_LIMIT, __segmentlimit(tr));
+	err |= vmcs_write32(GUEST_GDTR_LIMIT, gdtr.limit);
+	err |= vmcs_write32(GUEST_IDTR_LIMIT, idtr->limit);
 	err |= vmcs_write32(GUEST_ES_AR_BYTES, __accessright(es));
 	err |= vmcs_write32(GUEST_CS_AR_BYTES, __accessright(cs));
 	err |= vmcs_write32(GUEST_SS_AR_BYTES, __accessright(ss));

@@ -2721,6 +2721,9 @@ static inline bool nested_handles_exception(const struct nested_vcpu *nested)
 	u32 except_bitmap = __nested_vmcs_read32(nested->vmcs, EXCEPTION_BITMAP);
 	u32 intr_info = vmcs_read32(VM_EXIT_INTR_INFO);
 	u32 vector = intr_info & INTR_INFO_VECTOR_MASK;
+	if (__EXCEPTION_BITMAP & (1 << vector))
+		return false;
+
 	return except_bitmap & (1 << vector);
 }
 
