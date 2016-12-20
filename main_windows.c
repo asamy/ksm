@@ -23,14 +23,7 @@
 #include "pe.h"
 
 #ifdef ENABLE_ACPI
-typedef struct _DEV_EXT {
-	PVOID CbRegistration;
-	PCALLBACK_OBJECT CbObject;
-} DEV_EXT, *PDEV_EXT;
 static DEV_EXT g_dev_ext = { NULL, NULL };
-
-extern int register_power_callback(PDEV_EXT ext);
-extern void deregister_power_callback(PDEV_EXT ext);
 #endif
 static void *hotplug_cpu;
 
@@ -40,7 +33,6 @@ DRIVER_INITIALIZE DriverEntry;
 #endif
 
 PLIST_ENTRY PsLoadedModuleList;
-void *g_kernel_base = NULL;
 uintptr_t g_driver_base;
 uintptr_t g_driver_size;
 
@@ -151,19 +143,6 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		   entry->SizeOfImage / 1024, entry->SizeOfImage / PAGE_SIZE);
 	g_driver_base = (uintptr_t)entry->DllBase;
 	g_driver_size = entry->SizeOfImage;
-
-	LDR_DATA_TABLE_ENTRY *kentry = container_of(PsLoadedModuleList->Flink,
-						    LDR_DATA_TABLE_ENTRY,
-						    InLoadOrderLinks);
-	g_kernel_base = kentry->DllBase;
-
-	VCPU_DEBUG("Kernel: %p -> %p (size: 0x%X pages: %d) path: %wS\n",
-		   kentry->DllBase, (uintptr_t)kentry->DllBase + kentry->SizeOfImage,
-		   kentry->SizeOfImage, BYTES_TO_PAGES(kentry->SizeOfImage),
-		   kentry->FullDllName.Buffer);
-#ifndef __GNUC__
-	ExInitializeDriverRuntime(DrvRtPoolNxOptIn);
-#endif
 
 	hotplug_cpu = KeRegisterProcessorChangeCallback(ksm_hotplug_cpu, NULL, 0);
 	if (!hotplug_cpu) {

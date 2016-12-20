@@ -2,6 +2,9 @@
  * ksm - a really simple and fast x64 hypervisor
  * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
  *
+ * Executable page hooking, see comments down below for more
+ * information.
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
@@ -24,18 +27,37 @@
 #include "ksm.h"
 #include "percpu.h"
 
+/*!
+ * To use this interface, call ksm_hook_epage() on the target function,
+ * e.g.:
+ * \code
+ *	ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace);
+ * \endcode
+ *
+ * And for original function call:
+ * \code
+ *	vcpu_vmfunc(EPTP_NORMAL, 0);
+ *	void *ret = MmMapIoSpace(x, y, z);
+ *	vcpu_vmfunc(EPTP_EXHOOK, 0);
+ *	return ret;
+ * \endcode
+ */
 static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 {
+	/* Called from vmcall (exit.c)  */
 	u64 dpa = phi->d_pfn << PAGE_SHIFT;
 	u64 cpa = phi->c_pfn << PAGE_SHIFT;
 	ept_alloc_page(EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, dpa, cpa);
 	ept_alloc_page(EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, dpa, dpa);
 	ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_EXEC, dpa, dpa);
+
+	__invvpid_all();
 	__invept_all();
 }
 
 static inline u16 epage_select_eptp(struct page_hook_info *phi, u16 cur, u8 ar, u8 ac)
 {
+	/* called from an EPT violation  */
 	if (ac & EPT_ACCESS_RW)
 		return EPTP_RWHOOK;
 
@@ -82,35 +104,79 @@ static void epage_init_trampoline(struct trampoline *trampo, u64 to)
 STATIC_DEFINE_DPC(__do_hook_page, __vmx_vmcall, HYPERCALL_HOOK, ctx);
 STATIC_DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
 
+/*
+ * Note!!!
+ * This function is not very robust, e.g. pages that are not
+ * physically contiguous will cause havoc, on the Linux kernel
+ * this can be a problem when hooking kernel pages, specfiically
+ * module pages as those are allocated using vmalloc() and are not
+ * physically contiguous, so be careful.
+ *
+ * On windows, kernel pages are always physically contiguous, so
+ * this will handle most cases.
+ *
+ * On windows, you can lock pages using:
+ * \code
+ *	PMDL mdl = IoAllocateMdl(original, PAGE_SIZE, FALSE, FALSE, NULL);
+ *	MmProbeAndLockPages(mdl, KernelMode, IoReadAccess);
+ * \endcode
+ *
+ * Then unlock in unhook:
+ * \code
+ *	MmUnlockPages(mdl);
+ *	IoFreeMdl(mdl);
+ * \endcode
+ *
+ * On Linux this can be something like:
+ * \code
+ *	struct page *page = vmalloc_to_page(original);
+ *	void *tmp = kmap(page);
+ *	u64 pa = __pa(tmp);
+ * \endcode
+ *
+ * On unlock:
+ * \code
+ *	kunmap(page);
+ * \endcode
+ */
 int ksm_hook_epage(void *original, void *redirect)
 {
-	struct page_hook_info *phi = mm_alloc_pool(sizeof(*phi));
+	struct page_hook_info *phi;
+	u8 *code_page;
+	void *aligned = (void *)page_align(original);
+	uintptr_t offset = (uintptr_t)original - (uintptr_t)aligned;	/* code start  */
+	struct trampoline trampo;
+	epage_init_trampoline(&trampo, (uintptr_t)redirect);
+	
+	phi = ksm_find_page(original);
+	if (phi) {
+		/*
+		 * Hooking another function in same page.
+		 *
+		 * Simply just overwrite the start of the
+		 * function to a trampoline...
+		 */
+		code_page = phi->c_va;
+		memcpy(code_page + offset, &trampo, sizeof(trampo));
+		__wbinvd();	/* necessary?  */
+		return 0;
+	}
+
+	phi = mm_alloc_pool(sizeof(*phi));
 	if (!phi)
 		return ERR_NOMEM;
 
 #ifdef __linux__
-	void *tmp = mm_alloc_page();
-	phi->backing_page = tmp;
-
-	u8 *code_page = kmap_exec(tmp, PAGE_SIZE);
+	code_page = mm_alloc_page();
 #else
-	u8 *code_page = MmAllocateContiguousMemory(PAGE_SIZE,
-						  (PHYSICAL_ADDRESS) { .QuadPart = -1 });
+	code_page = MmAllocateContiguousMemory(PAGE_SIZE,
+					      (PHYSICAL_ADDRESS) { .QuadPart = -1 });
 #endif
 	if (!code_page) {
-#ifdef __linux__
-		mm_free_page(tmp);
-#endif
 		mm_free_pool(phi, sizeof(*phi));
 		return ERR_NOMEM;
 	}
 
-	/* Offset where code starts in this page  */
-	void *aligned = (void *)page_align(original);
-	uintptr_t offset = (uintptr_t)original - (uintptr_t)aligned;
-
-	struct trampoline trampo;
-	epage_init_trampoline(&trampo, (uintptr_t)redirect);
 	memcpy(code_page, aligned, PAGE_SIZE);
 	memcpy(code_page + offset, &trampo, sizeof(trampo));
 
@@ -138,8 +204,7 @@ int __ksm_unhook_page(struct page_hook_info *phi)
 {
 	STATIC_CALL_DPC(__do_unhook_page, (void *)(phi->d_pfn << PAGE_SHIFT));
 #ifdef __linux__
-	vunmap(phi->c_va);
-	mm_free_page(phi->backing_page);
+	mm_free_page(phi->c_va);
 #else
 	MmFreeContiguousMemory(phi->c_va);
 #endif

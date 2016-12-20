@@ -4,6 +4,9 @@
  *
  * From:
  *	arch/x86/include/uapi/asm
+ *
+ * Along with modifications for backward compatibility
+ * and other stuff (vmfunc, etc.)
  */
 #ifndef __X86_H
 #define __X86_H
@@ -1359,8 +1362,10 @@ static uintptr_t __segmentbase(uintptr_t gdt, u16 sel)
  *
  * Alan Cox <Alan.Cox@linux.org>, 1995.
  * Ingo Molnar <mingo@redhat.com>, 1999, 2000
+ *
+ * Some modifications for reading/writing into LAPIC/IOAPIC:
+ *	Ahmed Samy <f.fallen45@gmail.com>
  */
-
 #define IO_APIC_DEFAULT_PHYS_BASE	0xfec00000
 #define	APIC_DEFAULT_PHYS_BASE		0xfee00000
 

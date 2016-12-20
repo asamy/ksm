@@ -185,14 +185,8 @@
 #define EPT_BUGCHECK_MISCONFIG		0xE3E3E3E3
 #define EPT_BUGCHECK_EPTP_LIST		0xDFDFDFDF
 #define EPT_UNHANDLED_VIOLATION		0xEEEEEEEE
-
-#define KSM_EPT_REQUIRED_EPT		(VMX_EPT_PAGE_WALK_4_BIT | VMX_EPT_EXECUTE_ONLY_BIT |	\
-					 VMX_EPTP_WB_BIT | VMX_EPT_INVEPT_BIT | VMX_EPT_EXTENT_GLOBAL_BIT)
-#ifdef ENABLE_PML
-#define EPT_VPID_CAP_REQUIRED		(KSM_EPT_REQUIRED_EPT | VMX_EPT_AD_BIT)
-#else
-#define EPT_VPID_CAP_REQUIRED		KSM_EPT_REQUIRED_EPT
-#endif
+#define KSM_EPT_REQUIRED_EPT		(VMX_EPT_PAGE_WALK_4_BIT | VMX_EPTP_WB_BIT |\
+					 VMX_EPT_INVEPT_BIT | VMX_EPT_EXTENT_GLOBAL_BIT)
 
 struct regs {
 	uintptr_t gp[REG_MAX];
@@ -365,7 +359,7 @@ struct vcpu {
 	struct vmcs *vmxon;
 	struct vmcs *vmcs;
 	struct ve_except_info *ve;
-	struct pi_desc pi_desc;
+//	struct pi_desc pi_desc;
 	u32 entry_ctl;
 	u32 exit_ctl;
 	u32 pin_ctl;
@@ -386,7 +380,7 @@ struct vcpu {
 	/* Shadow IDT (working)  */
 	struct gdtr idt;
 	/* Shadow entires we know about so we can restore them appropriately.  */
-	struct kidt_entry64 shadow_idt[X86_TRAP_VE + 1];
+	struct kidt_entry64 shadow_idt[256];
 #ifdef NESTED_VMX
 	/* Nested  */
 	struct nested_vcpu nested_vcpu;
@@ -455,9 +449,6 @@ struct page_hook_info {
 	u64 c_pfn;
 	u64 origin;
 	void *c_va;
-#ifdef __linux__
-	void *backing_page;
-#endif
 	struct phi_ops *ops;
 };
 
@@ -473,10 +464,21 @@ static inline size_t rehash(const void *e, void *unused)
 }
 #endif
 
+#ifdef ENABLE_ACPI
+typedef struct _DEV_EXT {
+	PVOID CbRegistration;
+	PCALLBACK_OBJECT CbObject;
+} DEV_EXT, *PDEV_EXT;
+
+extern int register_power_callback(PDEV_EXT ext);
+extern void deregister_power_callback(PDEV_EXT ext);
+#endif
+
 struct ksm {
 	int active_vcpus;
 	struct vcpu vcpu_list[KSM_MAX_VCPUS];
 	uintptr_t origin_cr3;
+	uintptr_t kernel_cr3;
 #ifdef EPAGE_HOOK
 	struct htable ht;
 #endif

@@ -3,7 +3,9 @@
 A really simple and lightweight x64 hypervisor written in C for Intel processors.  
 KSM aims to be fully feature fledged and as general purpose as possible.  KSM uses
 Linux kernel coding style because it's rather simple and easy to follow, it's more of
-a general C thing.  KSM is licensed under GPL v2 stricly.
+a general C thing.  KSM is licensed under GPL v2 stricly.  
+
+KSM supports Windows and Linux kernels natively.
 
 ## Features
 
@@ -40,21 +42,21 @@ technique that I can relay on.
 Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it, you can now test under VMs with
 emulation for VMFUNC.
 
-### Live debugger under Windows
+### Live debugging under Windows
 
 You may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in secondary controls,otherwise it makes WinDBG go *maniac*.  I have not investigated the root cause, but it keeps loading GDT and LDT all the time, which is _insane_.
 
 ## Supported Kernels
 
 - All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested under Windows 7/8/8.1/10.
-- Linux kernel (tested under 3.16 and 4.8.13)
+- Linux kernel (tested under 3.16, 4.8.13 and mainline)
 
 ## Porting to other kernels guidelines
 
-- Port `mm.h` functions (`mm_alloc_page`, `__mm_free_page`)
+- Port `mm.h` functions (`mm_alloc_page`, `__mm_free_page`, `mm_alloc_pool`,
+			 etc.)
 - Port `acpi.c` (not really needed) for re-virtualization on S1-3 or S4 state (commenting it out is OK).
 - Write module for initialization
-- Port `page.c` for the hooking example (not required, but it's essential to demonstrate usage).
 - Port `print.c` for printing interface (Some kernels may not require it)
 - Port `x64.S` for the assembly based stuff, please use macros for calling conventions, etc.
 
@@ -86,16 +88,16 @@ Simply `make`.
 
 ### Building for Windows
 
-#### Compiling under MinGW
+1. Compiling under MinGW
 
 Simply `make -f Makefile.windows C=1` (if cross compiling under Linux) or `mingw32-make -f Makefile.windows` (under native).
 
-##### Makefile variables
+Makefile variables:
 
 1. `C=1` - Prepare for cross-compiling.
 2. `V=1` - Verbose output (the default, pass 0 for quiet.)
 
-#### Compiling under MSVC
+2. Compiling under MSVC
 
 The solution under `ksm/` directory is a VS 2015 solution, you can use it to build, you'll
 also need the Windows Driver Development Kit.
@@ -184,7 +186,7 @@ log.  (Windows only)
 
 ## Reporting bugs (or similar)
 
-You can report bugs by using Github issues, please provide the following:
+You can report bugs using Github issues, please provide the following:
 
 - System information (version including build number, CPU information perhaps codename too)
 - The git tree hash
@@ -200,13 +202,14 @@ If it's a crash, please provide the following:
 
 ### For Linux
 
-You're better off debugging it yourself or report the stack dump reported via
-dmeg or kernel panic.
+- `ksmlinux.ko` and `ksmlinux.o`
+- Stack dump from dmesg or kernel panic
 
 ## Thanks to...
 
 - Linux kernel (KVM)
 - HyperPlatform
+- XEN
 
 ## License
 

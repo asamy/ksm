@@ -73,6 +73,7 @@ static bool init_msr_bitmap(struct ksm *k)
 	set_bit(MSR_IA32_FEATURE_CONTROL, write_lo);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		set_bit(msr, write_lo);
+
 	return true;
 }
 
@@ -84,7 +85,7 @@ static bool init_io_bitmaps(struct ksm *k)
 
 	k->io_bitmap_b = mm_alloc_page();
 	if (!k->io_bitmap_b) {
-		mm_free_page(k->io_bitmap_b);
+		mm_free_page(k->io_bitmap_a);
 		return false;
 	}
 
@@ -125,15 +126,13 @@ int __ksm_init_cpu(struct ksm *k)
 #endif
 		u64 feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
 		if ((feat_ctl & required_feat_bits) != required_feat_bits) {
-			/* Attempt to set bits in place  */
 			__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl | required_feat_bits);
-
 			feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
 			if ((feat_ctl & required_feat_bits) != required_feat_bits)
 				return ERR_DENIED;
 		}
 
-
+		k->kernel_cr3 = __readcr3();
 		bool ok = __vmx_vminit(&k->vcpu_list[cpu_nr()]);
 		VCPU_DEBUG("Started: %d\n", ok);
 
@@ -179,7 +178,7 @@ int ksm_init(void)
 	 * Zero out everything (this is allocated by the kernel device driver
 	 * loader)
 	 */
-	__stosq((unsigned long long *)&ksm, 0, sizeof(ksm) >> 3);
+	__stosq((u64 *)&ksm, 0, sizeof(ksm) >> 3);
 
 	/* Caller cr3 (could be user)  */
 	ksm.origin_cr3 = __readcr3();

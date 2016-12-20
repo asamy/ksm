@@ -2,6 +2,8 @@
  * ksm - a really simple and fast x64 hypervisor
  * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
  *
+ * Windows only.
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
@@ -147,8 +149,7 @@ static inline void print_flush(void)
 	KeReleaseInStackQueuedSpinLock(&q);
 
 #ifdef ENABLE_DBGPRINT
-	if (KeGetCurrentIrql() < CLOCK_LEVEL)
-		DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", on_stack);
+	DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", on_stack);
 #endif
 #ifdef ENABLE_FILEPRINT
 	ExEnterCriticalRegionAndAcquireResourceExclusive(&resource);
@@ -301,5 +302,4 @@ void do_print(const char *fmt, ...)
 		KeReleaseInStackQueuedSpinLock(&q);
 	}
 }
-
 #endif

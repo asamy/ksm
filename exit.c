@@ -792,12 +792,12 @@ static bool vcpu_dump_pml(struct vcpu *vcpu)
 	u16 eptp = vcpu_eptp_idx(vcpu);
 	for (; pml_index < PML_MAX_ENTRIES; ++pml_index) {
 		/* CPU guarantees that the lower 12 bits (the offset) are always 0.  */
-		u64 gpa = vcpu->pml[pml_index];
+		u64 gpa = *((u64 *)vcpu->pml + pml_index);
 		u64 gva = (u64)__va(gpa);
 		VCPU_DEBUG("On PML %d: GPA %p GVA %p\n", pml_index, gpa, gva);
 
 		/* Reset AD bits now otherwise we probably won't get this page again  */
-		u64_t *epte = ept_pte(ept, EPT4(ept, eptp), gpa);
+		u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
 		*epte &= ~(EPT_ACCESSED | EPT_DIRTY);
 	}
 
@@ -2384,15 +2384,16 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 	 * Synchronize shadow IDT with Guest's IDT, taking into account
 	 * entries that we set, by simply just discarding them.
 	 */
-	u16 entries = min(idt->limit, (u16)((PAGE_SIZE - 1) / sizeof(struct kidt_entry64)));
+	size_t entries = min(idt->limit, (PAGE_SIZE - 1) / sizeof(struct kidt_entry64));
 	struct kidt_entry64 *current_idt = (struct kidt_entry64 *)idt->base;
 	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
 
 	VCPU_DEBUG("Loading new IDT (new size: %d old size: %d)  Copying %d entries\n",
 		   idt->limit, vcpu->idt.limit, entries);
 
+	vcpu->g_idt = *idt;
 	vcpu->idt.limit = idt->limit;
-	for (u16 n = 0; n < entries; ++n)
+	for (size_t n = 0; n < entries; ++n)
 		if (n > X86_TRAP_VE || !idte_present(&vcpu->shadow_idt[n]))
 			memcpy(&shadow[n], &current_idt[n], sizeof(*shadow));
 	vcpu_flush_idt(vcpu);
@@ -2423,16 +2424,13 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 		dt->base = vmcs_read(GUEST_GDTR_BASE);
 		break;
 	case 1:		/* sidt */
-		dt->limit = vcpu->g_idt.limit;
-		dt->base = vcpu->g_idt.base;
+		*dt = vcpu->g_idt;
 		break;
 	case 2:		/* lgdt  */
 		vmcs_write16(GUEST_GDTR_LIMIT, dt->limit);
 		vmcs_write(GUEST_GDTR_BASE, dt->base);
 		break;
 	case 3:		/* lidt  */
-		vcpu->g_idt.base = dt->base;
-		vcpu->g_idt.limit = dt->limit;
 		vcpu_sync_idt(vcpu, dt);
 		break;
 	}
@@ -2499,7 +2497,7 @@ static bool vcpu_handle_ept_violation(struct vcpu *vcpu)
 #ifdef NESTED_VMX
 		struct nested_vcpu *nested = &vcpu->nested_vcpu;
 		if (nested->launch_state == VMCS_LAUNCH_STATE_LAUNCHED &&
-		    nested_has_secondary(&vcpu->nested_vcpu, SECONDARY_EXEC_ENABLE_EPT) &&
+		    nested_has_secondary(nested, SECONDARY_EXEC_ENABLE_EPT) &&
 		    (nested_inject_ve(vcpu) ||
 		     vcpu_enter_nested_hypervisor(vcpu, EXIT_REASON_EPT_VIOLATION)))
 			return true;
@@ -2718,6 +2716,14 @@ static inline bool nested_can_handle_msr(const struct nested_vcpu *nested, bool 
 	return ret;
 }
 
+static inline bool nested_handles_exception(const struct nested_vcpu *nested)
+{
+	u32 except_bitmap = __nested_vmcs_read32(nested->vmcs, EXCEPTION_BITMAP);
+	u32 intr_info = vmcs_read32(VM_EXIT_INTR_INFO);
+	u32 vector = intr_info & INTR_INFO_VECTOR_MASK;
+	return except_bitmap & (1 << vector);
+}
+
 static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_reason)
 {
 	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY)
@@ -2814,6 +2820,8 @@ static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_
 	case EXIT_REASON_XSAVES:
 	case EXIT_REASON_XRSTORS:
 		return nested_has_secondary(nested, SECONDARY_EXEC_XSAVES);
+	case EXIT_REASON_EXCEPTION_NMI:
+		return nested_handles_exception(nested);
 	}
 
 	return true;
@@ -2912,6 +2920,7 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 
 bool vcpu_handle_exit(uintptr_t *regs)
 {
+	/* Only called from assembly (__vmx_entrypoint)  */
 	struct vcpu *vcpu = ksm_current_cpu();
 	struct pending_irq *irq = &vcpu->irq;
 	bool ret = true;
@@ -2990,8 +2999,8 @@ static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *r
 		   "    si=0x%016llX   di=0x%016llX  r08=0x%016llX\n"
 		   "    r09=0x%016llX  r10=0x%016llX r11=0x%016llX\n"
 		   "    r12=0x%016llX  r13=0x%016llX r14=0x%016llX\n"
-		   "    r15=0x%016llX  rip=0x%016llX"
-		   "    cs=0x%02X    ds=0x%02X   es=0x%02X\n"
+		   "    r15=0x%016llX  rip=0x%016llX efl=0x%08lX"
+		   "    cs=0x%02X      ds=0x%02X     es=0x%02X\n"
 		   "    fs=0x%016llX   gs=0x%016llX  kgs=0x%016llX\n"
 		   "    cr0=0x%016llX  cr3=0x%016llX cr4=0x%016llX\n"
 		   "	dr0=0x%016llX  dr1=0x%016llX dr2=0x%016llX\n"
@@ -3001,7 +3010,7 @@ static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *r
 		   regs->gp[REG_SI], regs->gp[REG_DI], regs->gp[REG_R8],
 		   regs->gp[REG_R9], regs->gp[REG_R10], regs->gp[REG_R11],
 		   regs->gp[REG_R12], regs->gp[REG_R13], regs->gp[REG_R14],
-		   regs->gp[REG_R15], vmcs_read(GUEST_RIP),
+		   regs->gp[REG_R15], vmcs_read(GUEST_RIP), (u32)regs->eflags,
 		   vmcs_read(GUEST_CS_SELECTOR), vmcs_read(GUEST_DS_SELECTOR),
 		   vmcs_read(GUEST_ES_SELECTOR), vmcs_read(GUEST_FS_BASE),
 		   vmcs_read(GUEST_GS_BASE), __readmsr(MSR_IA32_KERNEL_GS_BASE),

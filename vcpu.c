@@ -369,59 +369,72 @@ static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa,
 }
 
 /*
- * Handle a VM-Exit EPT violation (we're inside VMX root here).
+ * Handle a VM-Exit EPT violation
+ * Root mode.
  */
 bool ept_handle_violation(struct vcpu *vcpu)
 {
-	u64 exit = vmcs_read(EXIT_QUALIFICATION);
-	u64 gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
-	u64 gva = 0;
-	u16 eptp = vcpu_eptp_idx(vcpu);
-	u8 ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
-	u8 ac = exit & EPT_AR_MASK;
+	u64 exit, gpa, gva;
+	u16 eptp, eptp_switch;
+	u8 ar, ac;
 	char sar[4], sac[4];
-	ar_get_bits(ar, sar);
-	ar_get_bits(ac, sac);
 
+	eptp = vcpu_eptp_idx(vcpu);
+	gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
+	gva = 0;
+	exit = vmcs_read(EXIT_QUALIFICATION);
+	ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
+	ac = exit & EPT_AR_MASK;
 	if (exit & EPT_VE_VALID_GLA)
 		gva = vmcs_read(GUEST_LINEAR_ADDRESS);
 
+	ar_get_bits(ar, sar);
+	ar_get_bits(ac, sac);
 	VCPU_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   eptp, gpa, gva, ar, sar, ac, sac);
-	u16 eptp_switch = do_ept_violation(vcpu, vcpu->ip, gpa, gva, eptp, ar, ac);
+
+	eptp_switch = do_ept_violation(vcpu, vcpu->ip, gpa, gva, eptp, ar, ac);
 	if (eptp_switch == EPT_MAX_EPTP_LIST)
 		return false;
 
 	if (eptp_switch != eptp)
 		vcpu_switch_root_eptp(vcpu, eptp_switch);
 
+	__invept_all();
 	return true;
 }
 
 /*
  * This is called from the IDT handler (__ept_violation) see vmx.{S,asm}
- * We're inside guest here
+ * Non-root mode.
  */
 void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 {
-	struct vcpu *vcpu = ksm_current_cpu();
-	struct ve_except_info *info = vcpu->ve;
-
-	u64 gpa = info->gpa;
-	u64 gva = info->exit & EPT_VE_VALID_GLA ? info->gla : 0;
-	u64 exit = info->exit;
-	u16 eptp = info->eptp;
-	u8 ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
-	u8 ac = exit & EPT_AR_MASK;
+	struct vcpu *vcpu;
+	struct ve_except_info *info;
+	u64 exit, gpa, gva;
+	u16 eptp, eptp_switch;
+	u8 ar, ac;
 	char sar[4], sac[4];
+
+	vcpu = ksm_current_cpu();
+	info = vcpu->ve;
+	gpa = info->gpa;
+	gva = 0;
+	exit = info->exit;
+	eptp = info->eptp;
+	ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
+	ac = exit & EPT_AR_MASK;
+	if (info->exit & EPT_VE_VALID_GLA)
+		gva = info->gla;
+
 	ar_get_bits(ar, sar);
 	ar_get_bits(ac, sac);
-
 	VCPU_DEBUG("0x%X:%p [%d]: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   cs, rip, eptp, gpa, gva, ar, sar, ac, sac);
 	info->except_mask = 0;
 
-	u16 eptp_switch = do_ept_violation(vcpu, rip, gpa, gva, eptp, ar, ac);
+	eptp_switch = do_ept_violation(vcpu, rip, gpa, gva, eptp, ar, ac);
 	if (eptp_switch == EPT_MAX_EPTP_LIST)
 		VCPU_BUGCHECK(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, rip, gpa);
 
@@ -457,7 +470,8 @@ static inline void adjust_ctl_val(u32 msr, u32 *val)
 static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 {
 	struct vmcs *vmcs, *vmxon;
-	struct gdtr gdtr, *idtr = &vcpu->g_idt;
+	struct gdtr gdtr;
+	struct gdtr *idtr = &vcpu->g_idt;
 	struct ept *ept = &vcpu->ept;
 
 	u64 vmx = __readmsr(MSR_IA32_VMX_BASIC);
@@ -474,16 +488,10 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 
 	uintptr_t cr0 = __readcr0();
 	uintptr_t cr4 = __readcr4();
-	uintptr_t cr3 = __readcr3();
 
 	__sgdt(&gdtr);
 	__sidt(idtr);
-
-	struct kidt_entry64 *current_idt = (struct kidt_entry64 *)idtr->base;
-	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
-	unsigned count = idtr->limit / sizeof(*shadow);
-	for (unsigned n = 0; n < count; ++n)
-		memcpy(&shadow[n], &current_idt[n], sizeof(*shadow));
+	memcpy((void *)vcpu->idt.base, (void *)idtr->base, idtr->limit);
 
 	vmxon = vcpu->vmxon;
 	vmxon->revision_id = (u32)vmx;
@@ -516,6 +524,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 
 	u32 apicv = 0;
 #if 0
+	/* This needs serious fixing  */
 	if (lapic_in_kernel()) {
 		apicv |= SECONDARY_EXEC_APIC_REGISTER_VIRT | SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES;
 		if (cpu_has_x2apic() && x2apic_enabled()) {
@@ -589,7 +598,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write32(VM_EXIT_MSR_STORE_COUNT, 0);
 	err |= vmcs_write64(VM_EXIT_MSR_STORE_ADDR, 0);
 	err |= vmcs_write32(VM_EXIT_MSR_LOAD_COUNT, 0);
-	err |= vmcs_write32(VM_EXIT_MSR_LOAD_ADDR, 0);
+	err |= vmcs_write64(VM_EXIT_MSR_LOAD_ADDR, 0);
 	err |= vmcs_write32(VM_ENTRY_MSR_LOAD_COUNT, 0);
 	err |= vmcs_write32(VM_ENTRY_INTR_INFO_FIELD, 0);
 
@@ -605,11 +614,13 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write64(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
 	err |= vmcs_write64(VMCS_LINK_POINTER, -1ULL);
 
+#if 0
 	/* Posted interrupts if available.  */
 	if (vm_pinctl & PIN_BASED_POSTED_INTR) {
 		err |= vmcs_write16(POSTED_INTR_NV, 0);
 		err |= vmcs_write64(POSTED_INTR_DESC_ADDR, __pa(&vcpu->pi_desc));
 	}
+#endif
 
 	/* Full APIC virtualization if any available.  */
 	if (vm_2ndctl & apicv) {
@@ -706,7 +717,6 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write32(GUEST_ACTIVITY_STATE, GUEST_ACTIVITY_ACTIVE);
 	err |= vmcs_write32(GUEST_PENDING_DBG_EXCEPTIONS, 0);
 	err |= vmcs_write64(GUEST_IA32_DEBUGCTL, __readmsr(MSR_IA32_DEBUGCTLMSR));
-	err |= vmcs_write32(GUEST_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
 	err |= vmcs_write(GUEST_CR0, cr0);
 	err |= vmcs_write(GUEST_CR3, ksm.origin_cr3);
 	err |= vmcs_write(GUEST_CR4, cr4);
@@ -724,6 +734,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write(GUEST_RSP, gsp);
 	err |= vmcs_write(GUEST_RIP, gip);
 	err |= vmcs_write(GUEST_RFLAGS, __readeflags());
+	err |= vmcs_write(GUEST_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
 	err |= vmcs_write(GUEST_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
 	err |= vmcs_write(GUEST_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
 
@@ -736,7 +747,7 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write16(HOST_GS_SELECTOR, gs & 0xf8);
 	err |= vmcs_write16(HOST_TR_SELECTOR, tr & 0xf8);
 	err |= vmcs_write(HOST_CR0, cr0);
-	err |= vmcs_write(HOST_CR3, cr3);
+	err |= vmcs_write(HOST_CR3, ksm.kernel_cr3);
 	err |= vmcs_write(HOST_CR4, cr4);
 	err |= vmcs_write(HOST_FS_BASE, __readmsr(MSR_IA32_FS_BASE));
 	err |= vmcs_write(HOST_GS_BASE, __readmsr(MSR_IA32_GS_BASE));
@@ -879,6 +890,7 @@ void vcpu_free(struct vcpu *vcpu)
 		mm_free_pool(vcpu->stack, KERNEL_STACK_SIZE);
 
 	free_ept(&vcpu->ept);
+	__stosq((u64 *)vcpu, 0, sizeof(*vcpu) >> 3);
 }
 
 void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
@@ -901,5 +913,13 @@ void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 bool ept_check_capabilitiy(void)
 {
 	u64 vpid = __readmsr(MSR_IA32_VMX_EPT_VPID_CAP);
-	return (vpid & EPT_VPID_CAP_REQUIRED) == EPT_VPID_CAP_REQUIRED;
+	u64 req = KSM_EPT_REQUIRED_EPT
+#ifdef ENABLE_PML
+		| VMX_EPT_AD_BIT
+#endif
+#ifdef EPAGE_HOOK
+		| VMX_EPT_EXECUTE_ONLY_BIT
+#endif
+		;
+	return (vpid & req) == req;
 }
