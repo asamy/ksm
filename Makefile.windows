@@ -60,7 +60,7 @@ LDFLAGS = -shared -Wl,--subsystem,native -Wl,--dynamicbase -Wl,--stack=0x6000 \
 LIBS = -L$(CROSS_LIB) -lntoskrnl -lhal -lmingwex
 
 SRC = acpi.c exit.c htable.c ksm.c kprotect.c main_windows.c page.c print.c vcpu.c
-ASM = x64.S
+ASM = vmx.S
 
 BIN_DIR = bin
 OBJ_DIR = obj

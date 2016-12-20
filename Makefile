@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License along with
 # this program; If not, see <http://www.gnu.org/licenses/>.
 obj-m += ksmlinux.o
-ksmlinux-objs := exit.o htable.o ksm.o kprotect.o page.o vcpu.o main_linux.o x64.o
+ksmlinux-objs := exit.o htable.o ksm.o kprotect.o page.o vcpu.o main_linux.o vmx.o
 ccflags-y := -Wno-format -Wno-declaration-after-statement -Wno-unused-function -DDBG -DEPAGE_HOOK -std=gnu99 -DNESTED_VMX
 
 KVERSION := $(shell uname -r)

@@ -399,7 +399,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 }
 
 /*
- * This is called from the IDT handler (__ept_violation) see x64.{S,asm}
+ * This is called from the IDT handler (__ept_violation) see vmx.{S,asm}
  * We're inside guest here
  */
 void __ept_handle_violation(uintptr_t cs, uintptr_t rip)

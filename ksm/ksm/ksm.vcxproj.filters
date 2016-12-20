@@ -82,7 +82,7 @@
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="..\..\x64.asm">
+    <MASM Include="..\..\vmx.asm">
       <Filter>Source Files</Filter>
     </MASM>
   </ItemGroup>
