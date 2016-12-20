@@ -1,4 +1,3 @@
-# This needs fixing, terribly.
 os: linux
 language: c
 compiler: gcc
@@ -13,16 +12,15 @@ notifications:
 matrix:
         fast_finish: true
         include:
-                - compiler ": w64"
-                  env: HOST=x86_64-w64-mingw32 PACKAGES=gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64 mingw-w64-dev MAKE="make -f Makefile.windows C=1"
-                - compiler ": Linux"
-                  env: HOST=x86_64-unknown-linux-gnu MAKE=make
+                - os: linux
+                  install:
+                        - sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
+                        - sudo apt-get install -y mingw-w64 mingw-w64-dev
+                  script:
+                        - make -f Makefile.windows C=1
 
-install:
-        - sudo apt-get install -y linux-headers-$(uname -r)
-        - sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
-        - sudo apt-get install -y mingw-w64 mingw-w64-dev
-
-script:
-        - $MAKE
-
+                - os: linux
+                  install:
+                          - sudo apt-get install -y linux-headers-$(uname -r)
+                  script:
+                          - make

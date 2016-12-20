@@ -149,7 +149,7 @@ We use 3 EPT pointers, one for executable pages, one for readwrite pages, and la
 													`VM_FUNCTION_CTL`) and enable
 relevant bits VE and VMFUNC in secondary processor control.
 
-- `x64.asm` (or `x64.S` for GCC): which contains the `#VE` handler (`__ept_violation`) then does the usual interrupt handling and then calls
+- `vmx.asm` (or `vmx.S` for GCC): which contains the `#VE` handler (`__ept_violation`) then does the usual interrupt handling and then calls
 	`__ept_handle_violation` (`vcpu.c`) where it actually does what it needs to do.
 - `vcpu.c`: in `__ept_handle_violation` (`#VE` handler *not* `VM-exit`), usually the processor will do the `#VE` handler instead of
 	the VM-exit route, but sometimes it won't do so if it's delivering another exception.  This is very rare.
