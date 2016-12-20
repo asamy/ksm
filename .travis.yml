@@ -1,5 +1,6 @@
 os: linux
 language: c
+compiler: gcc
 sudo: required
 
 cache:
@@ -10,6 +11,8 @@ notifications:
 
 matrix:
         fast_finish: true
+        exclude:
+                - compiler: gcc
         include:
                 - os: linux
                   env:
