@@ -132,13 +132,23 @@ int __ksm_init_cpu(struct ksm *k)
 				return ERR_DENIED;
 		}
 
+		struct vcpu *vcpu = ksm_current_cpu();
+		if (!vcpu_create(vcpu)) {
+			VCPU_DEBUG_RAW("failed to create vcpu, oom?\n");
+			return ERR_NOMEM;
+		}
+
 		k->kernel_cr3 = __readcr3();
-		bool ok = __vmx_vminit(&k->vcpu_list[cpu_nr()]);
+		bool ok = __vmx_vminit(vcpu);
 		VCPU_DEBUG("Started: %d\n", ok);
 
 		if (ok) {
 			k->active_vcpus++;
 			return 0;
+		} else {
+			/* vcpu_run() failed, cleanup:  */
+			vcpu_free(vcpu);
+			return ERR_FAIL;
 		}
 #ifndef __GNUC__
 	} __except (EXCEPTION_EXECUTE_HANDLER)

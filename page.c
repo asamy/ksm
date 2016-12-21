@@ -45,11 +45,9 @@
 static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 {
 	/* Called from vmcall (exit.c)  */
-	u64 dpa = phi->d_pfn << PAGE_SHIFT;
-	u64 cpa = phi->c_pfn << PAGE_SHIFT;
-	ept_alloc_page(EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, dpa, cpa);
-	ept_alloc_page(EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, dpa, dpa);
-	ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_EXEC, dpa, dpa);
+	ept_alloc_page(EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, phi->dpa, phi->cpa);
+	ept_alloc_page(EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, phi->dpa, phi->dpa);
+	ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_EXEC, phi->dpa, phi->dpa);
 
 	__invvpid_all();
 	__invept_all();
@@ -181,8 +179,8 @@ int ksm_hook_epage(void *original, void *redirect)
 	memcpy(code_page + offset, &trampo, sizeof(trampo));
 
 	phi->c_va = code_page;
-	phi->c_pfn = __pa(code_page) >> PAGE_SHIFT;
-	phi->d_pfn = __pa(original) >> PAGE_SHIFT;
+	phi->cpa = __pa(code_page);
+	phi->dpa = __pa(original);
 	phi->origin = (u64)aligned;
 	phi->ops = &epage_ops;
 
@@ -202,7 +200,7 @@ int ksm_unhook_page(void *va)
 
 int __ksm_unhook_page(struct page_hook_info *phi)
 {
-	STATIC_CALL_DPC(__do_unhook_page, (void *)(phi->d_pfn << PAGE_SHIFT));
+	STATIC_CALL_DPC(__do_unhook_page, (void *)phi->dpa);
 #ifdef __linux__
 	mm_free_page(phi->c_va);
 #else
@@ -223,7 +221,7 @@ struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn)
 {
 	struct htable_iter i;
 	for (struct page_hook_info *phi = htable_first(&ksm.ht, &i); phi; phi = htable_next(&ksm.ht, &i))
-		if (phi->d_pfn == pfn)
+		if (phi->dpa >> PAGE_SHIFT == pfn)
 			return phi;
 	return NULL;
 }

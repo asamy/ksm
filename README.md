@@ -1,13 +1,18 @@
 # ksm [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/project/asamy/ksm)
 
-A really simple and lightweight x64 hypervisor written in C for Intel processors.  
-KSM aims to be fully feature fledged and as general purpose as possible.  KSM uses
-Linux kernel coding style because it's rather simple and easy to follow, it's more of
-a general C thing.  KSM is licensed under GPL v2 stricly.  
+A really simple and lightweight x64 hypervisor written in C for Intel processors.
 
-KSM supports Windows and Linux kernels natively.
+KSM does not stand for anything, it's a random name, it was first named kum,
+but the name wasn't appropriate, and in fact, a discussion was on
+[HackerNews](https://news.ycombinator.com/item?id=12089356) and they wouldn't
+let me free until I renamed it.
 
-![img](http://i.imgur.com/l3RhUIu.png)
+KSM aims to be fully feature fledged and as general purpose as possible,
+although there are absolutely no barriers, even extending it to be a
+multi-purpose thing is perfeclty fine, e.g. a sandbox, etc.
+
+Currently, KSM supports Windows and Linux kernels natively, and aims to support
+macOS by 2017, if you want to port KSM see porting guidelines down below.
 
 ## Features
 
@@ -29,6 +34,8 @@ You may have already guessed from the `Features` part, if not, here are some rea
 Such features for such purpose is really crucial, for my purpose, I wanted a quicker physical memory virtualization
 technique that I can relay on.
 
+![img](http://i.imgur.com/l3RhUIu.png)
+
 ## Requirements
 
 - An Intel processor (with VT-x and EPT support)
@@ -37,7 +44,7 @@ technique that I can relay on.
 ## Unsupported features (hardware, etc.)
 
 - UEFI
-- Intel TXT
+- Intel TXT (available on Linux only)
 
 ## Debugging and/or testing
 
@@ -60,11 +67,11 @@ You may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in seconda
 - Port `acpi.c` (not really needed) for re-virtualization on S1-3 or S4 state (commenting it out is OK).
 - Write module for initialization
 - Port `print.c` for printing interface (Some kernels may not require it)
-- Port `x64.S` for the assembly based stuff, please use macros for calling conventions, etc.
+- Port `vmx.S` for the assembly based stuff, please use macros for calling conventions, etc.
 
 Hopefully didn't miss something important, but these are definitely the mains.
 
-## Contributions
+## KSM needs your help to survive!
 
 Contributions are really appreciated and can be submitted by one of the following:
 
@@ -73,6 +80,10 @@ Contributions are really appreciated and can be submitted by one of the followin
 - git request-pull
 
 It'd be appreciated if you use a separate branch for your submissions (other than master, that is).
+
+The github issues is a great place to start, although implementing new features
+is perfectly fine and very welcome, feel free to do whatever your little heart
+wants.
 
 ## TODO / In development
 
@@ -90,16 +101,18 @@ Simply `make`.
 
 ### Building for Windows
 
-1. Compiling under MinGW
+#### Compiling under MinGW
 
-Simply `make -f Makefile.windows C=1` (if cross compiling under Linux) or `mingw32-make -f Makefile.windows` (under native).
+Simply `make -f Makefile.windows C=1` (if cross compiling under Linux) or `mingw32-make -f Makefile.windows` (under native).  
+Note: If you're compiling under native, you may need to adjust some paths
+(specially DDK paths) in `Makefile.windows`
 
-Makefile variables:
+##### Makefile variables:
 
 1. `C=1` - Prepare for cross-compiling.
 2. `V=1` - Verbose output (the default, pass 0 for quiet.)
 
-2. Compiling under MSVC
+#### Compiling under MSVC
 
 The solution under `ksm/` directory is a VS 2015 solution, you can use it to build, you'll
 also need the Windows Driver Development Kit.
@@ -108,12 +121,13 @@ also need the Windows Driver Development Kit.
 
 ### On Linux
 Loading:
-- `make load`  
+- `sudo make load`  
 
 Unloading:
-- `make unload`
+- `sudo make unload`
 
-Output can be seen via `dmesg -wH`
+Output:
+- `sudo dmesg -wH`
 
 ### On Windows
 In commandline as administrator:

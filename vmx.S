@@ -229,7 +229,7 @@ __vmx_vminit:
  	/* parameter one is pass-through (vcpu).  */
 	movq	%rsp, REG_A2
 	movabs	$do_resume, REG_A3
-	call	vcpu_init
+	call	vcpu_run
 
 	/* If we get here, we failed  */
 	POP_REGS

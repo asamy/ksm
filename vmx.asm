@@ -7,7 +7,7 @@
 ;
 ; For GCC (or general AT&T aka GAS) assembly, you should look at vmx.S and various
 ; inlined assembly in x86.h
-EXTERN vcpu_init : PROC
+EXTERN vcpu_run : PROC
 EXTERN vcpu_handle_exit : PROC
 EXTERN vcpu_handle_fail : PROC
 EXTERN __ept_handle_violation : PROC
@@ -171,7 +171,7 @@ __vmx_vminit PROC
 	mov	r8, do_resume	; IP after success
 
 	sub	rsp, 20h
-	call	vcpu_init
+	call	vcpu_run
 	add	rsp, 20h
 
 	; if we get here, we failed

@@ -350,17 +350,6 @@ static inline bool nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
 		return false;
 
 	switch (field) {
-	case HOST_ES_SELECTOR:
-	case HOST_CS_SELECTOR:
-	case HOST_SS_SELECTOR:
-	case HOST_DS_SELECTOR:
-	case HOST_FS_SELECTOR:
-	case HOST_GS_SELECTOR:
-	case HOST_TR_SELECTOR:
-		if ((value & 0xF8) == 0)
-			return false;
-
-		break;
 	case CPU_BASED_VM_EXEC_CONTROL:
 		if (value & nested_unsupported_primary)
 			return false;
@@ -881,7 +870,7 @@ static inline void vcpu_do_exit(struct vcpu *vcpu)
 #ifdef EPAGE_HOOK
 static bool vcpu_handle_hook(struct vcpu *vcpu, struct page_hook_info *h)
 {
-	VCPU_DEBUG("page hook request for %p => %p (%p)\n", h->d_pfn, h->c_pfn, h->c_va);
+	VCPU_DEBUG("page hook request for %p => %p (%p)\n", h->dpa, h->cpa, h->c_va);
 	h->ops->init_eptp(h, &vcpu->ept);
 	return true;
 }
@@ -1477,15 +1466,27 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	uintptr_t vmcs = nested->vmcs;
 
-#define VMX_FAIL_MASK	(VMX_EXIT_REASONS_FAILED_VMENTRY | EXIT_REASON_INVALID_STATE)
 	if (__nested_vmcs_read64(vmcs, VMCS_LINK_POINTER) != -1ULL) {
-		vcpu_enter_nested_hypervisor(vcpu, VMX_FAIL_MASK);
+		vcpu_vm_fail_valid(vcpu, VMXERR_ENTRY_INVALID_CONTROL_FIELD);
 		return false;
+	}
+
+	const u64 cr0_fixed = X86_CR0_PE | X86_CR0_PG | X86_CR0_NE;
+	if ((__nested_vmcs_read(vmcs, HOST_CR0) & cr0_fixed) != cr0_fixed ||
+	    !(__nested_vmcs_read(vmcs, HOST_CR4) & X86_CR4_VMXE)) {
+		vcpu_vm_fail_valid(vcpu, VMXERR_ENTRY_INVALID_HOST_STATE_FIELD);
+		return false;
+	}
+
+	for (int i = HOST_ES_SELECTOR; i <= HOST_TR_SELECTOR; i += 2) {
+		if (__nested_vmcs_read16(vmcs, i) & ~0xF8) {
+			vcpu_vm_fail_valid(vcpu, VMXERR_ENTRY_INVALID_HOST_STATE_FIELD);
+			return false;
+		}
 	}
 
 	if (__nested_vmcs_read32(vmcs, VM_ENTRY_INTR_INFO_FIELD) & INTR_INFO_RESVD_BITS_MASK) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_ENTRY_INVALID_CONTROL_FIELD);
-		vcpu_enter_nested_hypervisor(vcpu, VMX_FAIL_MASK);
 		return false;
 	}
 

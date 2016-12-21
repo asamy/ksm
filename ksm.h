@@ -50,6 +50,13 @@
 #define HYPERCALL_KPROTECT	6	/* kprotect.c  */
 #endif
 
+/*
+ * NOTE:
+ *	All of these are relative to current stack
+ *	pointer, do not change!!!  These are supposed
+ *	to match ones defined by intel in Exit Qualification.
+ *	Those are also matched with the assembly, see PUSH_REGS.
+ */
 #define REG_AX			0
 #define REG_CX			1
 #define REG_DX			2
@@ -79,10 +86,7 @@
 #ifndef __linux__
 #define VCPU_BUGCHECK(a, b, c, d)	KeBugCheckEx(MANUALLY_INITIATED_CRASH, a, b, c, d)
 #else
-#define VCPU_BUGCHECK(a, b, c, d) do {	\
-	printk(KERN_ERR "bugcheck 0x%016X 0x%016X 0x%016X 0x%016X\n", a, b, c, d);	\
-	dump_stack();	\
-} while (0)
+#define VCPU_BUGCHECK(a, b, c, d)	panic("bugcheck 0x%016X 0x%016X 0x%016X 0x%016X\n", a, b, c, d)
 #endif
 #else
 #define VCPU_BUGCHECK(a, b, c, d)	(void)0
@@ -445,8 +449,8 @@ struct phi_ops {
 };
 
 struct page_hook_info {
-	u64 d_pfn;
-	u64 c_pfn;
+	u64 dpa;
+	u64 cpa;
 	u64 origin;
 	void *c_va;
 	struct phi_ops *ops;
@@ -522,7 +526,7 @@ extern bool kprotect_init_eptp(struct vcpu *vcpu, uintptr_t gpa);
 #endif
 
 /* vcpu.c  */
-extern void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip);
+extern bool vcpu_create(struct vcpu *vcpu);
 extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
 extern bool ept_check_capabilitiy(void);

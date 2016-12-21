@@ -466,8 +466,17 @@ static inline void adjust_ctl_val(u32 msr, u32 *val)
 	*val |= (u32)v; 		/* bit == 1 in low word  ==> must be one  */
 }
 
-static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
+void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 {
+	/*
+	 * This function is called from __vmx_vminit, which is in assembly.
+	 *
+	 * Note: that we return to __ksm_init_cpu anyway regardless of failure or
+	 * success, but the difference is, if we fail, __vmx_vmlaunch() will give
+	 * us back control instead of directly returning to __ksm_init_cpu.
+	 *
+	 * The guest start is do_resume in assembly, which ends up in __ksm_init_cpu.
+	 */
 	struct vmcs *vmcs, *vmxon;
 	struct gdtr gdtr;
 	struct gdtr *idtr = &vcpu->g_idt;
@@ -506,8 +515,10 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	/* Enter VMX root operation  */
 	u64 pa = __pa(vmxon);
 	err = __vmx_on(&pa);
-	if (err)
-		return err;
+	if (err) {
+		VCPU_DEBUG("vmxon failed: %d\n", err);
+		return;
+	}
 
 	vmcs = vcpu->vmcs;
 	vmcs->revision_id = (u32)vmx;
@@ -593,11 +604,11 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	vcpu->cpu_ctl = vm_cpuctl;
 
 	/* Processor control fields  */
+	err |= vmcs_write32(VM_ENTRY_CONTROLS, vm_entry);
+	err |= vmcs_write32(VM_EXIT_CONTROLS, vm_exit);
 	err |= vmcs_write32(PIN_BASED_VM_EXEC_CONTROL, vm_pinctl);
 	err |= vmcs_write32(CPU_BASED_VM_EXEC_CONTROL, vm_cpuctl);
 	err |= vmcs_write32(SECONDARY_VM_EXEC_CONTROL, vm_2ndctl);
-	err |= vmcs_write32(VM_ENTRY_CONTROLS, vm_entry);
-	err |= vmcs_write32(VM_EXIT_CONTROLS, vm_exit);
 	err |= vmcs_write32(VM_EXIT_MSR_STORE_COUNT, 0);
 	err |= vmcs_write64(VM_EXIT_MSR_STORE_ADDR, 0);
 	err |= vmcs_write32(VM_EXIT_MSR_LOAD_COUNT, 0);
@@ -770,38 +781,50 @@ static u8 setup_vmcs(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		 */
 		__invept_all();
 		__invvpid_all();
-		return 0;
+
+		/* If all good, this goes to do_resume label in assembly.  */
+		err = __vmx_vmlaunch();
+		if (err == 0)
+			return 0;
 	}
+
+	/*
+	 * __vmx_vmwrite/__vmx_vmlaunch() failed if we got here,
+	 * we had already overwritten the IDT entry for #VE (X86_TRAP_VE),
+	 * restore it now otherwise on Windows, PatchGuard is gonna
+	 * notice and crash the system.
+	 */
+	__lidt(&vcpu->g_idt);
 
 off:
 	verr = vmcs_read32(VM_INSTRUCTION_ERROR);
 	__vmx_off();
-	VCPU_DEBUG("something went wrong: %d\n", verr);
-	return err;
+	VCPU_DEBUG("%d: something went wrong: %d\n", err, verr);
 }
 
-void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
+bool vcpu_create(struct vcpu *vcpu)
 {
+#ifdef NESTED_VMX
+	vcpu->nested_vcpu.feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
+#endif
+
 	/*
-	 * Note: that we return to __ksm_init_cpu anyway regardless of failure or
-	 * success, but the difference is, if we fail, __vmx_vmlaunch() will give
-	 * us back control instead of directly returning to __ksm_init_cpu.
-	 *
-	 * What we do here (in order):
-	 *	- Setup EPT
-	 *	- Allocate the shadow IDT (later initialized)
-	 *	- Setup VMCS (shadow IDT initialized here)
-	 *	- Launch VM
+	 * Leave cr0 guest host mask empty, we support all.
+	 * Set VMXE bit in cr4 guest host mask so they VM-exit to us when
+	 * they try to set that bit.
 	 */
-	u32 verr;
-	u8 err;
+	vcpu->cr0_guest_host_mask = 0;
+	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;
+
 	if (!init_ept(&vcpu->ept))
-		return;
+		return false;
 
 	vcpu->idt.limit = PAGE_SIZE - 1;
 	vcpu->idt.base = (uintptr_t)mm_alloc_page();
-	if (!vcpu->idt.base)
-		return free_ept(&vcpu->ept);
+	if (!vcpu->idt.base) {
+		free_ept(&vcpu->ept);
+		return false;
+	}
 
 	vcpu->vmxon = mm_alloc_page();
 	if (!vcpu->vmxon)
@@ -826,45 +849,12 @@ void vcpu_init(struct vcpu *vcpu, uintptr_t sp, uintptr_t ip)
 		goto out;
 
 	vcpu->stack = mm_alloc_pool(KERNEL_STACK_SIZE);
-	if (!vcpu->stack)
-		goto out;
-
-#ifdef NESTED_VMX
-	vcpu->nested_vcpu.feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
-#endif
-
-	/*
-	 * Leave cr0 guest host mask empty, we support all.
-	 * Set VMXE bit in cr4 guest host mask so they VM-exit to us when
-	 * they try to set that bit.
-	 */
-	vcpu->cr0_guest_host_mask = 0;
-	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;
-
-	err = setup_vmcs(vcpu, sp, ip);
-	if (err) {
-		/* Some field isn't supported, or similar, error already
-		 * printed out.  */
-		VCPU_DEBUG("setup_vmcs(): failed with error %d\n", err);
-	} else {
-		err = __vmx_vmlaunch();
-		if (err) {
-			verr = vmcs_read32(VM_INSTRUCTION_ERROR);
-			__vmx_off();
-			VCPU_DEBUG("__vmx_vmlaunch(): failed %d\n", verr);
-		}
-	}
-
-	/*
-	 * setup_vmcs()/__vmx_vmlaunch() failed if we got here,
-	 * we had already overwritten the IDT entry for #VE (X86_TRAP_VE),
-	 * restore it now otherwise on Windows, PatchGuard is gonna
-	 * notice and crash the system.
-	 */
-	__lidt(&vcpu->g_idt);
+	if (vcpu->stack)
+		return true;
 
 out:
 	vcpu_free(vcpu);
+	return false;
 }
 
 void vcpu_free(struct vcpu *vcpu)
