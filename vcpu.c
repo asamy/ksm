@@ -532,8 +532,8 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	if (err)
 		goto off;
 
-	u32 apicv = 0;
 #if 0
+	u32 apicv = 0;
 	/* This needs serious fixing  */
 	if (lapic_in_kernel()) {
 		apicv |= SECONDARY_EXEC_APIC_REGISTER_VIRT | SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES;

@@ -79,11 +79,40 @@ Contributions are really appreciated and can be submitted by one of the followin
 - Github pull requests
 - git request-pull
 
-It'd be appreciated if you use a separate branch for your submissions (other than master, that is).
+It'd be appreciated if you use a separate branch for your submissions (other than master, that is).  
 
 The github issues is a great place to start, although implementing new features
 is perfectly fine and very welcome, feel free to do whatever your little heart
 wants.
+
+The following is _not_ required, but **prefered**:
+
+1. Put your copyright on top of the file(s) you edit along with a tiny description
+with your changes.  Something like:
+
+```c
+/*
+   ...
+   Copyright (C) 2016 Your Name <your_email@domain.com>
+	- Added support for XXX
+	- Fixed bug with YYY
+   ...
+ */
+```
+
+2. Format your git commit messages properly (A signed-off-by is good but
+   **not** required, note: you can use `git commit --signoff` instead of writing
+   manually.):
+
+```
+vmx: fix issue with xxx
+
+Write as much as you would like as needed or point to some issue, although
+writing is prefered, or even comments in the code itself is much better.
+
+Optional:
+Signed-off-by: Your Name <your_email@domain.com>
+```
 
 ## TODO / In development
 
@@ -92,6 +121,8 @@ wants.
 - Intel TXT support
 - Nesting support (Some fixes needed and support for minor features)
 - More documentation
+
+See also Github issues.
 
 ## Building
 
@@ -229,4 +260,8 @@ If it's a crash, please provide the following:
 
 ## License
 
-GPL v2 firm, see LICENSE file.
+GPL v2 firm, see LICENSE file.  Note that some code is thirdparty, respective
+licenses and/or copyright should be there, if you think it's not, please let me
+know.  Most of the code is GPL'd, though...
+
+
