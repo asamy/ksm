@@ -1,5 +1,12 @@
 ; Copyright (c) 2015-2016, tandasat. All rights reserved.  Original initialization code
-; Copyright (C) 2015-2016, asamy, improvements and added support for IDT #VE handling, and optimized some operations
+; Copyright (C) 2016, asamy, improvements and added support for IDT #VE handling,
+;	and optimized some operations
+;
+; This file is specific to Windows, it only compiles with MASM and thus should
+; only be used with the VS project.
+;
+; For GCC (or general AT&T aka GAS) assembly, you should look at vmx.S and various
+; inlined assembly in x86.h
 EXTERN vcpu_init : PROC
 EXTERN vcpu_handle_exit : PROC
 EXTERN vcpu_handle_fail : PROC

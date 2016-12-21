@@ -2,7 +2,7 @@
  * ksm - a really simple and fast x64 hypervisor
  * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
  *
- * Assembly stuff for GCC (GAS) only.  See x64.asm for MASM.
+ * Assembly stuff for GCC (AT&T aka GAS) only.  See vmx.asm for MASM.
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License as published by
@@ -19,15 +19,35 @@
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
 #ifdef __linux__
+/* Arguments  */
 #define REG_A1		%rdi
 #define REG_A2		%rsi
 #define REG_A3		%rdx
 #define REG_A4		%rcx
+/* Volatile registers (caller-saved)  */
+#define REG_V1		%rdx
+#define REG_V2		%rcx
+#define REG_V3		%rax
+#define REG_V4		%r8
+#define REG_V5		%r9
+#define REG_V6		%r10
+#define REG_V7		%r11
+#define REG_V8		%rdi
+#define REG_V9		%rsi
 #else
+/* Arguments  */
 #define REG_A1		%rcx
 #define REG_A2		%rdx
 #define REG_A3		%r8
 #define REG_A4		%r9
+/* Volatile registers (caller-saved)  */
+#define REG_V1		%rax
+#define REG_V2		%rcx
+#define REG_V3		%rdx
+#define REG_V4		%r8
+#define REG_V5		%r9
+#define REG_V6		%r10
+#define REG_V7		%r11
 #endif
 
 .macro PUSH_REGS
@@ -68,8 +88,10 @@
 	popq	%r15
 .endm
 
-#define KFRAME_RPL	-0x56
-#define KFRAME_CSR	-0x54
+#define KFRAME_RPL	-0x66
+#define KFRAME_CSR	-0x64
+#define KFRAME_RSI	-0x60
+#define KFRAME_RDI	-0x58
 #define KFRAME_RAX	-0x50
 #define KFRAME_RCX	-0x48
 #define KFRAME_RDX	-0x40
@@ -101,6 +123,12 @@
 	movq	%r9, KFRAME_R9(%rbp)
 	movq	%r10, KFRAME_R10(%rbp)
 	movq	%r11, KFRAME_R11(%rbp)
+#ifdef REG_V8
+	movq	%rdi, KFRAME_RDI(%rbp)
+#endif
+#ifdef REG_V9
+	movq	%rsi, KFRAME_RSI(%rbp)
+#endif
 	movw	KFRAME_CS(%rbp), %ax
 	andb	$1, %al
 	movb	%al, KFRAME_RPL(%rbp)
@@ -116,11 +144,20 @@
 	movq	KFRAME_RDX(%rbp), %rdx
 	movq	KFRAME_RCX(%rbp), %rcx
 	movq	KFRAME_RAX(%rbp), %rax
+#ifdef REG_V8
+	movq	KFRAME_RDI(%rbp), %rdi
+#endif
+#ifdef REG_V9
+	movq	KFRAME_RSI(%rbp), %rsi
+#endif
 	movq	%rbp, %rsp
 	movq	0xD8(%rbp), %rbp
 	addq	$0xE8, %rsp
 .endm
 
+#ifndef __linux__
+/* Fix this if XMM (floating point) really is needed inside C code, for now
+ * this is commented out on just Linux, because it's not tested.  */
 .macro TRAP_REST_XMM
 	ldmxcsr KFRAME_CSR(%rbp)
 	movaps KFRAME_XMM0(%rbp), %xmm0
@@ -141,6 +178,7 @@
 	movaps	%xmm4, KFRAME_XMM4(%rbp)
 	movaps	%xmm5, KFRAME_XMM5(%rbp)
 .endm
+#endif
 
 .macro irq_entry symbol:req handler:req no_error_code:req
 .globl \symbol
@@ -152,7 +190,9 @@
 
 1:
 	cld
+#ifndef __linux__
 	TRAP_SAVE_XMM
+#endif
 
 	movq	KFRAME_CS(%rbp), REG_A1
 	movq	KFRAME_IP(%rbp), REG_A2
@@ -161,13 +201,17 @@
 	testb	$1, KFRAME_RPL(%rbp)
 	jz	2f
 
+#ifndef __linux__
 	TRAP_REST_XMM
+#endif
 	TRAP_EXIT
 	swapgs
 	iretq
 
 2:
+#ifndef __linux__
 	TRAP_REST_XMM
+#endif
 	TRAP_EXIT
 	iretq
 .endm
