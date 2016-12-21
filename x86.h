@@ -1050,7 +1050,7 @@ static inline u64 __lar(u64 sel)
 static inline u64 __rdtsc(void)
 {
 	u32 eax, edx;
-	__asm __volatile("rdtscp"
+	__asm __volatile("rdtsc"
 			 : "=a" (eax), "=d" (edx));
 	return (u64)eax | (u64)edx << 32;
 }
