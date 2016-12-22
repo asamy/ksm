@@ -19,7 +19,6 @@
 #include <linux/ioport.h>
 #include <linux/slab.h>
 #include <linux/highmem.h>
-#include <linux/kallsyms.h>
 
 extern struct resource iomem_resource;
 #else
@@ -785,7 +784,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		/* If all good, this goes to do_resume label in assembly.  */
 		err = __vmx_vmlaunch();
 		if (err == 0)
-			return 0;
+			return;
 	}
 
 	/*

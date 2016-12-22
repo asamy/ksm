@@ -915,7 +915,7 @@ static inline bool vcpu_unhook_idte(struct vcpu *vcpu, struct shadow_idt_entry *
 static inline bool vcpu_emulate_vmfunc(struct vcpu *vcpu, struct h_vmfunc *vmfunc)
 {
 	/* Emulate a VMFUNC due it to not being supported natively.  */
-	if (vmfunc->func >= 64 || !(vcpu->vm_func_ctl & (1 << vmfunc->func)) ||
+	if (vmfunc->func >= 64 || !(vcpu->vm_func_ctl & (1ULL << vmfunc->func)) ||
 	   (vmfunc->func == 0 && vmfunc->eptp >= EPTP_USED)) {
 		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 		return false;
@@ -1517,6 +1517,37 @@ fault:
 
 static inline bool vcpu_parse_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst, u64 *out)
 {
+	/*
+	 * Register access is handled before this call or not
+	 * supported at all.
+	 *
+	 * Register access is only valid in those cases:
+	 *	1) vmwrite
+	 *	2) vmread
+	 *
+	 * Other cases such as vmptrld, vmptrst, vmclear, vmon, etc, must
+	 * be passed through a memory reference, e.g. stack, something
+	 * like:
+	 *	pushq	phys_add
+	 *	vmon	0(%rsp)
+	 *
+	 * or even:
+	 *	vmon	%cs:some_global_phys_addr
+	 *
+	 * C:
+	 *	u64 phys = __pa(vmon);
+	 *	__vmxon(&phys);
+	 *
+	 * See also vcpu.c.
+	 *
+	 * So we need to first get the address, then dereference to get the
+	 * actual physical address, note that dereferencing does not happen
+	 * here, here we only validate the address and return the virtual address.
+	 *
+	 * Dereferencing happens in:
+	 *	vcpu_read_vmx_addr()
+	 *	vcpu_write_vmx_addr()
+	 */
 	if ((inst >> 10) & 1) {
 		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 		return false;
@@ -1550,6 +1581,18 @@ static inline bool vcpu_parse_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst, u6
 	return true;
 }
 
+/*
+ * This function and the later function (vcpu_write_vmx_addr) need 
+ * to be more robust and need to handle out-of-boundary pages, e.g.
+ *
+ *	If GVA is:
+ *		0xFFC
+ *	Then we will not get the same page to write to an 8-byte to, thus
+ *	we need to do 2 writes, first 4 bytes into this page, next 4 bytes
+ *	in other page the vaddr would translate to.
+ *
+ * In fact, this should be moved somewhere else, maybe vcpu.c.
+ */
 static inline bool vcpu_read_vmx_addr(struct vcpu *vcpu, u64 gva, u64 *value)
 {
 	u64 gpa, hpa;
@@ -2354,7 +2397,9 @@ static bool vcpu_handle_mtf(struct vcpu *vcpu)
 
 static bool vcpu_handle_tpr_threshold(struct vcpu *vcpu)
 {
-	/* should maybe congratulate them or something.  */
+	/* should maybe congratulate them or something.
+	 * Note: This will never happen because TPR Threshold is
+	 * set to 0 in VMCS.  */
 	VCPU_DEBUG("!!! TPR below threshold\n");
 	return true;
 }

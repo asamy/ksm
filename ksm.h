@@ -369,7 +369,7 @@ struct vcpu {
 	u32 pin_ctl;
 	u32 cpu_ctl;
 	u32 secondary_ctl;	/* Emulation purposes of VE / VMFUNC  */
-	u32 vm_func_ctl;	/* Same as above  */
+	u64 vm_func_ctl;	/* Same as above  */
 	/* Those are set during VM-exit only:  */
 	uintptr_t *gp;
 	uintptr_t eflags;
