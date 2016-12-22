@@ -2430,7 +2430,7 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 	 * Synchronize shadow IDT with Guest's IDT, taking into account
 	 * entries that we set, by simply just discarding them.
 	 */
-	size_t entries = min(idt->limit, (PAGE_SIZE - 1) / sizeof(struct kidt_entry64));
+	size_t entries = min((size_t)idt->limit, (PAGE_SIZE - 1) / sizeof(struct kidt_entry64));
 	struct kidt_entry64 *current_idt = (struct kidt_entry64 *)idt->base;
 	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
 
@@ -2552,7 +2552,7 @@ static bool vcpu_handle_ept_violation(struct vcpu *vcpu)
 		VCPU_BUGCHECK(EPT_BUGCHECK_CODE,
 			      EPT_UNHANDLED_VIOLATION,
 			      vcpu->ip,
-			      vmcs_read(GUEST_PHYSICAL_ADDRESS));
+			      vmcs_read64(GUEST_PHYSICAL_ADDRESS));
 	}
 
 	VCPU_TRACER_END();
@@ -2564,7 +2564,7 @@ static bool vcpu_handle_ept_misconfig(struct vcpu *vcpu)
 	VCPU_TRACER_START();
 
 	struct ept *ept = &vcpu->ept;
-	u64 gpa = vmcs_read(GUEST_PHYSICAL_ADDRESS);
+	u64 gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
 	u16 eptp = vcpu_eptp_idx(vcpu);
 
 	u64 *epte = ept_pte(EPT4(ept, eptp), gpa);

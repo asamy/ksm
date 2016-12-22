@@ -55,11 +55,15 @@ static inline void init_epte(u64 *entry, int access, u64 hpa)
  *
  * So, with that being said, while we only have the initial table (PML4) virtual address
  * to work with, we need first need to get an offset into it (for the PDPT), and so on, so
- * we use the following macros:
+ * we use the following macros (defined in mm.h):
  *	- __pxe_idx(pa)		- Gives an offset into PML4 to get the PDPT
  *	- __ppe_idx(pa)		- Gives an offset into PDPT to get the PDT
  *	- __pde_idx(pa)		- Gives an offset into PDT to get the PT 
  *	- __pte_idx(pa)		- Gives an offset into PT to get the final page!
+ *
+ * Do also note that each table contain 512 entries, 512 * 8 = 4096 (0x1000) which is
+ * surprisingly happens to be PAGE_SIZE (which also happens to be 1 <<
+ * PAGE_SHIFT)!!!
  *
  * And since each of those entries contain a physical address, we need to use
  * page_addr() to obtain the virtual address for that specific table, what page_addr()
@@ -67,7 +71,8 @@ static inline void init_epte(u64 *entry, int access, u64 hpa)
  * __va(PAGE_PA(entry)).
  *
  * We currently just do a 1:1 mapping, except for the executable page
- * redirection case, see page.c, kprotect.c.
+ * redirection case, see:
+ *	page.c, kprotect.c.
  */
 u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 {
@@ -117,8 +122,8 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 }
 
 /*
- * Recursively free each table entries, see ept_alloc_page()
- * for an explanation.
+ * Recursively free each table entries, see comments above
+ * ept_alloc_page() for an explanation.
  */
 static void free_entries(u64 *table, int lvl)
 {
@@ -297,6 +302,21 @@ static inline void free_ept(struct ept *ept)
 /*
  * Get a PTE for the specified guest physical address, this can be used
  * to get the host physical address it redirects to or redirect to it.
+ *
+ * To redirect to an HPA (Host physical address):
+ * \code
+ *	struct ept *ept = &vcpu->ept;
+ *	u64 *epte = ept_pte(EPT4(ept, EPTP_EXHOOK), gpa);
+ *	__set_epte_pfn(epte, hpa);
+ *	__invept_all();
+ * \endcode
+ *
+ * Similarly, to get the HPA:
+ * \code
+ *	struct ept *ept = &vcpu->ept;
+ *	u64 *epte = ept_pte(EPT4(ept, EPTP_EXHOOK), gpa);
+ *	u64 hpa = *epte & PAGE_PA_MASK;
+ * \endcode
  */
 u64 *ept_pte(u64 *pml4, u64 gpa)
 {
@@ -326,6 +346,19 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
 	return &pd[__pte_idx(gpa)];	/* 4 KB  */
 }
 
+/*
+ * Called from:
+ *	- ept_handle_violation() aka VM Exit violation
+ *	- __ept_handle_violation()
+ *
+ * Returns the EPTP index to be switched to if needed, or the current one
+ * (eptp) if no switching is required, invalidation is up to this function not
+ * to the caller if it decides to return the current eptp index.
+ *
+ * If an error occurs, it returns EPT_MAX_EPTP_LIST which is 512.
+ * Note that we don't need to invalidate non existent entries, aka entries that
+ * mostly have EPT_ACCESS_NONE which is usually not even allocated...
+ */
 static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa,
 			    u64 gva, u16 eptp, u8 ar, u8 ac)
 {

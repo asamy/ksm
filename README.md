@@ -116,13 +116,16 @@ Signed-off-by: Your Name <your_email@domain.com>
 
 ## TODO / In development
 
-- APIC virtualization (Partially implemented, needs testing)
+- APIC virtualization (Partially implemented, needs testing & fixes)
 - UEFI support
 - Intel TXT support
+- AMD-V with NPT support
 - Nesting support (Some fixes needed and support for minor features)
 - More documentation
+- Finish writing tests
 
-See also Github issues.
+See also Github issues.  Some of these features are unfortunately not
+(fully) implemented due to lack of hardware (support) or similar.
 
 ## Building
 
@@ -263,5 +266,4 @@ If it's a crash, please provide the following:
 GPL v2 firm, see LICENSE file.  Note that some code is thirdparty, respective
 licenses and/or copyright should be there, if you think it's not, please let me
 know.  Most of the code is GPL'd, though...
-
 

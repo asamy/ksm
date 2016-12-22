@@ -110,8 +110,8 @@ STATIC_DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
  * module pages as those are allocated using vmalloc() and are not
  * physically contiguous, so be careful.
  *
- * On windows, kernel pages are always physically contiguous, so
- * this will handle most cases.
+ * On windows, kernel pages are always physically contiguous unless they are
+ * in the PAGE section, so this will handle most cases.
  *
  * On windows, you can lock pages using:
  * \code
