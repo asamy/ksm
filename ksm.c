@@ -165,8 +165,16 @@ int __ksm_init_cpu(struct ksm *k)
 STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
 int ksm_subvert(void)
 {
+	int err;
+	struct vcpu *vcpu = ksm_current_cpu();
+	if (vcpu->subverted)
+		return 0;
+
 	STATIC_CALL_DPC(__call_init, &ksm);
-	return STATIC_DPC_RET();
+	err = STATIC_DPC_RET();
+	if (err == 0)
+		vcpu->subverted = true;
+	return err;
 }
 
 int ksm_init(void)
@@ -217,6 +225,10 @@ int ksm_init(void)
 int __ksm_exit_cpu(struct ksm *k)
 {
 	u8 err;
+	struct vcpu *vcpu = ksm_current_cpu();
+
+	if (!vcpu->subverted)
+		return ERR_NOTH;
 
 #ifndef __GNUC__
 	__try {
@@ -233,7 +245,8 @@ int __ksm_exit_cpu(struct ksm *k)
 
 	if (err == 0) {
 		k->active_vcpus--;
-		vcpu_free(ksm_current_cpu());
+		vcpu->subverted = false;
+		vcpu_free(vcpu);
 		__writecr4(__readcr4() & ~X86_CR4_VMXE);
 	}
 
@@ -243,6 +256,9 @@ int __ksm_exit_cpu(struct ksm *k)
 STATIC_DEFINE_DPC(__call_exit, __ksm_exit_cpu, ctx);
 int ksm_unsubvert(void)
 {
+	if (ksm.active_vcpus == 0)
+		return ERR_NOTH;
+
 	STATIC_CALL_DPC(__call_exit, &ksm);
 	return STATIC_DPC_RET();
 }
@@ -250,8 +266,6 @@ int ksm_unsubvert(void)
 int ksm_exit(void)
 {
 	int err;
-	if (ksm.active_vcpus == 0)
-		return ERR_NOTH;
 
 	err = ksm_unsubvert();
 	if (err == 0) {

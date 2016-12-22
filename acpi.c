@@ -5,6 +5,8 @@
  * Public domain
 */
 #ifdef ENABLE_ACPI
+#include <ntddk.h>
+
 #include "ksm.h"
 
 static void power_callback(PDEV_EXT ctx, void *arg0, void *arg1)
@@ -12,9 +14,9 @@ static void power_callback(PDEV_EXT ctx, void *arg0, void *arg1)
 	if (arg0 != (void *)PO_CB_SYSTEM_STATE_LOCK)
 		return;
 
-	if (!arg1)
+	if (arg1 == (void *)0)
 		ksm_unsubvert();
-	else
+	else if (arg0 == (void *)1)
 		ksm_subvert();
 }
 

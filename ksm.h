@@ -370,6 +370,7 @@ struct vcpu {
 	u32 cpu_ctl;
 	u32 secondary_ctl;	/* Emulation purposes of VE / VMFUNC  */
 	u64 vm_func_ctl;	/* Same as above  */
+	bool subverted;
 	/* Those are set during VM-exit only:  */
 	uintptr_t *gp;
 	uintptr_t eflags;
@@ -470,11 +471,11 @@ static inline size_t rehash(const void *e, void *unused)
 
 #ifdef ENABLE_ACPI
 typedef struct _DEV_EXT {
-	PVOID CbRegistration;
-	PCALLBACK_OBJECT CbObject;
+	void *CbRegistration;
+	void *CbObject;
 } DEV_EXT, *PDEV_EXT;
 
-extern int register_power_callback(PDEV_EXT ext);
+extern NTSTATUS register_power_callback(PDEV_EXT ext);
 extern void deregister_power_callback(PDEV_EXT ext);
 #endif
 

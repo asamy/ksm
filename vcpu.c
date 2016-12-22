@@ -365,6 +365,12 @@ static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa,
 	struct ept *ept = &vcpu->ept;
 	if (ar == EPT_ACCESS_NONE) {
 		/* Most likely device memory  */
+#ifdef NESTED_VMX
+		u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
+		if (epte && *epte & ac)
+			return EPT_MAX_EPTP_LIST;
+#endif
+
 		for_each_eptp(i)
 			if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, gpa, gpa))
 				return EPT_MAX_EPTP_LIST;

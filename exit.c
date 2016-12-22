@@ -42,6 +42,10 @@ static u16 prev_handler = 0;
 		__debugbreak();		\
 } while (0)
 #endif
+#define break_if(cond)	do {	\
+	if (!!(cond))	\
+		dbgbreak();	\
+} while (0)
 
 #ifdef NESTED_VMX
 /* FIXME:  Support these!  */
@@ -950,34 +954,35 @@ static inline u32 nested_build_ar_bytes(u32 type, u32 s, u32 dpl, u32 present,
 
 static inline void nested_save(uintptr_t vmcs, u32 field)
 {
-	__nested_vmcs_write(vmcs, field, vmcs_read(field));
+	break_if(!__nested_vmcs_write(vmcs, field, vmcs_read(field)));
 }
 
 static inline void nested_save16(uintptr_t vmcs, u32 field)
 {
-	__nested_vmcs_write(vmcs, field, vmcs_read16(field));
+	break_if(!__nested_vmcs_write(vmcs, field, vmcs_read16(field)));
 }
 
 static inline void nested_save32(uintptr_t vmcs, u32 field)
 {
-	__nested_vmcs_write(vmcs, field, vmcs_read32(field));
+	break_if(!__nested_vmcs_write(vmcs, field, vmcs_read32(field)));
 }
 
 static inline void nested_save64(uintptr_t vmcs, u32 field)
 {
-	__nested_vmcs_write(vmcs, field, vmcs_read32(field));
-	__nested_vmcs_write(vmcs, field + 1, vmcs_read32(field + 1));
+	break_if(!__nested_vmcs_write(vmcs, field, vmcs_read32(field)) ||
+		 !__nested_vmcs_write(vmcs, field + 1, vmcs_read32(field + 1)));
 }
 
 static inline void nested_save_guest_state(struct nested_vcpu *nested)
 {
 	uintptr_t vmcs = nested->vmcs;
-	nested_save(vmcs, GUEST_CR0);
-	nested_save(vmcs, GUEST_CR3);
-	nested_save(vmcs, GUEST_CR4);
 	nested_save(vmcs, GUEST_RSP);
 	nested_save(vmcs, GUEST_RIP);
 	nested_save(vmcs, GUEST_RFLAGS);
+
+	nested_save(vmcs, GUEST_CR0);
+	nested_save(vmcs, GUEST_CR3);
+	nested_save(vmcs, GUEST_CR4);
 
 	nested_save64(vmcs, GUEST_PDPTR0);
 	nested_save64(vmcs, GUEST_PDPTR1);
@@ -1272,36 +1277,28 @@ static inline bool nested_can_exec_vmx(struct vcpu *vcpu)
 static inline u8 nested_copy(uintptr_t vmcs, u32 field)
 {
 	u8 err = vmcs_write(field, __nested_vmcs_read(vmcs, field));
-	if (err)
-		dbgbreak();
-
+	break_if(err);
 	return err;
 }
 
 static inline u8 nested_copy16(uintptr_t vmcs, u32 field)
 {
 	u8 err = vmcs_write16(field, __nested_vmcs_read16(vmcs, field));
-	if (err)
-		dbgbreak();
-
+	break_if(err);
 	return err;
 }
 
 static inline u8 nested_copy32(uintptr_t vmcs, u32 field)
 {
 	u8 err = vmcs_write32(field, __nested_vmcs_read32(vmcs, field));
-	if (err)
-		dbgbreak();
-
+	break_if(err);
 	return err;
 }
 
 static inline u8 nested_copy64(uintptr_t vmcs, u32 field)
 {
 	u8 err = vmcs_write64(field, __nested_vmcs_read64(vmcs, field));
-	if (err)
-		dbgbreak();
-
+	break_if(err);
 	return err;
 }
 
@@ -1332,6 +1329,10 @@ static bool prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 	u64 cr4_read_shadow = __nested_vmcs_read(vmcs, CR4_READ_SHADOW) &
 		~vcpu->cr4_guest_host_mask;
 
+	err |= nested_copy(vmcs, GUEST_RIP);
+	err |= nested_copy(vmcs, GUEST_RSP);
+	err |= nested_copy(vmcs, GUEST_RFLAGS);
+
 	err |= vmcs_write(CR0_GUEST_HOST_MASK, cr0_guest_host_mask);
 	err |= vmcs_write(CR4_GUEST_HOST_MASK, cr4_guest_host_mask);
 	err |= vmcs_write(CR0_READ_SHADOW, cr0_read_shadow);
@@ -1352,15 +1353,15 @@ static bool prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 	err |= nested_copy(vmcs, GUEST_IDTR_BASE);
 	err |= nested_copy(vmcs, GUEST_GDTR_BASE);
 
-	err |= nested_copy16(vmcs, GUEST_ES_LIMIT);
-	err |= nested_copy16(vmcs, GUEST_FS_LIMIT);
-	err |= nested_copy16(vmcs, GUEST_GS_LIMIT);
-	err |= nested_copy16(vmcs, GUEST_SS_LIMIT);
-	err |= nested_copy16(vmcs, GUEST_CS_LIMIT);
-	err |= nested_copy16(vmcs, GUEST_DS_LIMIT);
-	err |= nested_copy16(vmcs, GUEST_LDTR_LIMIT);
-	err |= nested_copy16(vmcs, GUEST_IDTR_LIMIT);
-	err |= nested_copy16(vmcs, GUEST_GDTR_LIMIT);
+	err |= nested_copy32(vmcs, GUEST_ES_LIMIT);
+	err |= nested_copy32(vmcs, GUEST_FS_LIMIT);
+	err |= nested_copy32(vmcs, GUEST_GS_LIMIT);
+	err |= nested_copy32(vmcs, GUEST_SS_LIMIT);
+	err |= nested_copy32(vmcs, GUEST_CS_LIMIT);
+	err |= nested_copy32(vmcs, GUEST_DS_LIMIT);
+	err |= nested_copy32(vmcs, GUEST_LDTR_LIMIT);
+	err |= nested_copy32(vmcs, GUEST_IDTR_LIMIT);
+	err |= nested_copy32(vmcs, GUEST_GDTR_LIMIT);
 
 	err |= nested_copy32(vmcs, GUEST_ES_AR_BYTES);
 	err |= nested_copy32(vmcs, GUEST_FS_AR_BYTES);
@@ -1394,10 +1395,12 @@ static bool prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 		err |= nested_copy64(vmcs, GUEST_PDPTR2);
 		err |= nested_copy64(vmcs, GUEST_PDPTR3);
 
+		/* FIXME  */
 		if (nested_has_secondary(nested, SECONDARY_EXEC_ENABLE_VE))
 			err |= nested_copy16(vmcs, EPTP_INDEX);
 		else if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VE)
 			err |= vmcs_write16(EPTP_INDEX, 0);
+
 		__invept_all();
 	} else {
 		err |= nested_copy(vmcs, PAGE_FAULT_ERROR_CODE_MASK);
@@ -1411,9 +1414,6 @@ static bool prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 	err |= nested_copy32(vmcs, GUEST_PENDING_DBG_EXCEPTIONS);
 	err |= nested_copy32(vmcs, EXCEPTION_BITMAP);
 
-	err |= nested_copy(vmcs, GUEST_RIP);
-	err |= nested_copy(vmcs, GUEST_RSP);
-	err |= nested_copy(vmcs, GUEST_RFLAGS);
 	err |= nested_copy(vmcs, GUEST_SYSENTER_CS);
 	err |= nested_copy(vmcs, GUEST_SYSENTER_ESP);
 	err |= nested_copy(vmcs, GUEST_SYSENTER_EIP);
@@ -1430,7 +1430,7 @@ static bool prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 	if (entry & VM_ENTRY_LOAD_BNDCFGS)
 		err |= nested_copy64(vmcs, GUEST_BNDCFGS);
 
-	u32 ctl = vmcs_read(CPU_BASED_VM_EXEC_CONTROL);
+	u32 ctl = vcpu->cpu_ctl;
 	if (ctl & CPU_BASED_USE_TSC_OFFSETING)
 		err |= nested_copy64(vmcs, TSC_OFFSET);
 
@@ -1438,7 +1438,7 @@ static bool prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 			    ctl | __nested_vmcs_read(vmcs, CPU_BASED_VM_EXEC_CONTROL));
 
 	if (secondary) {
-		ctl = vmcs_read(SECONDARY_VM_EXEC_CONTROL);
+		ctl = vcpu->secondary_ctl;
 		if (ctl & SECONDARY_EXEC_ENABLE_VPID) {
 			err |= nested_copy(vmcs, VIRTUAL_PROCESSOR_ID);
 			__invvpid_all();
@@ -1678,6 +1678,7 @@ static bool vcpu_handle_vmlaunch(struct vcpu *vcpu)
 		return true;
 	}
 
+	dbgbreak();
 out:
 	vcpu_advance_rip(vcpu);
 	return true;
@@ -1797,6 +1798,7 @@ static bool vcpu_handle_vmresume(struct vcpu *vcpu)
 	if (vcpu_enter_nested_guest(vcpu))
 		return true;
 
+	dbgbreak();
 out:
 	vcpu_advance_rip(vcpu);
 	return true;
@@ -2545,8 +2547,10 @@ static bool vcpu_handle_ept_violation(struct vcpu *vcpu)
 		if (nested->launch_state == VMCS_LAUNCH_STATE_LAUNCHED &&
 		    nested_has_secondary(nested, SECONDARY_EXEC_ENABLE_EPT) &&
 		    (nested_inject_ve(vcpu) ||
-		     vcpu_enter_nested_hypervisor(vcpu, EXIT_REASON_EPT_VIOLATION)))
+		     vcpu_enter_nested_hypervisor(vcpu, EXIT_REASON_EPT_VIOLATION))) {
+			VCPU_DEBUG_RAW("Throw-back EPT violation to nested hypervisor\n");
 			return true;
+		}
 #endif
 
 		VCPU_BUGCHECK(EPT_BUGCHECK_CODE,
@@ -2850,7 +2854,7 @@ static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_
 			nested_has_secondary(nested, SECONDARY_EXEC_PAUSE_LOOP_EXITING);
 	case EXIT_REASON_EPT_VIOLATION:
 		/* TODO: This needs some serious fixes  */
-		return true;
+		return false;
 	case EXIT_REASON_EPT_MISCONFIG:
 		return true;
 	case EXIT_REASON_WBINVD:
@@ -2991,10 +2995,13 @@ bool vcpu_handle_exit(uintptr_t *regs)
 	 * the case, then throw back whatever we have to the nested hypervisor
 	 * however, we need to do some checks first.
 	 */
+	VCPU_DEBUG("Exit: %d\n", curr_handler);
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	if (nested_entered(nested) && nested_can_handle(nested, exit_reason) &&
-	    vcpu_enter_nested_hypervisor(vcpu, exit_reason))
+	    vcpu_enter_nested_hypervisor(vcpu, exit_reason)) {
+		VCPU_DEBUG("Nested is to handle violation: %d\n", curr_handler);
 		goto do_pending_irq;
+	}
 #endif
 
 	uintptr_t eflags = vcpu->eflags;
