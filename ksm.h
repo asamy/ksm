@@ -492,7 +492,7 @@ struct ksm {
 };
 extern struct ksm ksm;
 
-#ifdef ENABLE_PRINT
+#if !defined(__linux__) && defined(ENABLE_PRINT)
 /* print.c  */
 extern NTSTATUS print_init(void);
 extern void print_exit(void);
