@@ -42,7 +42,6 @@ static u16 prev_handler = 0;
 	if (KD_DEBUGGER_ENABLED && !KD_DEBUGGER_NOT_PRESENT)	\
 		__debugbreak();		\
 } while (0)
-#else
 #endif
 #else
 #define dbgbreak()	(void)0
