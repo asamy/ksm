@@ -64,7 +64,7 @@ You may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in seconda
 
 - Port `mm.h` functions (`mm_alloc_page`, `__mm_free_page`, `mm_alloc_pool`,
 			 etc.)
-- Port `acpi.c` (not really needed) for re-virtualization on S1-3 or S4 state (commenting it out is OK).
+- Port `resubv.c` (not really needed) for re-virtualization on S1-3 or S4 state (commenting it out is OK).
 - Write module for initialization
 - Port `print.c` for printing interface (Some kernels may not require it)
 - Port `vmx.S` for the assembly based stuff, please use macros for calling conventions, etc.

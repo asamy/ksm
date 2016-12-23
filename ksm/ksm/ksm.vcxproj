@@ -84,7 +84,6 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="..\..\acpi.c" />
     <ClCompile Include="..\..\exit.c" />
     <ClCompile Include="..\..\htable.c" />
     <ClCompile Include="..\..\kprotect.c" />
@@ -92,6 +91,7 @@
     <ClCompile Include="..\..\main_windows.c" />
     <ClCompile Include="..\..\page.c" />
     <ClCompile Include="..\..\print.c" />
+    <ClCompile Include="..\..\resubv.c" />
     <ClCompile Include="..\..\vcpu.c" />
   </ItemGroup>
   <ItemGroup>

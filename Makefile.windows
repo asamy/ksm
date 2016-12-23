@@ -59,7 +59,7 @@ LDFLAGS = -shared -Wl,--subsystem,native -Wl,--dynamicbase -Wl,--stack=0x6000 \
 	  -Wl,--enable-stdcall-fixup -nostartfiles -nostdlib
 LIBS = -L$(CROSS_LIB) -lntoskrnl -lhal -lmingwex
 
-SRC = acpi.c exit.c htable.c ksm.c kprotect.c main_windows.c page.c print.c vcpu.c
+SRC = exit.c htable.c ksm.c kprotect.c main_windows.c page.c print.c resubv.c vcpu.c
 ASM = vmx.S
 
 BIN_DIR = bin
