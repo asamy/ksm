@@ -54,7 +54,8 @@
   </PropertyGroup>
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DebuggerFlavor>DbgengKernelDebugger</DebuggerFlavor>
-    <TimeStampServer>http://timestamp.digicert.com</TimeStampServer>
+    <TimeStampServer>
+    </TimeStampServer>
   </PropertyGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
     <PostBuildEvent>
@@ -66,6 +67,7 @@
     </DriverSign>
     <ClCompile>
       <PreprocessorDefinitions>ENABLE_DBGPRINT;NESTED_VMX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
     <Link>
       <SectionAlignment>
@@ -74,8 +76,13 @@
   </ItemDefinitionGroup>
   <ItemDefinitionGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
     <DriverSign>
-      <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
+      <FileDigestAlgorithm>
+      </FileDigestAlgorithm>
     </DriverSign>
+    <ClCompile>
+      <PreprocessorDefinitions>_WIN64;_AMD64_;AMD64;ENABLE_DBGPRINT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <TreatWarningAsError>false</TreatWarningAsError>
+    </ClCompile>
   </ItemDefinitionGroup>
   <ItemGroup>
     <Inf Include="ksm.inf" />

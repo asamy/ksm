@@ -44,6 +44,10 @@
 #define __packed		__attribute__((__packed__))
 #endif
 
+#if defined(ENABLE_DBGPRINT) || defined(ENABLE_FILEPRINT)
+#define ENABLE_PRINT
+#endif
+
 /* Long names  */
 typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;

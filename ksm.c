@@ -174,6 +174,7 @@ int ksm_subvert(void)
 	err = STATIC_DPC_RET();
 	if (err == 0)
 		vcpu->subverted = true;
+
 	return err;
 }
 

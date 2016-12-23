@@ -104,7 +104,7 @@
 #define __func__ __FUNCTION__
 #endif
 
-#ifdef DBG
+#ifdef ENABLE_PRINT
 #ifdef __linux__
 #define VCPU_DEBUG(fmt, args...)	printk(KERN_INFO "ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
 #define VCPU_DEBUG_RAW(str)		printk(KERN_INFO "ksm: CPU %d: %s: " str, cpu_nr(), __func__)
@@ -156,7 +156,6 @@
 #define EPT_ACCESS_EXEC			0x4
 #define EPT_ACCESS_RWX			(EPT_ACCESS_RW | EPT_ACCESS_EXEC)
 #define EPT_ACCESS_ALL			EPT_ACCESS_RWX
-#define EPT_ACCESS_MAX_BITS		EPT_ACCESS_ALL
 
 /* Accessed dirty flags  */
 #define EPT_ACCESSED			0x100
@@ -469,7 +468,7 @@ static inline size_t rehash(const void *e, void *unused)
 }
 #endif
 
-#ifdef ENABLE_ACPI
+#ifdef ENABLE_RESUBV
 typedef struct _DEV_EXT {
 	void *CbRegistration;
 	void *CbObject;
@@ -493,7 +492,7 @@ struct ksm {
 };
 extern struct ksm ksm;
 
-#if defined(DBG) && !defined(__linux__)
+#ifdef ENABLE_PRINT
 /* print.c  */
 extern NTSTATUS print_init(void);
 extern void print_exit(void);
@@ -519,11 +518,13 @@ extern int __ksm_unhook_page(struct page_hook_info *phi);
 extern struct page_hook_info *ksm_find_page(void *va);
 extern struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn);
 
+#ifdef KPROTECT
 /* kprotect.c  */
 extern int kprotect_init(void);
 extern int kprotect_exit(void);
 extern u16 kprotect_select_eptp(struct ept *ept, u64 rip, u8 ac);
 extern bool kprotect_init_eptp(struct vcpu *vcpu, uintptr_t gpa);
+#endif
 #endif
 
 /* vcpu.c  */
@@ -612,12 +613,12 @@ static inline void __set_epte_pfn(u64 *epte, u64 pfn)
 static inline void __set_epte_ar(u64 *epte, int ar)
 {
 	*epte &= ~(ar ^ EPT_ACCESS_ALL);
-	*epte |= ar & EPT_ACCESS_MAX_BITS;
+	*epte |= ar & EPT_AR_MASK;
 }
 
 static inline void __set_epte_ar_inplace(u64 *epte, int ar)
 {
-	__set_epte_ar(epte, ar | (*epte & EPT_ACCESS_MAX_BITS));
+	__set_epte_ar(epte, ar | (*epte & EPT_AR_MASK));
 }
 
 static inline void __set_epte_ar_pfn(u64 *epte, int ar, u64 pfn)
@@ -626,11 +627,11 @@ static inline void __set_epte_ar_pfn(u64 *epte, int ar, u64 pfn)
 	__set_epte_ar(epte, ar);
 }
 
-#ifdef DBG
 static inline void ar_get_bits(u8 ar, char *p)
 {
 	p[0] = p[1] = p[2] = '-';
 	p[3] = '\0';
+
 	if (ar & EPT_ACCESS_READ)
 		p[0] = 'r';
 
@@ -643,12 +644,11 @@ static inline void ar_get_bits(u8 ar, char *p)
 
 static inline void __get_epte_ar(u64 *epte, char *p)
 {
-	return ar_get_bits((u8)*epte & EPT_ACCESS_MAX_BITS, p);
+	return ar_get_bits((u8)*epte & EPT_AR_MASK, p);
 }
 
 static inline void get_epte_ar(u64 *pml4, u64 gpa, char *p)
 {
 	return __get_epte_ar(ept_pte(pml4, gpa), p);
 }
-#endif
 #endif

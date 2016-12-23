@@ -12,7 +12,9 @@ although there are absolutely no barriers, even extending it to be a
 multi-purpose thing is perfeclty fine, e.g. a sandbox, etc.
 
 Currently, KSM supports Windows and Linux kernels natively, and aims to support
-macOS by 2017, if you want to port KSM see porting guidelines down below.
+macOS by 2017, if you want to port KSM see porting guidelines down below.  Note
+that the `master` branch may be unstable (bugs, unfinished features, etc.), so
+you might want to stick with the releases for a captured stable state.
 
 ## Features
 
@@ -102,7 +104,7 @@ with your changes.  Something like:
 
 2. Format your git commit messages properly (A signed-off-by is good but
    **not** required, note: you can use `git commit --signoff` instead of writing
-   manually.):
+   manually.  See also Linux kernel contribution guidelines for more perks):
 
 ```
 vmx: fix issue with xxx
@@ -123,6 +125,8 @@ Signed-off-by: Your Name <your_email@domain.com>
 - Nesting support (Some fixes needed and support for minor features)
 - More documentation
 - Finish writing tests
+- Failsafe state (e.g. when an unexpected thing happens, turn off and restore
+                  state to a valid one.)
 
 See also Github issues.  Some of these features are unfortunately not
 (fully) implemented due to lack of hardware (support) or similar.
@@ -227,12 +231,12 @@ You can define one or more of the following:
 - `ENABLE_PML` - Enables Page Modification Log if supported.
 - `EMULATE_VMFUNC` - Forces emulation of VMFUNC even if CPU supports it.
 - `EPT_SUPPRESS_VE` - Force suppress VE bit in EPT.
-- `ENABLE_ACPI` - Enable S1-3-S4 power state monitoring for re-virtualization
+- `ENABLE_RESUBV` - Enable S1-3-S4 power state monitoring for re-virtualization
 - `NESTED_VMX` - Enable experimental VT-x nesting
-- `ENABLE_FILEPRINT` - Available only when `DBG` is defined.  Enables loggin to
-disk (Windows only)
-- `ENABLE_DBGPRINT` - Available only when `DBG` is defined.  Enables `DbgPrint`
-log.  (Windows only)
+- `ENABLE_FILEPRINT` - Available on Windows only.  Enables loggin to
+disk
+- `ENABLE_DBGPRINT` - Available on Windows only.  Enables `DbgPrint`
+log.
 
 ## Reporting bugs (or similar)
 
@@ -255,7 +259,7 @@ If it's a crash, please provide the following:
 - `ksmlinux.ko` and `ksmlinux.o`
 - Stack dump from dmesg or kernel panic
 
-## Thanks to...
+## References
 
 - Linux kernel (KVM)
 - HyperPlatform

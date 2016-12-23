@@ -16,7 +16,7 @@
  * You should have received a copy of the GNU General Public License along with
  * this program; If not, see <http://www.gnu.org/licenses/>.
 */
-#if defined(DBG) && (defined(ENABLE_DBGPRINT) || defined(ENABLE_FILEPRINT))
+#if defined(ENABLE_DBGPRINT) || defined(ENABLE_FILEPRINT)
 
 /*
  * A stupid kernel debug printing interface so that we don't hang

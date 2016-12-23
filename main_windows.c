@@ -22,7 +22,7 @@
 #include "ksm.h"
 #include "pe.h"
 
-#ifdef ENABLE_ACPI
+#ifdef ENABLE_RESUBV
 static DEV_EXT g_dev_ext = { NULL, NULL };
 #endif
 static void *hotplug_cpu;
@@ -111,11 +111,11 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 {
 	UNREFERENCED_PARAMETER(driverObject);
 	KeDeregisterProcessorChangeCallback(hotplug_cpu);
-#ifdef ENABLE_ACPI
+#ifdef ENABLE_RESUBV
 	deregister_power_callback(&g_dev_ext);
 #endif
 	VCPU_DEBUG("ret: 0x%08X\n", ksm_exit());
-#ifdef DBG
+#ifdef ENABLE_PRINT
 	print_exit();
 #endif
 }
@@ -124,7 +124,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 {
 	NTSTATUS status;
 
-#ifdef DBG
+#ifdef ENABLE_PRINT
 	/* Stupid printing interface  */
 	if (!NT_SUCCESS(status = print_init())) {
 		DbgPrint("failed to initialize log: 0x%08X\n", status);
@@ -153,7 +153,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (!NT_SUCCESS(status = ksm_init()))
 		goto err1;
 
-#ifdef ENABLE_ACPI
+#ifdef ENABLE_RESUBV
 	if (!NT_SUCCESS(status = register_power_callback(&g_dev_ext)))
 		goto exit;
 #endif
@@ -162,14 +162,14 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	driverObject->DriverUnload = DriverUnload;
 	goto out;
 
-#ifdef ENABLE_ACPI
+#ifdef ENABLE_RESUBV
 exit:
 	ksm_exit();
 #endif
 err1:
 	KeDeregisterProcessorChangeCallback(hotplug_cpu);
 err:
-#ifdef DBG
+#ifdef ENABLE_PRINT
 	print_exit();
 #endif
 out:

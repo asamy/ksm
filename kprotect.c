@@ -17,7 +17,7 @@
  * You should have received a copy of the GNU General Public License along with
  * this program; If not, see <http://www.gnu.org/licenses/>.
 */
-#ifdef KPROTECT
+#if defined(EPAGE_HOOK) && defined(KPROTECT)
 #ifdef __linux__
 #include <linux/kernel.h>
 #else

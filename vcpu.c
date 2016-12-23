@@ -23,6 +23,7 @@
 extern struct resource iomem_resource;
 #else
 #include <ntddk.h>
+#include <intrin.h>
 #endif
 
 #include "ksm.h"
@@ -30,7 +31,7 @@ extern struct resource iomem_resource;
 static inline void init_epte(u64 *entry, int access, u64 hpa)
 {
 	*entry ^= *entry;
-	*entry |= access & EPT_ACCESS_MAX_BITS;
+	*entry |= access & EPT_AR_MASK;
 	*entry |= (hpa >> PAGE_SHIFT) << PAGE_SHIFT;
 #ifdef EPT_SUPPRESS_VE
 	*entry |= EPT_SUPPRESS_VE_BIT;

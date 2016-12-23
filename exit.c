@@ -34,6 +34,7 @@ static u16 curr_handler = 0;
 static u16 prev_handler = 0;
 #endif
 
+#ifdef DBG
 #ifdef __linux__
 #define dbgbreak()	(void)0		//__asm __volatile("int $3")
 #else
@@ -41,6 +42,9 @@ static u16 prev_handler = 0;
 	if (KD_DEBUGGER_ENABLED && !KD_DEBUGGER_NOT_PRESENT)	\
 		__debugbreak();		\
 } while (0)
+#endif
+#else
+#define dbgbreak()	(void)0
 #endif
 #define break_if(cond)	do {	\
 	if (!!(cond))	\
@@ -1230,11 +1234,11 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 	case HYPERCALL_UNHOOK:
 		vcpu_adjust_rflags(vcpu, vcpu_handle_unhook(vcpu, arg));
 		break;
-#endif
 #ifdef KPROTECT
 	case HYPERCALL_KPROTECT:
 		vcpu_adjust_rflags(vcpu, kprotect_init_eptp(vcpu, arg));
 		break;
+#endif
 #endif
 	case HYPERCALL_VMFUNC:
 		vcpu_adjust_rflags(vcpu, vcpu_emulate_vmfunc(vcpu, (struct h_vmfunc *)arg));
@@ -3010,7 +3014,8 @@ bool vcpu_handle_exit(uintptr_t *regs)
 	    (vcpu->eflags ^ eflags) != 0)
 		vmcs_write(GUEST_RFLAGS, vcpu->eflags);
 
-	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY) {
+	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY &&
+	    curr_handler != EXIT_REASON_INVALID_STATE) {
 		/*
 		 * Mostly comes via invalid guest state, and is due to a cruical
 		 * error that happened past VM-exit, let the handler see what it does first

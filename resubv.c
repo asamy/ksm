@@ -4,7 +4,7 @@
  *
  * Public domain
 */
-#ifdef ENABLE_ACPI
+#ifdef ENABLE_RESUBV
 #include <ntddk.h>
 
 #include "ksm.h"
