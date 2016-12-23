@@ -554,16 +554,15 @@ static inline u64 vmcs_read(size_t what)
 
 static inline u64 vmcs_read64(size_t what)
 {
-//	return vmcs_read(what) | vmcs_read(what + 1) << 32;
 	return vmcs_read(what);
 }
 
-static inline size_t vmcs_read32(size_t what)
+static inline u32 vmcs_read32(size_t what)
 {
 	return vmcs_read(what);
 }
 
-static inline size_t vmcs_read16(size_t what)
+static inline u16 vmcs_read16(size_t what)
 {
 	return vmcs_read32(what);
 }
@@ -573,19 +572,17 @@ static inline u8 vmcs_write(size_t what, size_t value)
 	return __vmx_vmwrite(what, value);
 }
 
-static inline u8 vmcs_write64(size_t what, size_t value)
-{
-//	return __vmx_vmwrite(what, (u32)value) |
-//		__vmx_vmwrite(what + 1, (u32)(value >> 32));
-	return __vmx_vmwrite(what, value);
-}
-
-static inline u8 vmcs_write32(size_t what, size_t value)
+static inline u8 vmcs_write64(size_t what, u64 value)
 {
 	return __vmx_vmwrite(what, value);
 }
 
-static inline u8 vmcs_write16(size_t what, size_t value)
+static inline u8 vmcs_write32(size_t what, u32 value)
+{
+	return __vmx_vmwrite(what, value);
+}
+
+static inline u8 vmcs_write16(size_t what, u16 value)
 {
 	return __vmx_vmwrite(what, value);
 }

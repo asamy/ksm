@@ -331,7 +331,7 @@ struct pending_irq {
 	bool pending;
 	u32 err;
 	u32 bits;
-	size_t instr_len;
+	u32 instr_len;
 };
 
 #ifdef ENABLE_PML

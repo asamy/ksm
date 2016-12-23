@@ -42,6 +42,7 @@ static u16 prev_handler = 0;
 	if (KD_DEBUGGER_ENABLED && !KD_DEBUGGER_NOT_PRESENT)	\
 		__debugbreak();		\
 } while (0)
+#else
 #endif
 #else
 #define dbgbreak()	(void)0
@@ -455,7 +456,7 @@ static inline except_class_t exception_class(u8 vec)
 	return EXCEPTION_BENIGN;
 }
 
-static inline void vcpu_pack_irq(struct pending_irq *pirq, size_t instr_len, u16 intr_type,
+static inline void vcpu_pack_irq(struct pending_irq *pirq, u32 instr_len, u16 intr_type,
 				 u8 vector, bool has_err, u32 ec)
 {
 	u32 irq = vector | intr_type | INTR_INFO_VALID_MASK;
@@ -468,7 +469,7 @@ static inline void vcpu_pack_irq(struct pending_irq *pirq, size_t instr_len, u16
 	pirq->bits = irq & ~INTR_INFO_RESVD_BITS_MASK;
 }
 
-static inline void vcpu_inject_irq(struct vcpu *vcpu, size_t instr_len, u16 intr_type,
+static inline void vcpu_inject_irq(struct vcpu *vcpu, u32 instr_len, u16 intr_type,
 				   u8 vector, bool has_err, u32 ec)
 {
 	/*
@@ -498,13 +499,13 @@ static inline void vcpu_inject_irq(struct vcpu *vcpu, size_t instr_len, u16 intr
 
 static inline void vcpu_inject_hardirq_noerr(struct vcpu *vcpu, u8 vector)
 {
-	return vcpu_inject_irq(vcpu, vmcs_read(VM_EXIT_INSTRUCTION_LEN),
+	return vcpu_inject_irq(vcpu, vmcs_read32(VM_EXIT_INSTRUCTION_LEN),
 			       INTR_TYPE_HARD_EXCEPTION, vector, false, 0);
 }
 
 static inline void vcpu_inject_hardirq(struct vcpu *vcpu, u8 vector, u32 err)
 {
-	return vcpu_inject_irq(vcpu, vmcs_read(VM_EXIT_INSTRUCTION_LEN),
+	return vcpu_inject_irq(vcpu, vmcs_read32(VM_EXIT_INSTRUCTION_LEN),
 			       INTR_TYPE_HARD_EXCEPTION, vector, true, err);
 }
 
@@ -531,11 +532,11 @@ static inline void vcpu_advance_rip(struct vcpu *vcpu)
 		}
 	}
 
-	size_t instr_len = vmcs_read(VM_EXIT_INSTRUCTION_LEN);
+	u32 instr_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
 	vmcs_write(GUEST_RIP, vcpu->ip + instr_len);
 
-	size_t interruptibility = vmcs_read(GUEST_INTERRUPTIBILITY_INFO);
-	vmcs_write(GUEST_INTERRUPTIBILITY_INFO,
+	size_t interruptibility = vmcs_read32(GUEST_INTERRUPTIBILITY_INFO);
+	vmcs_write32(GUEST_INTERRUPTIBILITY_INFO,
 		   interruptibility & ~(GUEST_INTR_STATE_MOV_SS | GUEST_INTR_STATE_STI));
 }
 
@@ -627,11 +628,11 @@ static bool vcpu_handle_except_nmi(struct vcpu *vcpu)
 	u32 intr_type = intr_info & INTR_INFO_INTR_TYPE_MASK;
 	u8 vector = intr_info & INTR_INFO_VECTOR_MASK;
 
-	size_t instr_len = 0;
+	u32 instr_len = 0;
 	if (intr_type & INTR_TYPE_HARD_EXCEPTION && vector == X86_TRAP_PF)
 		__writecr2(vmcs_read(EXIT_QUALIFICATION));
 	else
-		instr_len = vmcs_read(VM_EXIT_INSTRUCTION_LEN);
+		instr_len = vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
 
 	bool has_err = intr_info & INTR_INFO_DELIVER_CODE_MASK;
 	u32 err = vmcs_read32(IDT_VECTORING_ERROR_CODE);
@@ -856,14 +857,14 @@ static inline void vcpu_do_exit(struct vcpu *vcpu)
 {
 	/* Fix GDT  */
 	struct gdtr gdt;
-	gdt.limit = vmcs_read16(GUEST_GDTR_LIMIT);
+	gdt.limit = vmcs_read32(GUEST_GDTR_LIMIT);
 	gdt.base = vmcs_read(GUEST_GDTR_BASE);
 	__lgdt(&gdt);
 
 	/* Fix IDT (restore whatever guest last loaded...)  */
 	__lidt(&vcpu->g_idt);
 
-	size_t ret = vcpu->ip + vmcs_read(VM_EXIT_INSTRUCTION_LEN);
+	size_t ret = vcpu->ip + vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
 	vcpu_vm_succeed(vcpu);
 
 	uintptr_t cr3 = vmcs_read(GUEST_CR3);
@@ -896,7 +897,7 @@ static inline bool vcpu_handle_unhook(struct vcpu *vcpu, uintptr_t dpa)
 
 static inline void vcpu_flush_idt(struct vcpu *vcpu)
 {
-	vmcs_write16(GUEST_IDTR_LIMIT, vcpu->idt.limit);
+	vmcs_write32(GUEST_IDTR_LIMIT, vcpu->idt.limit);
 	vmcs_write(GUEST_IDTR_BASE, vcpu->idt.base);
 }
 
@@ -2030,7 +2031,7 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
-	u32 exit = vmcs_read32(EXIT_QUALIFICATION);
+	uintptr_t exit = vmcs_read(EXIT_QUALIFICATION);
 	uintptr_t *val;
 	int cr = exit & 15;
 	int reg = (exit >> 8) & 15;
@@ -2189,7 +2190,7 @@ out:
 
 static bool vcpu_handle_io_port(struct vcpu *vcpu)
 {
-	u32 exit = vmcs_read32(EXIT_QUALIFICATION);
+	uintptr_t exit = vmcs_read(EXIT_QUALIFICATION);
 	uintptr_t *addr = ksm_reg(vcpu, REG_AX);
 	if (exit & 16) {
 		/* string  */
@@ -2453,17 +2454,17 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 
 static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 {
-	size_t info = vmcs_read(VMX_INSTRUCTION_INFO);
-	size_t disp = vmcs_read(EXIT_QUALIFICATION);
-	size_t base = 0;
+	uintptr_t info = vmcs_read(VMX_INSTRUCTION_INFO);
+	uintptr_t disp = vmcs_read(EXIT_QUALIFICATION);
+	uintptr_t base = 0;
 	if (!((info >> 27) & 1))
 		base = ksm_read_reg(vcpu, (info >> 23) & 15);
 
-	size_t index = 0;
+	uintptr_t index = 0;
 	if (!((info >> 22) & 1))
 		index = ksm_read_reg(vcpu, (info >> 18) & 15) << (info & 3);
 
-	size_t addr = base + index + disp;
+	uintptr_t addr = base + index + disp;
 	if (((info >> 7) & 7) == 1)
 		addr &= 0xFFFFFFFF;
 
@@ -2472,14 +2473,14 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 	struct gdtr *dt = (struct gdtr *)addr;
 	switch ((info >> 28) & 3) {
 	case 0:		/* sgdt  */
-		dt->limit = vmcs_read16(GUEST_GDTR_LIMIT);
+		dt->limit = vmcs_read32(GUEST_GDTR_LIMIT);
 		dt->base = vmcs_read(GUEST_GDTR_BASE);
 		break;
 	case 1:		/* sidt */
 		*dt = vcpu->g_idt;
 		break;
 	case 2:		/* lgdt  */
-		vmcs_write16(GUEST_GDTR_LIMIT, dt->limit);
+		vmcs_write32(GUEST_GDTR_LIMIT, dt->limit);
 		vmcs_write(GUEST_GDTR_BASE, dt->base);
 		break;
 	case 3:		/* lidt  */
@@ -2494,10 +2495,10 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 
 static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 {
-	size_t info = vmcs_read(VMX_INSTRUCTION_INFO);
-	size_t disp = vmcs_read(EXIT_QUALIFICATION);
+	uintptr_t info = vmcs_read(VMX_INSTRUCTION_INFO);
+	uintptr_t disp = vmcs_read(EXIT_QUALIFICATION);
 
-	size_t addr;
+	uintptr_t addr;
 	if ((info >> 10) & 1) {
 		// register
 		addr = (uintptr_t)ksm_reg(vcpu, (info >> 3) & 15);
@@ -3044,7 +3045,7 @@ do_pending_irq:
 
 			injected &= vmcs_write32(VM_ENTRY_INTR_INFO_FIELD, irq->bits) == 0;
 			if (irq->instr_len)
-				injected &= vmcs_write(VM_ENTRY_INSTRUCTION_LEN, irq->instr_len) == 0;
+				injected &= vmcs_write32(VM_ENTRY_INSTRUCTION_LEN, irq->instr_len) == 0;
 
 			irq->pending = !injected;
 		}
