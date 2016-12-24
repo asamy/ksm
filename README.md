@@ -114,6 +114,7 @@ Signed-off-by: Your Name <your_email@domain.com>
 ## TODO / In development
 
 - APIC virtualization (Partially implemented, needs testing & fixes)
+- TSC virtualization
 - UEFI support
 - Intel TXT support
 - AMD-V with NPT support
@@ -130,7 +131,13 @@ See also Github issues.  Some of these features are unfortunately not
 
 ### Building for Linux
 
-Simply `make`.
+Install kernel headers:
+
+- Debian/Ubuntu: `[sudo] apt-get install linux-headers-$(uname -r)`
+- ArchLinux: `[sudo] pacman -S linux-headers`
+- Fedora: `[sudo] yum install kernel-devel kernel-headers`
+
+Then `make`.
 
 ### Building for Windows
 
