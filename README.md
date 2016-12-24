@@ -2,11 +2,6 @@
 
 A really simple and lightweight x64 hypervisor written in C for Intel processors.
 
-KSM does not stand for anything, it's a random name, it was first named kum,
-but the name wasn't appropriate, and in fact, a discussion was on
-[HackerNews](https://news.ycombinator.com/item?id=12089356) and they wouldn't
-let me free until I renamed it.
-
 KSM aims to be fully feature fledged and as general purpose as possible,
 although there are absolutely no barriers, even extending it to be a
 multi-purpose thing is perfeclty fine, e.g. a sandbox, etc.
@@ -297,6 +292,7 @@ You can report bugs using Github issues, please provide the following:
 - System information (version including build number, CPU information perhaps codename too)
 - The git tree hash
 - KSM output if available
+- Kernel Du Jour
 - Anything else you feel is relevant
 
 If it's a crash, please provide the following:
