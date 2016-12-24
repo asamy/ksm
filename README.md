@@ -188,7 +188,7 @@ To simplify things, the following terms are used as an abbreviation:
 1. Host - refers to the VMM (Virtual Machine Monitor) aka VMX root mode
 2. Guest or Kernel - refers to the running guest kernel (i.e. Windows or Linux)
 
-Some things need to be used with extra care especially inside VMX root mode as
+Some things need to be used with extra care especially inside Host as
 this is a sensitive mode and things may go unexpected if used improperly.
 
 - The timestamp counter does not _pause_ during entry to Host, so
@@ -198,7 +198,7 @@ disabled interrupts.  So, addresses referenced inside root mode should be
 physically contiguous, otherwise if you enable interrupts by yourself, you
 might cause havoc if a preemption happens.
 - Calling a Kernel function inside the Host can be dangerous, especially
-because the Host stack is different, so if any kind of stack detection
+because the Host stack is different, so if any kind of stack probing
 functions will most likely fail.
 - Single stepping `vmresume` or `vmlaunch` is invaluable, the debugger will
 never give you back control, for obvious reasons.
@@ -206,9 +206,8 @@ never give you back control, for obvious reasons.
 	1. The processor is delivering another exception
 	2. The `except_mask` inside `ve_except_info` is set to non-zero value.
 - If the processor does not support Virtualization Exceptions, the VM exit path
-will be taken instead.
+will be taken instead (Note that the VM exit path is _always_ handled).
 - If the processor does not support VMFUNC, it's emulated via VMCALL instead.
-- If the processor does not support VMFUNC or #VE, they will be disabled and instead, emulated via VM-exit.
 
 ### IDT shadowing
 

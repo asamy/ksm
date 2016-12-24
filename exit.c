@@ -1565,7 +1565,7 @@ static inline bool vcpu_parse_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst, u6
 	}
 
 	u64 seg_offset = (inst >> 15) & 7;
-	if (vcpu_inject_gp_if(seg_offset > 5))
+	if (vcpu_inject_gp_if(vcpu, seg_offset > 5))
 		return false;
 
 	uintptr_t base = 0;
