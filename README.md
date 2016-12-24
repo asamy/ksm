@@ -36,8 +36,6 @@ You may have already guessed from the `Features` part, if not, here are some rea
 Such features for such purpose is really crucial, for my purpose, I wanted a quicker physical memory virtualization
 technique that I can relay on.
 
-![img](http://i.imgur.com/l3RhUIu.png)
-
 ## Requirements
 
 - An Intel processor (with VT-x and EPT support)

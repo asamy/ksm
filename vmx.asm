@@ -6,7 +6,7 @@
 ; only be used with the VS project.
 ;
 ; For GCC (or general AT&T aka GAS) assembly, you should look at vmx.S and various
-; inlined assembly in x86.h
+; inlined assembly in x86.h/vmx.h
 EXTERN vcpu_run : PROC
 EXTERN vcpu_handle_exit : PROC
 EXTERN vcpu_handle_fail : PROC
@@ -37,6 +37,7 @@ KFRAME_IP   = +0E8h
 .CONST
 
 ; Saves all general purpose registers to the stack
+; RSP is read from VMCS.
 PUSHAQ MACRO
 	push	r15
 	push	r14
