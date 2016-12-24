@@ -768,8 +768,8 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write32(GUEST_TR_AR_BYTES, __accessright(tr));
 	err |= vmcs_write32(GUEST_INTERRUPTIBILITY_INFO, 0);
 	err |= vmcs_write32(GUEST_ACTIVITY_STATE, GUEST_ACTIVITY_ACTIVE);
-	err |= vmcs_write32(GUEST_PENDING_DBG_EXCEPTIONS, 0);
 	err |= vmcs_write64(GUEST_IA32_DEBUGCTL, __readmsr(MSR_IA32_DEBUGCTLMSR));
+	err |= vmcs_write(GUEST_PENDING_DBG_EXCEPTIONS, 0);
 	err |= vmcs_write(GUEST_CR0, cr0);
 	err |= vmcs_write(GUEST_CR3, ksm.origin_cr3);
 	err |= vmcs_write(GUEST_CR4, cr4);

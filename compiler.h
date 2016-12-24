@@ -7,6 +7,23 @@
 #ifndef __COMPILER_H
 #define __COMPILER_H
 
+#ifdef DBG
+#ifdef __linux__
+#define dbgbreak()	(void)0		//__asm __volatile("int $3")
+#else
+#define dbgbreak() do {		\
+	if (KD_DEBUGGER_ENABLED && !KD_DEBUGGER_NOT_PRESENT)	\
+		__debugbreak();		\
+} while (0)
+#endif
+#else
+#define dbgbreak()	(void)0
+#endif
+#define break_if(cond)	do {	\
+	if (!!(cond))	\
+		dbgbreak();	\
+} while (0)
+
 #ifndef __linux__
 #ifdef _MSC_VER
 /* Disable annoying warnings  */

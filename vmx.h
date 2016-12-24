@@ -544,47 +544,62 @@ extern u8 __vmx_vmcall(uintptr_t, void *);
 extern u8 __vmx_vmfunc(u32, u32);
 #endif
 
-static inline u64 vmcs_read(size_t what)
+static inline u64 vmcs_read(size_t field)
 {
-	u64 x;
-	__vmx_vmread(what, &x);
+	u64 value;
+	__vmx_vmread(field, &value);
 
-	return x;
+	return value;
 }
 
-static inline u64 vmcs_read64(size_t what)
+static inline u64 vmcs_read64(size_t field)
 {
-	return vmcs_read(what);
+	return vmcs_read(field);
 }
 
-static inline u32 vmcs_read32(size_t what)
+static inline u32 vmcs_read32(size_t field)
 {
-	return vmcs_read(what);
+	return vmcs_read(field);
 }
 
-static inline u16 vmcs_read16(size_t what)
+static inline u16 vmcs_read16(size_t field)
 {
-	return vmcs_read32(what);
+	return vmcs_read32(field);
 }
 
-static inline u8 vmcs_write(size_t what, size_t value)
+static inline u8 vmcs_write(size_t field, size_t value)
 {
-	return __vmx_vmwrite(what, value);
+	return __vmx_vmwrite(field, value);
 }
 
-static inline u8 vmcs_write64(size_t what, u64 value)
+static inline u8 vmcs_write64(size_t field, u64 value)
 {
-	return __vmx_vmwrite(what, value);
+	if ((field & 0x6000) == 0 ||
+	    (field & 0x6001) == 0x2001 ||
+	    (field & 0x6000) == 0x4000 ||
+	    (field & 0x6000) == 0x6000)
+		dbgbreak();
+
+	return __vmx_vmwrite(field, value);
 }
 
-static inline u8 vmcs_write32(size_t what, u32 value)
+static inline u8 vmcs_write32(size_t field, u32 value)
 {
-	return __vmx_vmwrite(what, value);
+	if ((field & 0x6000) == 0 || (field & 0x6000) == 0x6000)
+		dbgbreak();
+
+	return __vmx_vmwrite(field, value);
 }
 
-static inline u8 vmcs_write16(size_t what, u16 value)
+static inline u8 vmcs_write16(size_t field, u16 value)
 {
-	return __vmx_vmwrite(what, value);
+	if ((field & 0x6001) == 0x2000 ||
+	    (field & 0x6001) == 0x2001 ||
+	    (field & 0x6000) == 0x4000 ||
+	    (field & 0x6000) == 0x6000)
+		dbgbreak();
+
+	return __vmx_vmwrite(field, value);
 }
 
 static inline u8 __invept_all(void)
