@@ -43,11 +43,6 @@ technique that I can relay on.
 - An Intel processor (with VT-x and EPT support)
 - A working C compiler (GCC or CLang or Microsoft compiler (CL)).
 
-## Unsupported features (hardware, etc.)
-
-- UEFI
-- Intel TXT (available on Linux only)
-
 ## Debugging and/or testing
 
 Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it, you can now test under VMs with
@@ -177,7 +172,10 @@ Unloading:
 - `sc stop ksm`
 
 You can also use [kload](https://github.com/asamy/kload)  
-Output can be seen via DebugView or WinDBG if live debugging.
+Output can be seen via DebugView or WinDBG if live debugging (You might want to
+							      execute `ed
+							      Kd_DEFAULT_Mask
+							      8`).
 
 ## Some technical information
 
@@ -198,10 +196,11 @@ disabled interrupts.  So, addresses referenced inside root mode should be
 physically contiguous, otherwise if you enable interrupts by yourself, you
 might cause havoc if a preemption happens.
 - Calling a Kernel function inside the Host can be dangerous, especially
-because the Host stack is different, so if any kind of stack probing
+because the Host stack is different, so any kind of stack probing
 functions will most likely fail.
 - Single stepping `vmresume` or `vmlaunch` is invaluable, the debugger will
-never give you back control, for obvious reasons.
+never give you back control, for obvious reasons.  If you want that behavior,
+      then rather set a breakpoint on whatever `vcpu->ip` is set to.
 - Virtualization Exceptions (#VE) will not occur if:
 	1. The processor is delivering another exception
 	2. The `except_mask` inside `ve_except_info` is set to non-zero value.
@@ -270,6 +269,7 @@ You can report bugs using Github issues, please provide the following:
 
 - System information (version including build number, CPU information perhaps codename too)
 - The git tree hash
+- KSM output if available
 - Anything else you feel is relevant
 
 If it's a crash, please provide the following:
