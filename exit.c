@@ -493,12 +493,9 @@ static inline void vcpu_inject_hardirq(struct vcpu *vcpu, u8 vector, u32 err)
 
 static inline void vcpu_inject_pf(struct vcpu *vcpu, u64 gla, u32 ec)
 {
-	__writecr2(gla);	/* XXX  */
-	return vcpu_inject_irq(vcpu, 0,
-			       INTR_TYPE_HARD_EXCEPTION,
-			       X86_TRAP_PF,
-			       true,
-			       ec);
+	__writecr2(gla);
+	return vcpu_inject_irq(vcpu, 0, INTR_TYPE_HARD_EXCEPTION,
+			       X86_TRAP_PF, true, ec);
 }
 
 static inline bool vcpu_inject_gp_if(struct vcpu *vcpu, bool cond)
@@ -2247,7 +2244,7 @@ static bool vcpu_handle_io_port(struct vcpu *vcpu)
 	return true;
 }
 
-static bool vcpu_handle_msr_read(struct vcpu *vcpu)
+static bool vcpu_handle_rdmsr(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
@@ -2303,7 +2300,7 @@ static bool vcpu_handle_msr_read(struct vcpu *vcpu)
 	return true;
 }
 
-static bool vcpu_handle_msr_write(struct vcpu *vcpu)
+static bool vcpu_handle_wrmsr(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
@@ -2916,8 +2913,8 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_CR_ACCESS] = vcpu_handle_cr_access,
 	[EXIT_REASON_DR_ACCESS] = vcpu_handle_dr_access,
 	[EXIT_REASON_IO_INSTRUCTION] = vcpu_handle_io_port,
-	[EXIT_REASON_MSR_READ] = vcpu_handle_msr_read,
-	[EXIT_REASON_MSR_WRITE] = vcpu_handle_msr_write,
+	[EXIT_REASON_MSR_READ] = vcpu_handle_rdmsr,
+	[EXIT_REASON_MSR_WRITE] = vcpu_handle_wrmsr,
 	[EXIT_REASON_INVALID_STATE] = vcpu_handle_invalid_state,
 	[EXIT_REASON_MSR_LOAD_FAIL] = vcpu_nop,
 	[EXIT_REASON_UNKNOWN35] = vcpu_nop,

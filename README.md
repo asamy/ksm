@@ -104,7 +104,6 @@ with your changes.  Something like:
 2. Format your git commit messages properly (A signed-off-by is good but
    **not** required, note: you can use `git commit --signoff` instead of writing
    manually.  See also Linux kernel contribution guidelines for more perks):
-
 ```
 vmx: fix issue with xxx
 
@@ -147,14 +146,31 @@ Then `make`.
 
 #### Compiling under MinGW
 
-Simply `make -f Makefile.windows C=1` (if cross compiling under Linux) or `mingw32-make -f Makefile.windows` (under native).  
-Note: If you're compiling under native, you may need to adjust some paths
-(specially DDK paths) in `Makefile.windows`
-
 ##### Makefile variables:
 
 1. `C=1` - Prepare for cross-compiling.
 2. `V=1` - Verbose output (the default, pass 0 for quiet.)
+
+##### Cross under Linux
+
+Install the following packages:
+
+- Debian/Ubuntu: `[sudo] apt-get install gcc-mingw-w64-x86-64
+binutils-mingw-w64-x86-64`
+- ArchLinux: `[sudo] pacman -S mingw-w64-gcc`
+- Fedora: `[sudo] yum install mingw64-gcc`
+
+Then `make -f Makefile.windows C=1`
+
+##### Under Native
+
+Natively, you'll want to adjust (or pass in command line) DDK paths, e.g.:
+
+`mingw32-make -f Makefile.windows CROSS_INC=/path/to/include/ddk`
+
+Or, simply just editing Makefile.windows manually.  Also make sure to adjust your
+environment variables (PATH) to point to the right `bin/` directory where the
+compiler, etc lie.
 
 #### Compiling under MSVC
 
