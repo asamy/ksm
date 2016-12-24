@@ -518,6 +518,14 @@ static inline void vcpu_inject_pf(struct vcpu *vcpu, u64 gla, u32 ec)
 			       ec);
 }
 
+static inline bool vcpu_inject_gp_if(struct vcpu *vcpu, bool cond)
+{
+	if (cond)
+		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+
+	return cond;
+}
+
 static inline void vcpu_advance_rip(struct vcpu *vcpu)
 {
 	if (vcpu->eflags & X86_EFLAGS_TF) {
@@ -855,15 +863,15 @@ static inline void vcpu_adjust_rflags(struct vcpu *vcpu, bool success)
 static inline void vcpu_do_exit(struct vcpu *vcpu)
 {
 	/* Fix GDT  */
-	struct gdtr gdt;
-	gdt.limit = vmcs_read32(GUEST_GDTR_LIMIT);
-	gdt.base = vmcs_read(GUEST_GDTR_BASE);
-	__lgdt(&gdt);
+	__lgdt(&(struct gdtr) {
+		.limit = vmcs_read32(GUEST_GDTR_LIMIT),
+		.base = vmcs_read(GUEST_GDTR_BASE),
+	});
 
 	/* Fix IDT (restore whatever guest last loaded...)  */
 	__lidt(&vcpu->g_idt);
 
-	size_t ret = vcpu->ip + vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
+	uintptr_t ret = vcpu->ip + vmcs_read32(VM_EXIT_INSTRUCTION_LEN);
 	vcpu_vm_succeed(vcpu);
 
 	uintptr_t cr3 = vmcs_read(GUEST_CR3);
@@ -1209,12 +1217,11 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 	}
 #endif
 
-	if (!vcpu_probe_cpl(0)) {
-		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
-		goto out;
-	}
-
+	/* VMFUNC does not have CPL checks, so emulator shouldn't have too...  */
 	uint8_t nr = ksm_read_reg32(vcpu, REG_CX);
+	if (nr != HYPERCALL_VMFUNC && vcpu_inject_gp_if(vcpu, !vcpu_probe_cpl(0)))
+		goto out;
+
 	uintptr_t arg = ksm_read_reg(vcpu, REG_DX);
 	switch (nr) {
 	case HYPERCALL_STOP:
@@ -1558,10 +1565,8 @@ static inline bool vcpu_parse_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst, u6
 	}
 
 	u64 seg_offset = (inst >> 15) & 7;
-	if (seg_offset > 5) {
-		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+	if (vcpu_inject_gp_if(seg_offset > 5))
 		return false;
-	}
 
 	uintptr_t base = 0;
 	if (!((inst >> 27) & 1))
@@ -2134,10 +2139,8 @@ static bool vcpu_handle_dr_access(struct vcpu *vcpu)
 		goto out;
 	}
 
-	if (!vcpu_probe_cpl(0)) {
-		vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+	if (vcpu_inject_gp_if(vcpu, !vcpu_probe_cpl(0)))
 		goto out;
-	}
 
 	uintptr_t dr7 = vmcs_read(GUEST_DR7);
 	if (dr7 & DR7_GD) {
@@ -2167,15 +2170,11 @@ static bool vcpu_handle_dr_access(struct vcpu *vcpu)
 		case 4: __writedr(4, *reg); break;
 		case 5: __writedr(5, *reg); break;
 		case 6:
-			if ((*reg >> 32) != 0)
-				vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
-			else
+			if (!vcpu_inject_gp_if(vcpu, (*reg >> 32) != 0))
 				__writedr(6, *reg);
 			break;
 		case 7:
-			if ((*reg >> 32) != 0)
-				vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
-			else
+			if (!vcpu_inject_gp_if(vcpu, (*reg >> 32) != 0))
 				vmcs_write(GUEST_DR7, *reg);
 			break;
 		}
@@ -2504,11 +2503,11 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 		VCPU_DEBUG("LDT/TR access, addr %p\n", info);
 	} else {
 		// base
-		size_t base = 0;
+		uintptr_t base = 0;
 		if (!((info >> 27) & 1))
 			base = ksm_read_reg(vcpu, (info >> 23) & 15);
 
-		size_t index = 0;
+		uintptr_t index = 0;
 		if (!((info >> 22) & 1))
 			index = ksm_read_reg(vcpu, (info >> 18) & 15) << (info & 3);
 

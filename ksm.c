@@ -38,7 +38,7 @@ struct ksm ksm = {
  * For the macro magic (aka STATIC_DEFINE_DPC, etc.) see dpc.h,
  * DPCs are for per-processor callbacks.
  */
-static bool init_msr_bitmap(struct ksm *k)
+static inline bool init_msr_bitmap(struct ksm *k)
 {
 	k->msr_bitmap = mm_alloc_page();
 	if (!k->msr_bitmap)
@@ -77,7 +77,7 @@ static bool init_msr_bitmap(struct ksm *k)
 	return true;
 }
 
-static bool init_io_bitmaps(struct ksm *k)
+static inline bool init_io_bitmaps(struct ksm *k)
 {
 	k->io_bitmap_a = mm_alloc_page();
 	if (!k->io_bitmap_a)
@@ -97,13 +97,13 @@ static bool init_io_bitmaps(struct ksm *k)
 	return true;
 }
 
-static void free_msr_bitmap(struct ksm *k)
+static inline void free_msr_bitmap(struct ksm *k)
 {
 	if (k->msr_bitmap)
 		mm_free_page(k->msr_bitmap);
 }
 
-static void free_io_bitmaps(struct ksm *k)
+static inline void free_io_bitmaps(struct ksm *k)
 {
 	if (k->io_bitmap_a)
 		mm_free_page(k->io_bitmap_a);

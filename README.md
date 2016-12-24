@@ -19,7 +19,7 @@ you might want to stick with the releases for a captured stable state.
 ## Features
 
 - IDT Shadowing
-- EPT violation #VE (if not available natively, it will keep using VM-Exit instead)
+- EPT violation #VE (if not available natively, VM-exit path is taken)
 - EPTP switching VMFUNC (if not available natively, it will be emulated using a VMCALL)
 - APIC virtualization
 - VMX Nesting
@@ -181,7 +181,34 @@ Output can be seen via DebugView or WinDBG if live debugging.
 
 ## Some technical information
 
-Note: If the processor does not support VMFUNC or #VE, they will be disabled and instead, emulated via VM-exit.
+### Some notes
+
+To simplify things, the following terms are used as an abbreviation:
+
+1. Host - refers to the VMM (Virtual Machine Monitor) aka VMX root mode
+2. Guest or Kernel - refers to the running guest kernel (i.e. Windows or Linux)
+
+Some things need to be used with extra care especially inside VMX root mode as
+this is a sensitive mode and things may go unexpected if used improperly.
+
+- The timestamp counter does not _pause_ during entry to Host, so
+things like APIC timer can fire on next guest entry (`vmresume`).
+- Interrupts are disabled.  On entry to `__vmx_entrypoint`, the CPU had already
+disabled interrupts.  So, addresses referenced inside root mode should be
+physically contiguous, otherwise if you enable interrupts by yourself, you
+might cause havoc if a preemption happens.
+- Calling a Kernel function inside the Host can be dangerous, especially
+because the Host stack is different, so if any kind of stack detection
+functions will most likely fail.
+- Single stepping `vmresume` or `vmlaunch` is invaluable, the debugger will
+never give you back control, for obvious reasons.
+- Virtualization Exceptions (#VE) will not occur if:
+	1. The processor is delivering another exception
+	2. The `except_mask` inside `ve_except_info` is set to non-zero value.
+- If the processor does not support Virtualization Exceptions, the VM exit path
+will be taken instead.
+- If the processor does not support VMFUNC, it's emulated via VMCALL instead.
+- If the processor does not support VMFUNC or #VE, they will be disabled and instead, emulated via VM-exit.
 
 ### IDT shadowing
 
