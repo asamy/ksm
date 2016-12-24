@@ -113,7 +113,9 @@
     <ClInclude Include="..\..\x86.h" />
   </ItemGroup>
   <ItemGroup>
-    <MASM Include="..\..\vmx.asm" />
+    <MASM Include="..\..\vmx.asm">
+      <PreprocessorDefinitions Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">__ASSEMBLY__</PreprocessorDefinitions>
+    </MASM>
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

@@ -787,7 +787,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write(GUEST_RSP, gsp);
 	err |= vmcs_write(GUEST_RIP, gip);
 	err |= vmcs_write(GUEST_RFLAGS, __readeflags());
-	err |= vmcs_write(GUEST_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
+	err |= vmcs_write32(GUEST_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
 	err |= vmcs_write(GUEST_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
 	err |= vmcs_write(GUEST_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
 
@@ -807,7 +807,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write(HOST_TR_BASE, __segmentbase(gdtr.base, tr));
 	err |= vmcs_write(HOST_GDTR_BASE, gdtr.base);
 	err |= vmcs_write(HOST_IDTR_BASE, idtr->base);
-	err |= vmcs_write(HOST_IA32_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
+	err |= vmcs_write32(HOST_IA32_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
 	err |= vmcs_write(HOST_IA32_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
 	err |= vmcs_write(HOST_IA32_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
 	err |= vmcs_write(HOST_RSP, (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE);

@@ -1631,8 +1631,8 @@ static bool vcpu_handle_vmclear(struct vcpu *vcpu)
 	if (!nested_can_exec_vmx(vcpu))
 		goto out;
 
-	u32 disp = vmcs_read(EXIT_QUALIFICATION);
-	u32 inst = vmcs_read(VMX_INSTRUCTION_INFO);
+	uintptr_t disp = vmcs_read(EXIT_QUALIFICATION);
+	u32 inst = vmcs_read32(VMX_INSTRUCTION_INFO);
 	if (!vcpu_parse_vmx_addr(vcpu, disp, inst, &gva) ||
 	    !vcpu_read_vmx_addr(vcpu, gva, &gpa) ||
 	    !gpa_to_hpa(vcpu, gpa, &hpa)) {
@@ -1686,8 +1686,8 @@ static bool vcpu_handle_vmptrld(struct vcpu *vcpu)
 	if (!nested_can_exec_vmx(vcpu))
 		goto out;
 
-	u32 disp = vmcs_read(EXIT_QUALIFICATION);
-	u32 inst = vmcs_read(VMX_INSTRUCTION_INFO);
+	uintptr_t disp = vmcs_read(EXIT_QUALIFICATION);
+	u32 inst = vmcs_read32(VMX_INSTRUCTION_INFO);
 	if (!vcpu_parse_vmx_addr(vcpu, disp, inst, &gva) ||
 	    !vcpu_read_vmx_addr(vcpu, gva, &gpa) ||
 	    !gpa_to_hpa(vcpu, gpa, &hpa)) {
@@ -1897,8 +1897,8 @@ static bool vcpu_handle_vmon(struct vcpu *vcpu)
 		goto out;
 	}
 
-	u32 disp = vmcs_read(EXIT_QUALIFICATION);
-	u32 inst = vmcs_read(VMX_INSTRUCTION_INFO);
+	uintptr_t disp = vmcs_read(EXIT_QUALIFICATION);
+	u32 inst = vmcs_read32(VMX_INSTRUCTION_INFO);
 	if (!vcpu_parse_vmx_addr(vcpu, disp, inst, &gva) ||
 	    !vcpu_read_vmx_addr(vcpu, gva, &gpa) ||
 	    !gpa_to_hpa(vcpu, gpa, &hpa))

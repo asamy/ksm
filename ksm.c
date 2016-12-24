@@ -59,7 +59,8 @@ static inline bool init_msr_bitmap(struct ksm *k)
 	 *		offset: +3072
 	 *
 	 * To opt-in for an MSR vm-exit, simply set the bit of it.
-	 * Note: for high msrs, subtract it with 0xC0000000.
+	 * Note: for high msrs, subtract it with 0xC0000000, e.g.:
+	 *	set_bit(MSR_STAR - 0xC0000000, write_hi);
 	 *
 	 * We currently opt in for MSRs that are VT-x related, so that we can
 	 * emulate nesting.
@@ -79,10 +80,12 @@ static inline bool init_msr_bitmap(struct ksm *k)
 
 static inline bool init_io_bitmaps(struct ksm *k)
 {
+	/* IO bitmap A: ports 0000H through 7FFFH  */
 	k->io_bitmap_a = mm_alloc_page();
 	if (!k->io_bitmap_a)
 		return false;
 
+	/* IO bitmap B: ports 8000H through FFFFh  */
 	k->io_bitmap_b = mm_alloc_page();
 	if (!k->io_bitmap_b) {
 		mm_free_page(k->io_bitmap_a);
@@ -111,6 +114,10 @@ static inline void free_io_bitmaps(struct ksm *k)
 		mm_free_page(k->io_bitmap_b);
 }
 
+/*
+ * Virtualizes current CPU, shared stuff, i.e. MSR bitmap
+ * and IO bitmaps must be initialized prior to this call.
+ */
 int __ksm_init_cpu(struct ksm *k)
 {
 	/* Required MSR_IA32_FEATURE_CONTROL bits:  */
@@ -162,6 +169,10 @@ int __ksm_init_cpu(struct ksm *k)
 	return ERR_UNSUP;
 }
 
+/*
+ * Subvert (i.e. virtualize) all processors, this should be
+ * called on initialization or to re-virtualize.
+ */
 STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
 int ksm_subvert(void)
 {
@@ -178,6 +189,10 @@ int ksm_subvert(void)
 	return err;
 }
 
+/*
+ * Only called once, initializes all shared stuff, MSR bitmap,
+ * and IO bitmaps, then virtualizes all available processors.
+ */
 int ksm_init(void)
 {
 	int err;
@@ -223,6 +238,10 @@ int ksm_init(void)
 	return err;
 }
 
+/*
+ * Devirtualizes current processor, if the current processor
+ * is not virtualized, an error is returned.
+ */
 int __ksm_exit_cpu(struct ksm *k)
 {
 	u8 err;
@@ -254,6 +273,10 @@ int __ksm_exit_cpu(struct ksm *k)
 	return err;
 }
 
+/*
+ * Devirtualize all processors, returning an error if one or
+ * more aren't virtualized...
+ */
 STATIC_DEFINE_DPC(__call_exit, __ksm_exit_cpu, ctx);
 int ksm_unsubvert(void)
 {
@@ -264,6 +287,10 @@ int ksm_unsubvert(void)
 	return STATIC_DPC_RET();
 }
 
+/*
+ * Frees resources and devirtualizes all processors,
+ * Only called on driver unload...
+ */
 int ksm_exit(void)
 {
 	int err;
@@ -280,6 +307,12 @@ int ksm_exit(void)
 	return 0;
 }
 
+/*
+ * Hook the IDT entry at index @n, and redirect it to the function
+ * @h, should always succeed unless one of the processors are not
+ * virtualized, may throw an exception since it does __vmx_vmcall
+ * without checking.
+ */
 STATIC_DEFINE_DPC(__call_idt_hook, __vmx_vmcall, HYPERCALL_IDT, ctx);
 int ksm_hook_idt(unsigned n, void *h)
 {
@@ -290,6 +323,14 @@ int ksm_hook_idt(unsigned n, void *h)
 	return STATIC_DPC_RET();
 }
 
+/*
+ * Unhook an IDT entry at index @n, restoring last known one.
+ * Note: if you call `ksm_hook_idt` on same entry twice, then this will
+ * restore first call, not the original!
+ *
+ * IDT is always restored to the real one when devirtualization happens,
+ * disregarding all entries that were set prior.
+ */
 STATIC_DEFINE_DPC(__call_idt_unhook, __vmx_vmcall, HYPERCALL_UIDT, ctx);
 int ksm_free_idt(unsigned n)
 {
@@ -300,6 +341,12 @@ int ksm_free_idt(unsigned n)
 	return STATIC_DPC_RET();
 }
 
+/*
+ * Returns a pointer to the current processor, this can be used in
+ * non-root mode as well.
+ *
+ * Mostly used while handling #VE and on virtualization/devirtualization.
+ */
 struct vcpu *ksm_current_cpu(void)
 {
 	return &ksm.vcpu_list[cpu_nr()];

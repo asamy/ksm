@@ -156,8 +156,10 @@
 .endm
 
 #ifndef __linux__
-/* Fix this if XMM (floating point) really is needed inside C code, for now
- * this is commented out on just Linux, because it's not tested.  */
+/*
+ * Fix this if XMM (floating point) really is needed inside C code, for now
+ * this is commented out on just Linux, because it's not tested.
+ */
 .macro TRAP_REST_XMM
 	ldmxcsr KFRAME_CSR(%rbp)
 	movaps KFRAME_XMM0(%rbp), %xmm0
@@ -247,6 +249,10 @@ do_resume:
 
 .globl __vmx_entrypoint
 __vmx_entrypoint:
+	/*
+	 * Host entry point (aka VMX root mode).
+	 * Note: all interrupts are disabled at this point.
+	 */
 	PUSH_REGS
 	movq	%rsp, REG_A1
 	call	vcpu_handle_exit
@@ -269,8 +275,10 @@ __vmx_entrypoint:
 	/* Give them their stack pointer  */
 	movq	%rdx, %rsp
 
-	/* rcx contains return address, which is guest's rip + instr_len (aka
-	 * VMCALL length)  */
+	/*
+	 * rcx contains return address, which is guest's rip + instr_len (aka
+	 * VMCALL length)
+	 */
 	pushq	%rcx
 	ret
 

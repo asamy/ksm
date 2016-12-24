@@ -439,9 +439,9 @@ typedef struct {
 #define ASM_VMX_INVVPID		  ".byte 0x66, 0x0f, 0x38, 0x81, 0x0A"
 #define ASM_VMX_VMFUNC		  ".byte 0x0f, 0x01, 0xd4"
 
-static inline unsigned char __vmx_on(unsigned long long *pa)
+static inline u8 __vmx_on(unsigned long long *pa)
 {
-	unsigned char error;
+	u8 error;
 	__asm __volatile(ASM_VMX_VMXON_RAX "; setna %0"
 			 : "=q" (error)
 			 : "a"(pa), "m"(*pa)
@@ -449,44 +449,44 @@ static inline unsigned char __vmx_on(unsigned long long *pa)
 	return error;
 }
 
-static inline unsigned char __vmx_off(void)
+static inline u8 __vmx_off(void)
 {
-	unsigned char error;
+	u8 error;
 	__asm __volatile(ASM_VMX_VMXOFF "; setna %0"
 			 : "=q" (error) :: "cc");
 	return error;
 }
 
-static inline unsigned char __vmx_vmlaunch(void)
+static inline u8 __vmx_vmlaunch(void)
 {
-	unsigned char error;
+	u8 error;
 	__asm __volatile(ASM_VMX_VMLAUNCH "; setna %0"
 			 : "=q" (error) :: "cc");
 	return error;
 }
 
-static inline unsigned char __vmx_vmclear(unsigned long long *pa)
+static inline u8 __vmx_vmclear(unsigned long long *pa)
 {
-	unsigned char error;
+	u8 error;
 	__asm __volatile(ASM_VMX_VMCLEAR_RAX "; setna %0"
 			 : "=qm" (error) : "a" (pa), "m" (*pa)
 			 : "cc", "memory");
 	return error;
 }
 
-static inline unsigned char __vmx_vmptrld(unsigned long long *pa)
+static inline u8 __vmx_vmptrld(unsigned long long *pa)
 {
-	unsigned char error;
+	u8 error;
 	__asm __volatile(ASM_VMX_VMPTRLD_RAX "; setna %0"
 			 : "=qm" (error) : "a" (pa), "m" (*pa)
 			 : "cc", "memory");
 	return error;
 }
 
-static inline unsigned char __vmx_vmread(unsigned long long field, unsigned long long *value)
+static inline u8 __vmx_vmread(unsigned long long field, unsigned long long *value)
 {
 	unsigned long long tmp;
-	unsigned char error;
+	u8 error;
 	__asm __volatile("vmread %[Field], %[Value]; setna %[Err]"
 			 : [Value] "=r" (tmp), [Err] "=qm" (error)
 			 : [Field] "r" (field)
@@ -495,9 +495,9 @@ static inline unsigned char __vmx_vmread(unsigned long long field, unsigned long
 	return error;
 }
 
-static inline unsigned char __vmx_vmwrite(unsigned long long field, unsigned long long value)
+static inline u8 __vmx_vmwrite(unsigned long long field, unsigned long long value)
 {
-	unsigned char error;
+	u8 error;
 	__asm __volatile("vmwrite %[Value], %[Field]; setna %[Err]"
 			 : [Err] "=qm" (error)
 			 : [Value] "r" (value), [Field] "r" (field)
@@ -505,17 +505,17 @@ static inline unsigned char __vmx_vmwrite(unsigned long long field, unsigned lon
 	return error;
 }
 
-static inline unsigned char __vmx_vmcall(uintptr_t hc, void *d)
+static inline u8 __vmx_vmcall(uintptr_t hc, void *d)
 {
-	unsigned char error;
+	u8 error;
 	__asm __volatile("vmcall; setna %0"
 			 : "=q" (error) : "c" (hc), "d" (d));
 	return error;
 }
 
-static inline unsigned char __vmx_vmfunc(u32 eptp, u32 func)
+static inline u8 __vmx_vmfunc(u32 eptp, u32 func)
 {
-	unsigned char error;
+	u8 error;
 	__asm __volatile(ASM_VMX_VMFUNC "; setna %0"
 			 : "=q" (error) : "c" (eptp), "a" (func));
 	return error;
@@ -544,61 +544,97 @@ extern u8 __vmx_vmcall(uintptr_t, void *);
 extern u8 __vmx_vmfunc(u32, u32);
 #endif
 
-static inline u64 vmcs_read(size_t field)
-{
-	u64 value;
-	__vmx_vmread(field, &value);
-
-	return value;
-}
-
-static inline u64 vmcs_read64(size_t field)
-{
-	return vmcs_read(field);
-}
-
-static inline u32 vmcs_read32(size_t field)
-{
-	return vmcs_read(field);
-}
-
-static inline u16 vmcs_read16(size_t field)
-{
-	return vmcs_read32(field);
-}
-
-static inline u8 vmcs_write(size_t field, size_t value)
-{
-	return __vmx_vmwrite(field, value);
-}
-
-static inline u8 vmcs_write64(size_t field, u64 value)
+static inline void vmcs_check64(size_t field)
 {
 	if ((field & 0x6000) == 0 ||
 	    (field & 0x6001) == 0x2001 ||
 	    (field & 0x6000) == 0x4000 ||
 	    (field & 0x6000) == 0x6000)
 		dbgbreak();
-
-	return __vmx_vmwrite(field, value);
 }
 
-static inline u8 vmcs_write32(size_t field, u32 value)
+static inline void vmcs_check32(size_t field)
 {
 	if ((field & 0x6000) == 0 || (field & 0x6000) == 0x6000)
 		dbgbreak();
-
-	return __vmx_vmwrite(field, value);
 }
 
-static inline u8 vmcs_write16(size_t field, u16 value)
+static inline void vmcs_check16(size_t field)
 {
 	if ((field & 0x6001) == 0x2000 ||
 	    (field & 0x6001) == 0x2001 ||
 	    (field & 0x6000) == 0x4000 ||
 	    (field & 0x6000) == 0x6000)
 		dbgbreak();
+}
 
+static inline void vmcs_checkl(size_t field)
+{
+	if ((field & 0x6000) == 0 ||
+	    (field & 0x6001) == 0x2000 ||
+	    (field & 0x6001) == 0x2001 ||
+	    (field & 0x6000) == 0x4000)
+		dbgbreak();
+}
+
+static inline size_t vmcs_read(size_t field)
+{
+	size_t value;
+	vmcs_checkl(field);
+	__vmx_vmread(field, &value);
+
+	return value;
+}
+
+static inline size_t vmcs_readl(size_t field)
+{
+	return vmcs_read(field);
+}
+
+static inline u64 vmcs_read64(const size_t field)
+{
+	vmcs_check64(field);
+	return (u64)vmcs_read(field);
+}
+
+static inline u32 vmcs_read32(size_t field)
+{
+	vmcs_check32(field);
+	return (u32)vmcs_read(field);
+}
+
+static inline u16 vmcs_read16(size_t field)
+{
+	vmcs_check16(field);
+	return (u16)vmcs_read32(field);
+}
+
+static inline u8 vmcs_write(size_t field, size_t value)
+{
+	vmcs_checkl(field);
+	return __vmx_vmwrite(field, value);
+}
+
+static inline u8 vmcs_writel(size_t field, size_t value)
+{
+	return vmcs_write(field, value);
+}
+
+static inline u8 vmcs_write64(size_t field, u64 value)
+{
+	vmcs_check64(field);
+	return __vmx_vmwrite(field, value);
+}
+
+static inline u8 vmcs_write32(size_t field, u32 value)
+{
+	vmcs_check32(field);
+	return __vmx_vmwrite(field, value);
+}
+
+static inline u8 vmcs_write16(size_t field, u16 value)
+{
+	vmcs_check16(field);
 	return __vmx_vmwrite(field, value);
 }
 
