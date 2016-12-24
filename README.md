@@ -76,7 +76,13 @@ Contributions are really appreciated and can be submitted by one of the followin
 - Github pull requests
 - git request-pull
 
-It'd be appreciated if you use a separate branch for your submissions (other than master, that is).  
+It'd be appreciated if you use a separate branch for your submissions (other
+								       than
+								       master,
+								       that
+								       is).
+Also, it's recommended to do `git rebase -i upstream/master` before submitting
+your tree for a pull.
 
 The github issues is a great place to start, although implementing new features
 is perfectly fine and very welcome, feel free to do whatever your little heart

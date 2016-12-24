@@ -53,6 +53,7 @@ DBGFLAGS = -DDBG -O0 -ggdb
 CFLAGS = -I$(CROSS_INC) $(DBGFLAGS) -D_WIN32_WINNT=$(WINVER) -DENABLE_DBGPRINT \
 	 -std=c99 -Wno-multichar -municode -fno-stack-protector -fms-extensions -fno-stack-check \
 	 -mno-stack-arg-probe -fno-asynchronous-unwind-tables
+AFLAGS = $(CFLAGS) -D__ASSEMBLY__
 LDFLAGS = -shared -Wl,--subsystem,native -Wl,--dynamicbase -Wl,--stack=0x6000 \
 	  -Wl,--file-alignment,0x1000 -Wl,--section-alignment,0x1000 \
 	  -Wl,--entry,DriverEntry -Wl,--nxcompat -Wl,--exclude-all-symbols \
@@ -102,7 +103,7 @@ $(OBJ_DIR)/%.o: %.c $(DEP_DIR)/%.d
 	$(CEXTRA)
 
 $(OBJ_DIR)/%.o: %.S
-	$(PREPEND)$(CC) -c $(CFLAGS) -o $@ $<
+	$(PREPEND)$(CC) -c $(AFLAGS) -o $@ $<
 	$(AEXTRA)
 
 -include $(DEP)
