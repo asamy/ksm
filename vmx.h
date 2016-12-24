@@ -483,9 +483,9 @@ static inline u8 __vmx_vmptrld(unsigned long long *pa)
 	return error;
 }
 
-static inline u8 __vmx_vmread(unsigned long long field, unsigned long long *value)
+static inline u8 __vmx_vmread(size_t field, size_t *value)
 {
-	unsigned long long tmp;
+	size_t tmp;
 	u8 error;
 	__asm __volatile("vmread %[Field], %[Value]; setna %[Err]"
 			 : [Value] "=r" (tmp), [Err] "=qm" (error)
@@ -495,7 +495,7 @@ static inline u8 __vmx_vmread(unsigned long long field, unsigned long long *valu
 	return error;
 }
 
-static inline u8 __vmx_vmwrite(unsigned long long field, unsigned long long value)
+static inline u8 __vmx_vmwrite(size_t field, size_t value)
 {
 	u8 error;
 	__asm __volatile("vmwrite %[Value], %[Field]; setna %[Err]"
