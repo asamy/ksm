@@ -52,6 +52,14 @@ technique that I can relay on.
 
 Hopefully didn't miss something important, but these are definitely the mains.
 
+## Porting to other x86 processors
+
+Since some code is split oddly, and needs to be organized to fit logically
+together, these files should be renamed/merged:
+
+- exit.c and vcpu.c should be merged to make vmx.c
+- functions from ksm.c may need to be merged into vmx.c as #1
+
 ## TODO / In development
 
 - APIC virtualization (Partially implemented, needs testing & fixes)

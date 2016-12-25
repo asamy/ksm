@@ -19,6 +19,15 @@
  * Along with modification from:
  *	Ahmed Samy, 2016 <f.fallen45@gmail.com>
  * Windows fixes, and updates from the Intel manual tables.
+ *
+ *
+ * Virtual VMCS layout From XEN:
+ *	include/asm-x86/hvm/vmx/vvmx.h
+ *	arch/x86/hvm/vmx/vvmx.c
+ *
+ * Copyright (c) 2010, Intel Corporation.
+ * Author: Qing He <qing.he@intel.com>
+ *         Eddie Dong <eddie.dong@intel.com>
  */
 #ifndef __VMX_H
 #define __VMX_H
@@ -549,6 +558,294 @@ extern u8 __invept(u32 type, const invept_t *i);
 extern u8 __vmx_vmcall(uintptr_t, void *);
 extern u8 __vmx_vmfunc(u32, u32);
 #endif
+
+static const u32 supported_fields[] = {
+	VIRTUAL_PROCESSOR_ID,
+	POSTED_INTR_NV,
+	EPTP_INDEX,
+	GUEST_ES_SELECTOR,
+	GUEST_CS_SELECTOR,
+	GUEST_SS_SELECTOR,
+	GUEST_DS_SELECTOR,
+	GUEST_FS_SELECTOR,
+	GUEST_GS_SELECTOR,
+	GUEST_LDTR_SELECTOR,
+	GUEST_TR_SELECTOR,
+	GUEST_INTR_STATUS,
+	GUEST_PML_INDEX,
+	HOST_ES_SELECTOR,
+	HOST_CS_SELECTOR,
+	HOST_SS_SELECTOR,
+	HOST_DS_SELECTOR,
+	HOST_FS_SELECTOR,
+	HOST_GS_SELECTOR,
+	HOST_TR_SELECTOR,
+	IO_BITMAP_A,
+	IO_BITMAP_A_HIGH,
+	IO_BITMAP_B,
+	IO_BITMAP_B_HIGH,
+	MSR_BITMAP,
+	MSR_BITMAP_HIGH,
+	VM_EXIT_MSR_STORE_ADDR,
+	VM_EXIT_MSR_STORE_ADDR_HIGH,
+	VM_EXIT_MSR_LOAD_ADDR,
+	VM_EXIT_MSR_LOAD_ADDR_HIGH,
+	VM_ENTRY_MSR_LOAD_ADDR,
+	VM_ENTRY_MSR_LOAD_ADDR_HIGH,
+	PML_ADDRESS,
+	PML_ADDRESS_HIGH,
+	TSC_OFFSET,
+	TSC_OFFSET_HIGH,
+	VIRTUAL_APIC_PAGE_ADDR,
+	VIRTUAL_APIC_PAGE_ADDR_HIGH,
+	APIC_ACCESS_ADDR,
+	APIC_ACCESS_ADDR_HIGH,
+	POSTED_INTR_DESC_ADDR,
+	POSTED_INTR_DESC_ADDR_HIGH,
+	VM_FUNCTION_CTRL,
+	VM_FUNCTION_CTRL_HIGH,
+	EPT_POINTER,
+	EPT_POINTER_HIGH,
+	EOI_EXIT_BITMAP0,
+	EOI_EXIT_BITMAP0_HIGH,
+	EOI_EXIT_BITMAP1,
+	EOI_EXIT_BITMAP1_HIGH,
+	EOI_EXIT_BITMAP2,
+	EOI_EXIT_BITMAP2_HIGH,
+	EOI_EXIT_BITMAP3,
+	EOI_EXIT_BITMAP3_HIGH,
+	EPTP_LIST_ADDRESS,
+	EPTP_LIST_ADDRESS_HIGH,
+	VMREAD_BITMAP,
+	VMREAD_BITMAP_HIGH,
+	VMWRITE_BITMAP,
+	VMWRITE_BITMAP_HIGH,
+	VE_INFO_ADDRESS,
+	VE_INFO_ADDRESS_HIGH,
+	XSS_EXIT_BITMAP,
+	XSS_EXIT_BITMAP_HIGH,
+	TSC_MULTIPLIER,
+	TSC_MULTIPLIER_HIGH,
+	GUEST_PHYSICAL_ADDRESS,
+	GUEST_PHYSICAL_ADDRESS_HIGH,
+	VMCS_LINK_POINTER,
+	VMCS_LINK_POINTER_HIGH,
+	GUEST_IA32_DEBUGCTL,
+	GUEST_IA32_DEBUGCTL_HIGH,
+	GUEST_IA32_PAT,
+	GUEST_IA32_PAT_HIGH,
+	GUEST_IA32_EFER,
+	GUEST_IA32_EFER_HIGH,
+	GUEST_IA32_PERF_GLOBAL_CTRL,
+	GUEST_IA32_PERF_GLOBAL_CTRL_HIGH,
+	GUEST_PDPTR0,
+	GUEST_PDPTR0_HIGH,
+	GUEST_PDPTR1,
+	GUEST_PDPTR1_HIGH,
+	GUEST_PDPTR2,
+	GUEST_PDPTR2_HIGH,
+	GUEST_PDPTR3,
+	GUEST_PDPTR3_HIGH,
+	GUEST_BNDCFGS,
+	GUEST_BNDCFGS_HIGH,
+	HOST_IA32_PAT,
+	HOST_IA32_PAT_HIGH,
+	HOST_IA32_EFER,
+	HOST_IA32_EFER_HIGH,
+	HOST_IA32_PERF_GLOBAL_CTRL,
+	HOST_IA32_PERF_GLOBAL_CTRL_HIGH,
+	PIN_BASED_VM_EXEC_CONTROL,
+	CPU_BASED_VM_EXEC_CONTROL,
+	EXCEPTION_BITMAP,
+	PAGE_FAULT_ERROR_CODE_MASK,
+	PAGE_FAULT_ERROR_CODE_MATCH,
+	CR3_TARGET_COUNT,
+	VM_EXIT_CONTROLS,
+	VM_EXIT_MSR_STORE_COUNT,
+	VM_EXIT_MSR_LOAD_COUNT,
+	VM_ENTRY_CONTROLS,
+	VM_ENTRY_MSR_LOAD_COUNT,
+	VM_ENTRY_INTR_INFO_FIELD,
+	VM_ENTRY_EXCEPTION_ERROR_CODE,
+	VM_ENTRY_INSTRUCTION_LEN,
+	TPR_THRESHOLD,
+	SECONDARY_VM_EXEC_CONTROL,
+	PLE_GAP,
+	PLE_WINDOW,
+	VM_INSTRUCTION_ERROR,
+	VM_EXIT_REASON,
+	VM_EXIT_INTR_INFO,
+	VM_EXIT_INTR_ERROR_CODE,
+	IDT_VECTORING_INFO_FIELD,
+	IDT_VECTORING_ERROR_CODE,
+	VM_EXIT_INSTRUCTION_LEN,
+	VMX_INSTRUCTION_INFO,
+	GUEST_ES_LIMIT,
+	GUEST_CS_LIMIT,
+	GUEST_SS_LIMIT,
+	GUEST_DS_LIMIT,
+	GUEST_FS_LIMIT,
+	GUEST_GS_LIMIT,
+	GUEST_LDTR_LIMIT,
+	GUEST_TR_LIMIT,
+	GUEST_GDTR_LIMIT,
+	GUEST_IDTR_LIMIT,
+	GUEST_ES_AR_BYTES,
+	GUEST_CS_AR_BYTES,
+	GUEST_SS_AR_BYTES,
+	GUEST_DS_AR_BYTES,
+	GUEST_FS_AR_BYTES,
+	GUEST_GS_AR_BYTES,
+	GUEST_LDTR_AR_BYTES,
+	GUEST_TR_AR_BYTES,
+	GUEST_INTERRUPTIBILITY_INFO,
+	GUEST_ACTIVITY_STATE,
+	GUEST_SYSENTER_CS,
+	VMX_PREEMPTION_TIMER_VALUE,
+	HOST_IA32_SYSENTER_CS,
+	CR0_GUEST_HOST_MASK,
+	CR4_GUEST_HOST_MASK,
+	CR0_READ_SHADOW,
+	CR4_READ_SHADOW,
+	CR3_TARGET_VALUE0,
+	CR3_TARGET_VALUE1,
+	CR3_TARGET_VALUE2,
+	CR3_TARGET_VALUE3,
+	EXIT_QUALIFICATION,
+	GUEST_LINEAR_ADDRESS,
+	GUEST_CR0,
+	GUEST_CR3,
+	GUEST_CR4,
+	GUEST_ES_BASE,
+	GUEST_CS_BASE,
+	GUEST_SS_BASE,
+	GUEST_DS_BASE,
+	GUEST_FS_BASE,
+	GUEST_GS_BASE,
+	GUEST_LDTR_BASE,
+	GUEST_TR_BASE,
+	GUEST_GDTR_BASE,
+	GUEST_IDTR_BASE,
+	GUEST_DR7,
+	GUEST_RSP,
+	GUEST_RIP,
+	GUEST_RFLAGS,
+	GUEST_PENDING_DBG_EXCEPTIONS,
+	GUEST_SYSENTER_ESP,
+	GUEST_SYSENTER_EIP,
+	HOST_CR0,
+	HOST_CR3,
+	HOST_CR4,
+	HOST_FS_BASE,
+	HOST_GS_BASE,
+	HOST_TR_BASE,
+	HOST_GDTR_BASE,
+	HOST_IDTR_BASE,
+	HOST_IA32_SYSENTER_ESP,
+	HOST_IA32_SYSENTER_EIP,
+	HOST_RSP,
+	HOST_RIP,
+};
+
+/*
+ * Virtual VMCS layout
+ *
+ * Since physical VMCS layout is unknown, a custom layout is used
+ * for virtual VMCS seen by guest. It occupies a 4k page, and the
+ * field is offset by an 9-bit offset into u64[], The offset is as
+ * follow, which means every <width, type> pair has a max of 32
+ * fields available.
+ *
+ *             9       7      5               0
+ *             --------------------------------
+ *     offset: | width | type |     index     |
+ *             --------------------------------
+ *
+ * Also, since the lower range <width=0, type={0,1}> has only one
+ * field: VPID, it is moved to a higher offset (63), and leaves the
+ * lower range to non-indexed field like VMCS revision.
+ *		-- End XEN
+ *
+ *		To make stuff more clear:
+ *
+ *	1. The VMCS encoding above is not actually the same as in
+ *	   the sturcture, the first bit is the "access type", otherwise
+ *	   they are all shifted 1 bit to the left.
+ *
+ *	2. The bits in these fields are also now documented in the
+ *	   Intel manual, see below, some of which are quoted in comments.
+ */
+static inline u16 field_offset(u32 field)
+{
+	/*
+	 * Intel manual:
+	 *	- Index bits:
+	 *		These fields are distinguished by their index value in bits 9:1.
+	 *	- Access bit:
+	 *		As noted in Section 24.11.2, each 32-bit field
+	 *		allows only full access, meaning that bit 0 of its encoding is 0.
+	 *		As noted in Section 24.11.2, every 64-bit field has two encodings,
+	 *		which differ on bit 0, the access type. Thus, each such field has
+	 *		an even encoding for full access and an odd encoding for high access.
+	 */
+	u16 index = (field >> 1) & 0x1F;
+	u16 type = (field >> 10) & 3;
+	u16 width = (field >> 13) & 3;
+
+	u16 offset = index | type << 5 | width << 7;
+	if (offset == 0)	/* VPID  */
+		return 0x3F;
+
+	return offset;
+}
+
+typedef enum {
+	FIELD_U16 = 0,
+	FIELD_U64 = 1,
+	FIELD_U32 = 2,
+	FIELD_NATURAL = 3,
+} fwidth_t;
+
+static inline fwidth_t field_width(u32 field)
+{
+	return (field >> 13) & 3;
+}
+
+typedef enum {
+	/*
+	 * According to the intel manual:
+	 *	- A value of 0 in bits 11:10 of an encoding indicates a control field.
+	 *	- A value of 1 in bits 11:10 of an encoding indicates a read-only data field.
+	 *	- A value of 2 in bits 11:10 of an encoding indicates a field in the guest-state area
+	 *	- A value of 3 in bits 11:10 of an encoding indicates a field in the host-state area.
+	 */
+	FIELD_CONTROL = 0,
+	FIELD_READONLY = 1,
+	FIELD_GUESTSTATE = 2,
+	FIELD_HOSTSTATE = 3,
+} ftype_t;
+
+static inline ftype_t field_type(u32 field)
+{
+	return (field >> 10) & 3;
+}
+
+static inline bool field_ro(u32 field)
+{
+	return field_type(field) == FIELD_READONLY;
+}
+
+static inline bool field_supported(u32 field)
+{
+	if (field > HOST_RIP)
+		return false;	/* quickie  */
+
+	for (size_t i = 0; i < sizeof(supported_fields) / sizeof(supported_fields[0]); ++i)
+		if (supported_fields[i] == field)
+			return true;
+
+	return false;
+}
 
 static inline void vmcs_check64(size_t field)
 {
