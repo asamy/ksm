@@ -308,7 +308,7 @@ static inline void free_ept(struct ept *ept)
  * \code
  *	struct ept *ept = &vcpu->ept;
  *	u64 *epte = ept_pte(EPT4(ept, EPTP_EXHOOK), gpa);
- *	__set_epte_pfn(epte, hpa);
+ *	__set_epte_pfn(epte, hpa >> PAGE_SHIFT);
  *	__invept_all();
  * \endcode
  *
@@ -317,6 +317,7 @@ static inline void free_ept(struct ept *ept)
  *	struct ept *ept = &vcpu->ept;
  *	u64 *epte = ept_pte(EPT4(ept, EPTP_EXHOOK), gpa);
  *	u64 hpa = *epte & PAGE_PA_MASK;
+ *	u64 hfn = hpa >> PAGE_SHIFT;
  * \endcode
  */
 u64 *ept_pte(u64 *pml4, u64 gpa)

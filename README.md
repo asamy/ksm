@@ -36,15 +36,6 @@ technique that I can relay on.
 - An Intel processor (with VT-x and EPT support)
 - A working C compiler (GCC or CLang or Microsoft compiler (CL)).
 
-## Debugging and/or testing
-
-Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it, you can now test under VMs with
-emulation for VMFUNC.
-
-### Live debugging under Windows
-
-You may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in secondary controls,otherwise it makes WinDBG go *maniac*.  I have not investigated the root cause, but it keeps loading GDT and LDT all the time, which is _insane_.
-
 ## Supported Kernels
 
 - All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested under Windows 7/8/8.1/10.
@@ -61,6 +52,22 @@ You may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in seconda
 
 Hopefully didn't miss something important, but these are definitely the mains.
 
+## TODO / In development
+
+- APIC virtualization (Partially implemented, needs testing & fixes)
+- TSC virtualization
+- UEFI support
+- Intel TXT support
+- AMD-V with NPT support
+- Nesting support (Some fixes needed and support for minor features)
+- More documentation
+- Finish writing tests
+- Failsafe state (e.g. when an unexpected thing happens, turn off and restore
+                  state to a valid one.)
+
+See also Github issues.  Some of these features are unfortunately not
+(fully) implemented due to lack of hardware (support) or similar.
+
 ## KSM needs your help to survive!
 
 Contributions are really appreciated and can be submitted by one of the following:
@@ -74,8 +81,6 @@ It'd be appreciated if you use a separate branch for your submissions (other
 								       master,
 								       that
 								       is).
-Also, it's recommended to do `git rebase -i upstream/master` before submitting
-your tree for a pull.
 
 The github issues is a great place to start, although implementing new features
 is perfectly fine and very welcome, feel free to do whatever your little heart
@@ -109,21 +114,105 @@ Optional:
 Signed-off-by: Your Name <your_email@domain.com>
 ```
 
-## TODO / In development
+### Setting up your git tree
 
-- APIC virtualization (Partially implemented, needs testing & fixes)
-- TSC virtualization
-- UEFI support
-- Intel TXT support
-- AMD-V with NPT support
-- Nesting support (Some fixes needed and support for minor features)
-- More documentation
-- Finish writing tests
-- Failsafe state (e.g. when an unexpected thing happens, turn off and restore
-                  state to a valid one.)
+For the sake of simplicity, we're going to use some names placeholders (which
+									in
+									reality
+									you
+									should
+									replace
+									with
+									your
+									own):
+1. `LOCAL_BRANCH` - is your local branch you're going to be committing to (e.g.
+   `my-changes`).
+2. `REMOTE_BRANCH` - is the branch name you have in your remote repository (e.g.
+   `pull-me`, can be the same as `LOCAL_BRANCH`).
+3. `REMOTE_URL` - Your remote repository URL (e.g. https://github.com/XXX/ksm).
 
-See also Github issues.  Some of these features are unfortunately not
-(fully) implemented due to lack of hardware (support) or similar.
+	Note: you do not have to have a remote repository, you can commit to
+	your local copy, then just use patches, see below.
+4. `USER_NAME` - Your username
+
+1. Get a local copy: `git clone git@host.com:name/ksm`
+2. Switch to a new branch: `git checkout -b LOCAL_BRANCH`
+2. Setup remote: `git remote add upstream https://github.com/asamy/ksm` (Can be
+skipped)
+3. (When there is a change in my tree) Pull my tree: `git pull --rebase upstream master` (If #2 is skipped, then use
+						     the complete URL in place
+						     of `upstream`.)  You can
+also use `git rebase -i upstream/master` to rebase your commit(s) on top of my
+new changes, but pulling is better and will also rebase.
+4. Commit something: `git commit -a --signoff -m "commit message"` (Signing off
+   commits is optional, you can also sign with PGP, but if you're going to
+   submit patches, then the PGP signature is going to get purged.)
+
+#### Submitting your changes
+
+If you're going to use patches, then simply:
+
+`git format-patch HEAD~X`
+
+Where X is the number of commits (patches) to create, can be ommitted if 1
+commit only, e.g.:
+
+`git format-patch HEAD~`
+
+You can then use the patch file(s) as an attachment and e-mail them manually, or
+you can use git SMTP with `git send-email` to do it for you.
+
+##### Using pull requests
+
+You have 2 options (if using 1st, then skip the rest):
+
+1. If you're using github fork, you can just use the github pull request
+   interface.
+2. If you're going to use git request-pull follow.
+
+###### Using git-request-pull
+
+Usage:
+
+`git request-pull START_COMMIT REPOSITORY_URL END_COMMIT`
+
+First publish your changes:
+
+`git push origin REMOTE_BRANCH`
+
+To summarize a branch changes:
+
+`git request-pull abcd https://github.com/USER_NAME/ksm HEAD`
+
+Which will summarize changes from commit `abcd` to `HEAD` of which you can then
+e-mail me that summary.
+
+You can also use:
+
+`git request-pull master https://github.com/USER_NAME/ksm
+LOCAL_BRANCH:REMOTE_BRANCH`
+
+Which will summarize changes from the local master branch (Which should contain
+							   my changes, i.e. my
+							   tree) to your
+changes.
+
+`REMOTE_BRANCH` can be omitted if same as `LOCAL_BRANCH`.
+You can also specify a tag of your choice, in that case, use tag names instead
+of commit hashes/branch names.
+
+###### Request a pull manually
+
+Simply e-mail me the remote and branch of which to pull from, e.g.:
+
+```
+...
+Please pull from https://github.com/USER_NAME/ksm REMOTE_BRANCH
+...
+```
+
+It's however, much better if you use `git request-pull` to automatically
+summarize changes.
 
 ## Building
 
@@ -163,7 +252,7 @@ Natively, you'll want to adjust (or pass in command line) DDK paths, e.g.:
 
 `mingw32-make -f Makefile.windows CROSS_INC=/path/to/include/ddk`
 
-Or, simply just editing Makefile.windows manually.  Also make sure to adjust your
+Or, simply just edit Makefile.windows manually.  Also make sure to adjust your
 environment variables (PATH) to point to the right `bin/` directory where the
 compiler, etc lie.
 
@@ -229,6 +318,17 @@ never give you back control, for obvious reasons.  If you want that behavior,
 - If the processor does not support Virtualization Exceptions, the VM exit path
 will be taken instead (Note that the VM exit path is _always_ handled).
 - If the processor does not support VMFUNC, it's emulated via VMCALL instead.
+
+### Debugging and/or testing
+
+Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it,
+you can now test under VMs with emulation for VMFUNC.
+
+#### Live debugging under Windows
+
+You may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in secondary controls,
+otherwise it makes WinDBG go **maniac**.  I have not investigated the root cause, but it keeps
+loading GDT and LDT all the time, which is _insane_.
 
 ### IDT shadowing
 

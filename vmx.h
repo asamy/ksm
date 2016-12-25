@@ -453,7 +453,9 @@ static inline u8 __vmx_off(void)
 {
 	u8 error;
 	__asm __volatile(ASM_VMX_VMXOFF "; setna %0"
-			 : "=q" (error) :: "cc");
+			 : "=q" (error)
+			 : /* no reads  */
+			 : "cc");
 	return error;
 }
 
@@ -509,7 +511,8 @@ static inline u8 __vmx_vmcall(uintptr_t hc, void *d)
 {
 	u8 error;
 	__asm __volatile("vmcall; setna %0"
-			 : "=q" (error) : "c" (hc), "d" (d));
+			 : "=q" (error) : "c" (hc), "d" (d)
+			 : "cc");
 	return error;
 }
 
@@ -517,7 +520,8 @@ static inline u8 __vmx_vmfunc(u32 eptp, u32 func)
 {
 	u8 error;
 	__asm __volatile(ASM_VMX_VMFUNC "; setna %0"
-			 : "=q" (error) : "c" (eptp), "a" (func));
+			 : "=q" (error) : "c" (eptp), "a" (func)
+			 : "cc");
 	return error;
 }
 
@@ -525,7 +529,8 @@ static inline u8 __invept(int ext, const invept_t *i)
 {
 	u8 error;
 	__asm __volatile(ASM_VMX_INVEPT "; setna %0"
-			 : "=q" (error) : "d" (i), "c" (ext) : "cc", "memory");
+			 : "=q" (error) : "d" (i), "c" (ext)
+			 : "cc", "memory");
 	return error;
 }
 
@@ -533,7 +538,8 @@ static inline u8 __invvpid(int ext, const invvpid_t *i)
 {
 	u8 error;
 	__asm __volatile(ASM_VMX_INVVPID "; setna %0"
-			 : "=q" (error): "d" (i), "c" (ext) : "cc", "memory");
+			 : "=q" (error): "d" (i), "c" (ext)
+			 : "cc", "memory");
 	return error;
 }
 #else

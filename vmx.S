@@ -269,11 +269,11 @@ __vmx_entrypoint:
 	vmxoff
 	jna	2f
 
-	pushq	%rax
-	popfq
-
 	/* Give them their stack pointer  */
 	movq	%rdx, %rsp
+
+	pushq	%rax
+	popfq
 
 	/*
 	 * rcx contains return address, which is guest's rip + instr_len (aka

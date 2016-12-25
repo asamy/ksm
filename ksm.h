@@ -406,9 +406,9 @@ static inline void ksm_write_reg32(struct vcpu *vcpu, int reg, u32 val)
 	*(u32 *)&vcpu->gp[reg] = val;
 }
 
-static inline void ksm_write_reg(struct vcpu *vcpu, int reg, u64 val)
+static inline void ksm_write_reg(struct vcpu *vcpu, int reg, uintptr_t val)
 {
-	*(u64 *)&vcpu->gp[reg] = val;
+	*(uintptr_t *)&vcpu->gp[reg] = val;
 }
 
 static inline u16 ksm_read_reg16(struct vcpu *vcpu, int reg)
@@ -421,7 +421,7 @@ static inline u32 ksm_read_reg32(struct vcpu *vcpu, int reg)
 	return (u32)vcpu->gp[reg];
 }
 
-static inline u64 ksm_read_reg(struct vcpu *vcpu, int reg)
+static inline uintptr_t ksm_read_reg(struct vcpu *vcpu, int reg)
 {
 	return vcpu->gp[reg];
 }
@@ -568,23 +568,19 @@ typedef u64 (*oncpu_fn_t) (void *);
 static inline int exec_on_cpu(int cpu, oncpu_fn_t oncpu, void *param, u64 *ret)
 {
 	PROCESSOR_NUMBER nr;
-	int status = KeGetProcessorNumberFromIndex(cpu, &nr);
+	GROUP_AFFINITY affinity;
+	GROUP_AFFINITY prev;
+	int status;
+
+	status = KeGetProcessorNumberFromIndex(cpu, &nr);
 	if (!NT_SUCCESS(status))
 		return status;
 
-	GROUP_AFFINITY affinity = {
-		.Group = nr.Group,
-		.Mask = 1ULL << nr.Number
-	};
-
-	/* Switch to specified CPU, storing old.  */
-	GROUP_AFFINITY prev;
+	affinity.Group = nr.Group;
+	affinity.Mask = 1ULL << nr.Number;
 	KeSetSystemGroupAffinityThread(&affinity, &prev);
 
-	/* Fire in the hole!  */
 	*ret = oncpu(param);
-
-	/* Switch back to old CPU.  */
 	KeRevertToUserGroupAffinityThread(&prev);
 	return STATUS_SUCCESS;
 }

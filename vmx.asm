@@ -217,10 +217,12 @@ exit:
 	vmxoff
 	jna	error
 
+	; Give them their stack pointer
+	mov	rsp, rdx
+
 	push	rax
 	popfq			; eflags to indicate success
 
-	mov	rsp, rdx	; stack pointer
 	push	rcx		; return address (rip + instr len)
 	ret
 
