@@ -1401,12 +1401,11 @@ static bool vcpu_handle_vmlaunch(struct vcpu *vcpu)
 		goto out;
 	}
 
-	if (vcpu_enter_nested_guest(vcpu)) {
+	if (vcpu_enter_nested_guest(vcpu))
 		nested->launch_state = VMCS_LAUNCH_STATE_LAUNCHED;
-		return true;
-	}
+	else
+		dbgbreak();
 
-	dbgbreak();
 out:
 	vcpu_advance_rip(vcpu);
 	return true;
@@ -1523,10 +1522,9 @@ static bool vcpu_handle_vmresume(struct vcpu *vcpu)
 		goto out;
 	}
 
-	if (vcpu_enter_nested_guest(vcpu))
-		return true;
+	if (!vcpu_enter_nested_guest(vcpu))
+		dbgbreak();
 
-	dbgbreak();
 out:
 	vcpu_advance_rip(vcpu);
 	return true;
