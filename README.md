@@ -125,6 +125,7 @@ For the sake of simplicity, we're going to use some names placeholders (which
 									with
 									your
 									own):
+
 1. `LOCAL_BRANCH` - is your local branch you're going to be committing to (e.g.
    `my-changes`).
 2. `REMOTE_BRANCH` - is the branch name you have in your remote repository (e.g.
@@ -134,6 +135,8 @@ For the sake of simplicity, we're going to use some names placeholders (which
 	Note: you do not have to have a remote repository, you can commit to
 	your local copy, then just use patches, see below.
 4. `USER_NAME` - Your username
+
+Get to it:
 
 1. Get a local copy: `git clone git@host.com:name/ksm`
 2. Switch to a new branch: `git checkout -b LOCAL_BRANCH`
