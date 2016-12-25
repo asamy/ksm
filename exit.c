@@ -737,6 +737,8 @@ static inline void nested_save_guest_state(struct nested_vcpu *nested)
 	nested_save32(vmcs, GUEST_DS_LIMIT);
 	nested_save32(vmcs, GUEST_LDTR_LIMIT);
 	nested_save32(vmcs, GUEST_TR_LIMIT);
+	nested_save32(vmcs, GUEST_IDTR_LIMIT);
+	nested_save32(vmcs, GUEST_GDTR_LIMIT);
 
 	nested_save32(vmcs, GUEST_ES_AR_BYTES);
 	nested_save32(vmcs, GUEST_FS_AR_BYTES);
@@ -753,11 +755,7 @@ static inline void nested_save_guest_state(struct nested_vcpu *nested)
 	nested_save(vmcs, GUEST_GS_BASE);
 	nested_save(vmcs, GUEST_LDTR_BASE);
 	nested_save(vmcs, GUEST_TR_BASE);
-
-	nested_save16(vmcs, GUEST_IDTR_LIMIT);
 	nested_save(vmcs, GUEST_IDTR_BASE);
-
-	nested_save16(vmcs, GUEST_GDTR_LIMIT);
 	nested_save(vmcs, GUEST_GDTR_BASE);
 
 	nested_save32(vmcs, GUEST_INTERRUPTIBILITY_INFO);
@@ -2669,14 +2667,8 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_LDT_TR_ACCESS] = vcpu_handle_ldt_tr_access,
 	[EXIT_REASON_EPT_VIOLATION] = vcpu_handle_ept_violation,
 	[EXIT_REASON_EPT_MISCONFIG] = vcpu_handle_ept_misconfig,
-#ifndef NESTED_VMX
-	[EXIT_REASON_INVEPT] = vcpu_handle_vmx,
-#endif
 	[EXIT_REASON_RDTSCP] = vcpu_handle_rdtscp,
 	[EXIT_REASON_PREEMPTION_TIMER] = vcpu_nop,
-#ifndef NESTED_VMX
-	[EXIT_REASON_INVVPID] = vcpu_handle_vmx,
-#endif
 	[EXIT_REASON_WBINVD] = vcpu_handle_wbinvd,
 	[EXIT_REASON_XSETBV] = vcpu_handle_xsetbv,
 	[EXIT_REASON_APIC_WRITE] = vcpu_handle_apic_write,

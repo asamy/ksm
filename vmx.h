@@ -863,8 +863,10 @@ static inline void vmcs_check64(size_t field)
 
 static inline void vmcs_check32(size_t field)
 {
+#if 0
 	if ((field & 0x6000) == 0 || (field & 0x6000) == 0x6000)
 		dbgbreak();
+#endif
 }
 
 static inline void vmcs_check16(size_t field)
@@ -878,11 +880,13 @@ static inline void vmcs_check16(size_t field)
 
 static inline void vmcs_checkl(size_t field)
 {
+#if 0
 	if ((field & 0x6000) == 0 ||
 	    (field & 0x6001) == 0x2000 ||
 	    (field & 0x6001) == 0x2001 ||
 	    (field & 0x6000) == 0x4000)
 		dbgbreak();
+#endif
 }
 
 static inline size_t vmcs_read(size_t field)
