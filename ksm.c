@@ -146,17 +146,15 @@ int __ksm_init_cpu(struct ksm *k)
 		}
 
 		k->kernel_cr3 = __readcr3();
-		bool ok = __vmx_vminit(vcpu);
-		VCPU_DEBUG("Started: %d\n", ok);
+		u8 ret = __vmx_vminit(vcpu);
+		VCPU_DEBUG("Started: %d\n", !ret);
 
-		if (ok) {
-			k->active_vcpus++;
-			return 0;
-		} else {
+		if (ret == 0)
+			k->active_vcpus++, vcpu->subverted = true;
+		else
 			/* vcpu_run() failed, cleanup:  */
 			vcpu_free(vcpu);
-			return ERR_FAIL;
-		}
+		return ret;
 #ifndef __GNUC__
 	} __except (EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -254,7 +252,7 @@ int __ksm_exit_cpu(struct ksm *k)
 	__try {
 #endif
 		err = __vmx_vmcall(HYPERCALL_STOP, NULL);
-		VCPU_DEBUG("Stopped: %d\n", err);
+		VCPU_DEBUG("Stopped: %d\n", !err);
 #ifndef __GNUC__
 	} __except (EXCEPTION_EXECUTE_HANDLER)
 	{
@@ -304,7 +302,7 @@ int ksm_exit(void)
 #endif
 	}
 
-	return 0;
+	return err;
 }
 
 /*

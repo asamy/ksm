@@ -236,7 +236,8 @@ __vmx_vminit:
 	/* If we get here, we failed  */
 	POP_REGS
 	popfq
-	xorb	%al, %al
+
+	movb	$1, %al
 	ret
 
 do_resume:
@@ -244,7 +245,7 @@ do_resume:
 	POP_REGS
 	popfq
 
-	movb	$1, %al
+	xorb	%al, %al
 	ret
 
 .globl __vmx_entrypoint

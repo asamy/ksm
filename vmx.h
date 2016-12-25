@@ -986,6 +986,15 @@ static inline u8 __invvpid_addr(u16 vpid, u64 gva)
 	});
 }
 
+
+/* avoid declared inside parameter list  */
+struct vcpu;
+
+/* Defined in assembly.  */
+extern u8 __vmx_vminit(struct vcpu *);
+extern void __vmx_entrypoint(void);
+extern void __ept_violation(void);
+
 /*
  * Exit Qualifications for entry failure during or after loading guest state
 */

@@ -163,6 +163,7 @@ ENDM
 
 .CODE
 
+; Returns 0 on success, 1 on failure
 __vmx_vminit PROC
 	pushfq
 	PUSHAQ			; -8 * 16
@@ -178,13 +179,15 @@ __vmx_vminit PROC
 	; if we get here, we failed
 	POPAQ
 	popfq
-	xor	al, al
+
+	mov	al, 1
 	ret
 
 do_resume:
 	POPAQ
 	popfq
-	mov	al, 1
+
+	xor	al, al
 	ret
 __vmx_vminit ENDP
 

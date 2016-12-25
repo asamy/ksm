@@ -1160,13 +1160,6 @@ extern uintptr_t __lar(uintptr_t);
 extern void __invd(void);
 #endif
 
-/* avoid declared inside parameter list  */
-struct vcpu;
-
-extern bool __vmx_vminit(struct vcpu *);
-extern void __vmx_entrypoint(void);
-extern void __ept_violation(void);
-
 #ifndef __linux__
 extern void __writecr2(uintptr_t);
 #endif

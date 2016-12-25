@@ -34,7 +34,8 @@ technique that I can relay on.
 ## Requirements
 
 - An Intel processor (with VT-x and EPT support)
-- A working C compiler (GCC or CLang or Microsoft compiler (CL)).
+- A working C compiler (GCC or CLang or Microsoft compiler aka CL).  CLang may
+not be able to compile it and is not tested.
 
 ## Supported Kernels
 
@@ -271,6 +272,14 @@ compiler, etc lie.
 
 The solution under `ksm/` directory is a VS 2015 solution, you can use it to build, you'll
 also need the Windows Driver Development Kit.
+
+To build from VS command line, simply cd to where `ksm` is and:
+
+`msbuild ksm\ksm.sln`
+
+Or:
+
+`msbuild ksm\ksm\ksm.vcxproj`
 
 ## Loading the driver
 
