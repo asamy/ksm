@@ -70,8 +70,12 @@ static inline bool __nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
 
 static inline bool __nested_vmcs_write64(uintptr_t vmcs, u32 field, u64 value)
 {
+#if 0
 	return __nested_vmcs_write(vmcs, field, (u32)value) &&
 		__nested_vmcs_write(vmcs, field + 1, (u32)(value >> 32));
+#else
+	return __nested_vmcs_write(vmcs, field, value);
+#endif
 }
 
 static inline bool nested_vmcs_write(uintptr_t vmcs, u32 field, u64 value)
@@ -120,8 +124,12 @@ static inline u64 __nested_vmcs_read(uintptr_t vmcs, u32 field)
 
 static inline u64 __nested_vmcs_read64(uintptr_t vmcs, u32 field)
 {
+#if 0
 	return __nested_vmcs_read(vmcs, field) |
 		__nested_vmcs_read(vmcs, field + 1) << 32;
+#else
+	return __nested_vmcs_read(vmcs, field);
+#endif
 }
 
 static inline u32 __nested_vmcs_read32(uintptr_t vmcs, u32 field)
@@ -700,8 +708,12 @@ static inline void nested_save32(uintptr_t vmcs, u32 field)
 
 static inline void nested_save64(uintptr_t vmcs, u32 field)
 {
+#if 0
 	break_if(!__nested_vmcs_write(vmcs, field, vmcs_read32(field)) ||
 		 !__nested_vmcs_write(vmcs, field + 1, vmcs_read32(field + 1)));
+#else
+	break_if(!__nested_vmcs_write(vmcs, field, vmcs_read(field)));
+#endif
 }
 
 static inline void nested_save_guest_state(struct nested_vcpu *nested)
@@ -1520,8 +1532,15 @@ static bool vcpu_handle_vmresume(struct vcpu *vcpu)
 		goto out;
 	}
 
-	if (!vcpu_enter_nested_guest(vcpu))
-		dbgbreak();
+	if (vcpu_enter_nested_guest(vcpu)) {
+		/* Do not increment rip, we have sat guest rip already to
+		 * wherever their guest should execute...  */
+		return true;
+	}
+
+	/* Should never happen, throw bogus error code for fun.  */
+	dbgbreak();
+	vcpu_vm_fail_valid(vcpu, VMXERR_VMRESUME_AFTER_VMXOFF);
 
 out:
 	vcpu_advance_rip(vcpu);
@@ -1560,6 +1579,9 @@ static bool vcpu_handle_vmwrite(struct vcpu *vcpu)
 		vcpu_vm_fail_valid(vcpu, VMXERR_UNSUPPORTED_VMCS_COMPONENT);
 		goto out;
 	}
+
+	if (__nested_vmcs_read(vmcs, field) != value)
+		dbgbreak();
 
 	vcpu_vm_succeed(vcpu);
 out:
