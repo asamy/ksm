@@ -339,13 +339,3 @@ int ksm_free_idt(unsigned n)
 	return STATIC_DPC_RET();
 }
 
-/*
- * Returns a pointer to the current processor, this can be used in
- * non-root mode as well.
- *
- * Mostly used while handling #VE and on virtualization/devirtualization.
- */
-struct vcpu *ksm_current_cpu(void)
-{
-	return &ksm.vcpu_list[cpu_nr()];
-}

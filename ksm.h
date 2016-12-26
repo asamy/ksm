@@ -508,7 +508,11 @@ extern int __ksm_init_cpu(struct ksm *k);
 extern int __ksm_exit_cpu(struct ksm *k);
 extern int ksm_hook_idt(unsigned n, void *h);
 extern int ksm_free_idt(unsigned n);
-extern struct vcpu *ksm_current_cpu(void);
+
+static inline struct vcpu *ksm_current_cpu(void)
+{
+	return &ksm.vcpu_list[cpu_nr()];
+}
 
 #ifdef EPAGE_HOOK
 /* page.c  */
