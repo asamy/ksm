@@ -90,15 +90,15 @@
 
 #define KFRAME_RPL	-0x66
 #define KFRAME_CSR	-0x64
-#define KFRAME_RSI	-0x60
-#define KFRAME_RDI	-0x58
-#define KFRAME_RAX	-0x50
-#define KFRAME_RCX	-0x48
-#define KFRAME_RDX	-0x40
-#define KFRAME_R8	-0x38
-#define KFRAME_R9	-0x30
-#define KFRAME_R10	-0x28
-#define KFRAME_R11	-0x20
+#define KFRAME_V1	-0x60
+#define KFRAME_V2	-0x58
+#define KFRAME_V3	-0x50
+#define KFRAME_V4	-0x48
+#define KFRAME_V5	-0x40
+#define KFRAME_V6	-0x38
+#define KFRAME_V7	-0x30
+#define KFRAME_V8	-0x28
+#define KFRAME_V9	-0x20
 #define KFRAME_XMM0	-0x10
 #define KFRAME_XMM1	0x00
 #define KFRAME_XMM2	0x10
@@ -116,18 +116,18 @@
 	pushq	%rbp
 	subq	$0x158, %rsp
 	leaq	0x80(%rsp), %rbp
-	movq	%rax, KFRAME_RAX(%rbp)
-	movq	%rcx, KFRAME_RCX(%rbp)
-	movq	%rdx, KFRAME_RDX(%rbp)
-	movq	%r8, KFRAME_R8(%rbp)
-	movq	%r9, KFRAME_R9(%rbp)
-	movq	%r10, KFRAME_R10(%rbp)
-	movq	%r11, KFRAME_R11(%rbp)
+	movq	REG_V1, KFRAME_V1(%rbp)
+	movq	REG_V2, KFRAME_V2(%rbp)
+	movq	REG_V3, KFRAME_V3(%rbp)
+	movq	REG_V4, KFRAME_V4(%rbp)
+	movq	REG_V5, KFRAME_V5(%rbp)
+	movq	REG_V6, KFRAME_V6(%rbp)
+	movq	REG_V7, KFRAME_V7(%rbp)
 #ifdef REG_V8
-	movq	%rdi, KFRAME_RDI(%rbp)
+	movq	REG_V8, KFRAME_V8(%rbp)
 #endif
 #ifdef REG_V9
-	movq	%rsi, KFRAME_RSI(%rbp)
+	movq	REG_V9, KFRAME_V9(%rbp)
 #endif
 	movw	KFRAME_CS(%rbp), %ax
 	andb	$1, %al
@@ -137,19 +137,19 @@
 .endm
 
 .macro TRAP_EXIT
-	movq	KFRAME_R11(%rbp), %r11
-	movq	KFRAME_R10(%rbp), %r10
-	movq	KFRAME_R9(%rbp), %r9
-	movq	KFRAME_R8(%rbp), %r8
-	movq	KFRAME_RDX(%rbp), %rdx
-	movq	KFRAME_RCX(%rbp), %rcx
-	movq	KFRAME_RAX(%rbp), %rax
-#ifdef REG_V8
-	movq	KFRAME_RDI(%rbp), %rdi
-#endif
 #ifdef REG_V9
-	movq	KFRAME_RSI(%rbp), %rsi
+	movq	KFRAME_V9(%rbp), REG_V9
 #endif
+#ifdef REG_V8
+	movq	KFRAME_V8(%rbp), REG_V8
+#endif
+	movq	KFRAME_V7(%rbp), REG_V7
+	movq	KFRAME_V6(%rbp), REG_V6
+	movq	KFRAME_V5(%rbp), REG_V5
+	movq	KFRAME_V4(%rbp), REG_V4
+	movq	KFRAME_V3(%rbp), REG_V3
+	movq	KFRAME_V2(%rbp), REG_V2
+	movq	KFRAME_V1(%rbp), REG_V1
 	movq	%rbp, %rsp
 	movq	0xD8(%rbp), %rbp
 	addq	$0xE8, %rsp
