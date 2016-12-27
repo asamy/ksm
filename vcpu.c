@@ -73,7 +73,7 @@ static inline void init_epte(u64 *entry, int access, u64 hpa)
  *
  * We currently just do a 1:1 mapping, except for the executable page
  * redirection case, see:
- *	page.c, kprotect.c.
+ *	page.c.
  */
 u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 {
@@ -383,26 +383,21 @@ static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa,
 			u16 eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
 			VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
 			return eptp_switch;
-		} else {
-#ifdef KPROTECT
-			/*
-			 * kprotect special handling
-			 * although should be part of epage.
-			 */
-			return kprotect_select_eptp(ept, rip, ac);
-#endif
 		}
-#else
+#endif
+
 #ifndef NESTED_VMX
+		/* Fix manually...   This will never happen unless someone
+		 * screwed up intentionally.  */
 		u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
 		if (epte) {
 			__set_epte_ar_inplace(epte, ac);
 			return eptp;
 		}
 #endif
+
 		/* Unhandled violation  */
 		return EPT_MAX_EPTP_LIST;
-#endif
 	}
 
 	return eptp;

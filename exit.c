@@ -970,11 +970,6 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 	case HYPERCALL_UNHOOK:
 		vcpu_adjust_rflags(vcpu, vcpu_handle_unhook(vcpu, arg));
 		break;
-#ifdef KPROTECT
-	case HYPERCALL_KPROTECT:
-		vcpu_adjust_rflags(vcpu, kprotect_init_eptp(vcpu, arg));
-		break;
-#endif
 #endif
 	case HYPERCALL_VMFUNC:
 		vcpu_adjust_rflags(vcpu, vcpu_emulate_vmfunc(vcpu, (struct h_vmfunc *)arg));

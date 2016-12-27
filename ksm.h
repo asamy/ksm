@@ -46,9 +46,6 @@
 #define HYPERCALL_UNHOOK	4	/* Unhook page  */
 #endif
 #define HYPERCALL_VMFUNC	5	/* Emulate VMFunc  */
-#ifdef KPROTECT
-#define HYPERCALL_KPROTECT	6	/* kprotect.c  */
-#endif
 
 /*
  * NOTE:
@@ -526,14 +523,6 @@ extern int ksm_unhook_page(void *original);
 extern int __ksm_unhook_page(struct page_hook_info *phi);
 extern struct page_hook_info *ksm_find_page(void *va);
 extern struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn);
-
-#ifdef KPROTECT
-/* kprotect.c  */
-extern int kprotect_init(void);
-extern int kprotect_exit(void);
-extern u16 kprotect_select_eptp(struct ept *ept, u64 rip, u8 ac);
-extern bool kprotect_init_eptp(struct vcpu *vcpu, uintptr_t gpa);
-#endif
 #endif
 
 /* vcpu.c  */

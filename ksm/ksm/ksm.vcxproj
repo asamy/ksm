@@ -93,7 +93,6 @@
   <ItemGroup>
     <ClCompile Include="..\..\exit.c" />
     <ClCompile Include="..\..\htable.c" />
-    <ClCompile Include="..\..\kprotect.c" />
     <ClCompile Include="..\..\ksm.c" />
     <ClCompile Include="..\..\main_windows.c" />
     <ClCompile Include="..\..\page.c" />

@@ -400,8 +400,6 @@ Since we use 3 EPT pointers, and since the page needs to be read and written to 
 You can define one or more of the following:
 
 - `EPAGE_HOOK` - Enables executable page shadow hook
-- `KPROTECT` - Requires Windows and `EPAGE_HOOK` to be defined.  Enables an expertimental,
-	untested and stupid module executable pages protection.
 - `ENABLE_PML` - Enables Page Modification Log if supported.
 - `EMULATE_VMFUNC` - Forces emulation of VMFUNC even if CPU supports it.
 - `EPT_SUPPRESS_VE` - Force suppress VE bit in EPT.
