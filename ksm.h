@@ -123,7 +123,10 @@
 #define VCPU_DEBUG_RAW(str)
 #endif
 
-/* can be very noisy, used only during first-phase testing  */
+/*
+ * Should definitely replace this with something more useful, right now this is
+ * utterly useless...
+ */
 #ifdef VCPU_TRACER_LOG
 #define VCPU_TRACER_START()		VCPU_DEBUG("%p\n", gc)
 #define VCPU_TRACER_END()		VCPU_DEBUG("%p handled\n", gc)
@@ -213,8 +216,10 @@ struct vmcs {
 
 /* Posted interrupt descriptor */
 struct pi_desc {
-	/* 256 bits of posted interrupt requests
-	 * The bit index is the vector in IDT.  */
+	/*
+	 * 256 bits of posted interrupt requests
+	 * The bit index is the vector in IDT.
+	 */
 	u32 pir[8];
 	union {
 		struct {
@@ -587,13 +592,6 @@ static inline int exec_on_cpu(int cpu, oncpu_fn_t oncpu, void *param, u64 *ret)
 	*ret = oncpu(param);
 	KeRevertToUserGroupAffinityThread(&prev);
 	return STATUS_SUCCESS;
-}
-
-static inline int sleep_ms(s32 ms)
-{
-	return KeDelayExecutionThread(KernelMode, FALSE, &(LARGE_INTEGER) {
-		.QuadPart = -(10000 * ms)
-	});
 }
 #endif
 

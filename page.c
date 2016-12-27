@@ -143,6 +143,7 @@ int ksm_hook_epage(void *original, void *redirect)
 	u8 *code_page;
 	void *aligned = (void *)page_align(original);
 	uintptr_t offset = (uintptr_t)original - (uintptr_t)aligned;	/* code start  */
+
 	struct trampoline trampo;
 	epage_init_trampoline(&trampo, (uintptr_t)redirect);
 	
@@ -164,12 +165,7 @@ int ksm_hook_epage(void *original, void *redirect)
 	if (!phi)
 		return ERR_NOMEM;
 
-#ifdef __linux__
 	code_page = mm_alloc_page();
-#else
-	code_page = MmAllocateContiguousMemory(PAGE_SIZE,
-					      (PHYSICAL_ADDRESS) { .QuadPart = -1 });
-#endif
 	if (!code_page) {
 		mm_free_pool(phi, sizeof(*phi));
 		return ERR_NOMEM;
@@ -201,11 +197,7 @@ int ksm_unhook_page(void *va)
 int __ksm_unhook_page(struct page_hook_info *phi)
 {
 	STATIC_CALL_DPC(__do_unhook_page, (void *)phi->dpa);
-#ifdef __linux__
 	mm_free_page(phi->c_va);
-#else
-	MmFreeContiguousMemory(phi->c_va);
-#endif
 	htable_del(&ksm.ht, page_hash(phi->origin), phi);
 	mm_free_pool(phi, sizeof(*phi));
 	return STATIC_DPC_RET();

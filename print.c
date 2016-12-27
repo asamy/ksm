@@ -124,6 +124,13 @@ NTSTRSAFEAPI RtlStringCchVPrintfA(STRSAFE_LPSTR pszDest, size_t cchDest, STRSAFE
 }
 #endif
 
+static inline int sleep_ms(s32 ms)
+{
+	return KeDelayExecutionThread(KernelMode, FALSE, &(LARGE_INTEGER) {
+		.QuadPart = -(10000 * ms)
+	});
+}
+
 static inline char *stpcpy(char *dst, const char *src)
 {
 	const size_t len = strlen(src);

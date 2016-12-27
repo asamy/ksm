@@ -516,6 +516,9 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	 * us back control instead of directly returning to __ksm_init_cpu.
 	 *
 	 * The guest start is do_resume in assembly, which ends up in __ksm_init_cpu.
+	 *	The following are restored on entry:
+	 *		- GUEST_RFLAGS
+	 *		- Register values prior to this call
 	 */
 	struct vmcs *vmcs, *vmxon;
 	struct gdtr gdtr;
@@ -609,7 +612,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	vcpu->pin_ctl = vm_pinctl;
 
 	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID
-		| SECONDARY_EXEC_XSAVES | SECONDARY_EXEC_UNRESTRICTED_GUEST
+		| SECONDARY_EXEC_XSAVES //| SECONDARY_EXEC_UNRESTRICTED_GUEST
 #ifndef EMULATE_VMFUNC
 		| SECONDARY_EXEC_ENABLE_VMFUNC
 #endif
@@ -852,6 +855,12 @@ bool vcpu_create(struct vcpu *vcpu)
 	 * Leave cr0 guest host mask empty, we support all.
 	 * Set VMXE bit in cr4 guest host mask so they VM-exit to us when
 	 * they try to set that bit.
+	 *
+	 * Note: These bits are also removed from CRx_READ_SHADOW fields, if
+	 * you want to opt-in a VM exit without having to remove that bit
+	 * completely from their CR0, then you'd probably want to make
+	 * a different variable, e.g. `cr0_read_shadow = X86_CR0_PE` and OR it
+	 * in CR0_GUEST_HOST_MASK, without masking it in CR0_READ_SHADOW...
 	 */
 	vcpu->cr0_guest_host_mask = 0;
 	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;

@@ -120,6 +120,20 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 #endif
 }
 
+#ifdef EPAGE_HOOK
+static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
+			    _In_ SIZE_T              NumberOfBytes,
+			    _In_ MEMORY_CACHING_TYPE CacheType)
+{
+	void *ret;
+	VCPU_DEBUG("in here: %p\n", PhysicalAddress.QuadPart);
+	vcpu_vmfunc(EPTP_NORMAL, 0);
+	ret = MmMapIoSpace(PhysicalAddress, NumberOfBytes, CacheType);
+	vcpu_vmfunc(EPTP_EXHOOK, 0);
+	return ret;
+}
+#endif
+
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 {
 	NTSTATUS status;
@@ -156,6 +170,17 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 #ifdef ENABLE_RESUBV
 	if (!NT_SUCCESS(status = register_power_callback(&g_dev_ext)))
 		goto exit;
+#endif
+
+#ifdef EPAGE_HOOK
+	/* Just a simple example...  */
+	if (ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace) == 0) {
+		void *p = kmap_iomem(__pa(g_driver_base), PAGE_SIZE);
+		if (p) {
+			VCPU_DEBUG("map at %p\n", p);
+			kunmap_iomem(p, PAGE_SIZE);
+		}
+	}
 #endif
 
 	/* Succeeded  */
