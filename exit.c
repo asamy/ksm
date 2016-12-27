@@ -1411,11 +1411,12 @@ static bool vcpu_handle_vmlaunch(struct vcpu *vcpu)
 		goto out;
 	}
 
-	if (vcpu_enter_nested_guest(vcpu))
+	if (vcpu_enter_nested_guest(vcpu)) {
 		nested->launch_state = VMCS_LAUNCH_STATE_LAUNCHED;
-	else
-		dbgbreak();
+		return true;
+	}
 
+	dbgbreak();
 out:
 	vcpu_advance_rip(vcpu);
 	return true;
@@ -2383,14 +2384,14 @@ static inline bool nested_can_handle_cr(const struct nested_vcpu *nested)
 		switch (exit & 15) {
 		case 0:
 		{
-			u64 mask = __nested_vmcs_read(vmcs, CR0_GUEST_HOST_MASK);
-			u64 shadow = __nested_vmcs_read(vmcs, CR0_READ_SHADOW);
-			u64 val = ksm_read_reg(vcpu, (exit >> 8) & 15);
+			uintptr_t mask = __nested_vmcs_read(vmcs, CR0_GUEST_HOST_MASK);
+			uintptr_t shadow = __nested_vmcs_read(vmcs, CR0_READ_SHADOW);
+			uintptr_t val = ksm_read_reg(vcpu, (exit >> 8) & 15);
 			return mask & (val ^ shadow);
 		}
 		case 3:
 		{
-			u64 val = ksm_read_reg(vcpu, (exit >> 8) & 15);
+			uintptr_t val = ksm_read_reg(vcpu, (exit >> 8) & 15);
 			u32 count = __nested_vmcs_read(vmcs, CR3_TARGET_COUNT);
 			for (u32 i = 0; i < count; i++)
 				if (__nested_vmcs_read(vmcs, CR3_TARGET_VALUE0 + i * 2) == val)
@@ -2400,9 +2401,9 @@ static inline bool nested_can_handle_cr(const struct nested_vcpu *nested)
 		}
 		case 4:
 		{
-			u64 mask = __nested_vmcs_read(vmcs, CR4_GUEST_HOST_MASK);
-			u64 shadow = __nested_vmcs_read(vmcs, CR4_READ_SHADOW);
-			u64 val = ksm_read_reg(vcpu, (exit >> 8) & 15);
+			uintptr_t mask = __nested_vmcs_read(vmcs, CR4_GUEST_HOST_MASK);
+			uintptr_t shadow = __nested_vmcs_read(vmcs, CR4_READ_SHADOW);
+			uintptr_t val = ksm_read_reg(vcpu, (exit >> 8) & 15);
 			return mask & (val ^ shadow);
 		}
 		case 8:
@@ -2419,15 +2420,15 @@ static inline bool nested_can_handle_cr(const struct nested_vcpu *nested)
 		break;
 	case 2:		/* clts  */
 	{
-		u64 mask = __nested_vmcs_read(vmcs, CR0_GUEST_HOST_MASK);
-		u64 shadow = __nested_vmcs_read(vmcs, CR0_READ_SHADOW);
+		uintptr_t mask = __nested_vmcs_read(vmcs, CR0_GUEST_HOST_MASK);
+		uintptr_t shadow = __nested_vmcs_read(vmcs, CR0_READ_SHADOW);
 		return mask & X86_CR0_TS && shadow & X86_CR0_TS;
 	}
 	case 3:		/* lmsw  */
 	{
-		u64 mask = __nested_vmcs_read(vmcs, CR0_GUEST_HOST_MASK);
-		u64 shadow = __nested_vmcs_read(vmcs, CR0_READ_SHADOW);
-		u64 val = ksm_read_reg(vcpu, (exit >> 8) & 15);
+		uintptr_t mask = __nested_vmcs_read(vmcs, CR0_GUEST_HOST_MASK);
+		uintptr_t shadow = __nested_vmcs_read(vmcs, CR0_READ_SHADOW);
+		uintptr_t val = ksm_read_reg(vcpu, (exit >> 8) & 15);
 		return (mask & (X86_CR0_PE | X86_CR0_MP) & (val ^ shadow)) ||
 			(mask & X86_CR0_PE && !(shadow & X86_CR0_PE) && val & X86_CR0_PE);
 	}

@@ -339,6 +339,11 @@ never give you back control, for obvious reasons.  If you want that behavior,
 will be taken instead (Note that the VM exit path is _always_ handled).
 - If the processor does not support VMFUNC, it's emulated via VMCALL instead.
 
+Some notes on Guest:
+
+- VMFUNC does **not** have CPL checks, that means a user-space program can
+execute it.
+
 ### Debugging and/or testing
 
 Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it,
