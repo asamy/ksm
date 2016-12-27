@@ -364,7 +364,7 @@ struct vcpu {
 	struct vmcs *vmxon;
 	struct vmcs *vmcs;
 	struct ve_except_info *ve;
-//	struct pi_desc pi_desc;
+	struct pi_desc pi_desc;
 	u32 entry_ctl;
 	u32 exit_ctl;
 	u32 pin_ctl;

@@ -206,37 +206,6 @@ static bool setup_pml4(struct ept *ept)
 		}
 	}
 #else
-	/*
-	 * This is kinda bad, but I can't find a better way
-	 * to iterate through available physical memory ranges.
-	 * Maybe even removing this completely should be OK, and
-	 * simply hot-allocating every page needed via EPT violations.
-	 * Later on a lot come as EPT violations (DMA etc).  It's
-	 * unlikely that we'll have to allocate all the underlying
-	 * page tables (PML4, PDPT, PDT, etc.) but most likely will
-	 * just set the page to the required GPA, see ept_alloc_page().
-	 *
-	 * We're only interested in System RAM ranges, not PCI
-	 * ranges or similar, to run the guest for now, the device
-	 * ranges will fault later and will be allocated by us as
-	 * needed, otherwise if we allocate all we're probably wasting
-	 * a lot of space because not all ranges are used, see:
-	 *	cat /proc/iomem
-	 *	linux/resource.h
-	 *	kernel/resource.c
-	 * for more info.
-	 *
-	 * Linux uses resources for this kind of stuff, and an io port
-	 * resource, which isn't our interest, we're only interested
-	 * in physical memory, however, such resource is called
-	 * iomem resource, which starts off with "PCI Mem", we iterate
-	 * through the sibling of that resource to find the System RAM
-	 * resource, there are a lot more (mostly PCI ranges).
-	 *
-	 * See also:
-	 *	ept_alloc_page()
-	 *	do_ept_violation()
-	 */
 	if (!iter_resource(ept, &iomem_resource, "System RAM"))
 		return false;
 #endif
@@ -631,6 +600,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 #endif
 		vm_2ndctl |= SECONDARY_EXEC_DESC_TABLE_EXITING;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
+	vcpu->secondary_ctl = vm_2ndctl;
 
 	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
 		CPU_BASED_USE_IO_BITMAPS;
@@ -701,7 +671,6 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write(CR4_READ_SHADOW, cr4 & ~vcpu->cr4_guest_host_mask);
 
 	/* Cache secondary ctl for emulation purposes  */
-	vcpu->secondary_ctl = vm_2ndctl;
 	vcpu->vm_func_ctl = 0;
 
 	/* See if we need to emulate VMFUNC via a VMCALL  */
@@ -865,66 +834,63 @@ bool vcpu_create(struct vcpu *vcpu)
 
 	vcpu->idt.limit = PAGE_SIZE - 1;
 	vcpu->idt.base = (uintptr_t)mm_alloc_page();
-	if (!vcpu->idt.base) {
-		free_ept(&vcpu->ept);
-		return false;
-	}
+	if (!vcpu->idt.base)
+		goto out_ept;
 
 	vcpu->vmxon = mm_alloc_page();
 	if (!vcpu->vmxon)
-		goto out;
+		goto out_idt;
 
 	vcpu->vmcs = mm_alloc_page();
 	if (!vcpu->vmcs)
-		goto out;
+		goto out_vmxon;
 
 	vcpu->ve = mm_alloc_page();
 	if (!vcpu->ve)
-		goto out;
+		goto out_vmcs;
 
 #ifdef ENABLE_PML
 	vcpu->pml = mm_alloc_page();
 	if (!vcpu->pml)
-		goto out;
+		goto out_ve;
 #endif
 
 	vcpu->vapic_page = mm_alloc_page();
 	if (!vcpu->vapic_page)
-		goto out;
+		goto out_pml;
 
 	vcpu->stack = mm_alloc_pool(KERNEL_STACK_SIZE);
 	if (vcpu->stack)
 		return true;
 
-out:
-	vcpu_free(vcpu);
+out_pml:
+#ifdef ENABLE_PML
+	mm_free_page(vcpu->pml);
+out_ve:
+#endif
+	mm_free_page(vcpu->ve);
+out_vmcs:
+	mm_free_page(vcpu->vmcs);
+out_vmxon:
+	mm_free_page(vcpu->vmxon);
+out_idt:
+	mm_free_page((void *)vcpu->idt.base);
+out_ept:
+	free_ept(&vcpu->ept);
 	return false;
 }
 
 void vcpu_free(struct vcpu *vcpu)
 {
-	if (vcpu->idt.base)
-		mm_free_page((void *)vcpu->idt.base);
-
-	if (vcpu->vmxon)
-		mm_free_page(vcpu->vmxon);
-
-	if (vcpu->vmcs)
-		mm_free_page(vcpu->vmcs);
-
-	if (vcpu->ve)
-		mm_free_page(vcpu->ve);
-
+	mm_free_page((void *)vcpu->idt.base);
+	mm_free_page(vcpu->vmxon);
+	mm_free_page(vcpu->vmcs);
+	mm_free_page(vcpu->ve);
 #ifdef ENABLE_PML
-	if (vcpu->pml)
-		mm_free_page(vcpu->pml);
+	mm_free_page(vcpu->pml);
 #endif
-
-	if (vcpu->vapic_page)
-		mm_free_page(vcpu->vapic_page);
-
-	if (vcpu->stack)
-		mm_free_pool(vcpu->stack, KERNEL_STACK_SIZE);
+	mm_free_page(vcpu->vapic_page);
+	mm_free_pool(vcpu->stack, KERNEL_STACK_SIZE);
 
 	free_ept(&vcpu->ept);
 	__stosq((u64 *)vcpu, 0, sizeof(*vcpu) >> 3);

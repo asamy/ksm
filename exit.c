@@ -1862,6 +1862,9 @@ static bool vcpu_handle_dr_access(struct vcpu *vcpu)
 	uintptr_t exit = vmcs_read(EXIT_QUALIFICATION);
 	int dr = exit & DEBUG_REG_ACCESS_NUM;
 
+	if (vcpu_inject_gp_if(vcpu, !vcpu_probe_cpl(0)))
+		goto out;
+
 	/*
 	 * See Intel Manual, when CR4.DE is enabled, dr4/5 cannot be used,
 	 * when clear, they are aliased to 6/7.
@@ -1871,9 +1874,6 @@ static bool vcpu_handle_dr_access(struct vcpu *vcpu)
 		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 		goto out;
 	}
-
-	if (vcpu_inject_gp_if(vcpu, !vcpu_probe_cpl(0)))
-		goto out;
 
 	uintptr_t dr7 = vmcs_read(GUEST_DR7);
 	if (dr7 & DR7_GD) {

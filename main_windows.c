@@ -195,6 +195,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 			VCPU_DEBUG("map at %p\n", p);
 			kunmap_iomem(p, PAGE_SIZE);
 		}
+
+		ksm_unhook_page(MmMapIoSpace);
 	}
 #endif
 
