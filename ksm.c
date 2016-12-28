@@ -144,6 +144,7 @@ int __ksm_init_cpu(struct ksm *k)
 			return ERR_NOMEM;
 		}
 
+		k->kernel_cr3 = __readcr3();
 		u8 ret = __vmx_vminit(vcpu);
 		VCPU_DEBUG("Started: %d\n", !ret);
 
@@ -171,7 +172,6 @@ int __ksm_init_cpu(struct ksm *k)
 STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
 int ksm_subvert(void)
 {
-	int err;
 	ksm.origin_cr3 = __readcr3();
 
 	STATIC_CALL_DPC(__call_init, &ksm);

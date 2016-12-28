@@ -179,7 +179,6 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		goto err;
 	}
 
-	ksm.kernel_cr3 = __readcr3();
 	if (!NT_SUCCESS(status = ksm_init()))
 		goto err1;
 
