@@ -80,9 +80,9 @@ ifeq ($(VERBOSE), 1)
 	LEXTRA ?=
 else
 	PREPEND ?= @
-	CEXTRA ?= @echo "  CC $@"
-	AEXTRA ?= @echo "  AS $@"
-	LEXTRA ?= @echo "  LD $@"
+	CEXTRA ?= @echo "  CC 	$@"
+	AEXTRA ?= @echo "  AS 	$@"
+	LEXTRA ?= @echo "  LD 	$@"
 endif
 
 .PHONY: all clean

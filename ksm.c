@@ -35,8 +35,7 @@ struct ksm ksm = {
  * This file manages CPUs initialization, for per-cpu initializaiton
  * see vcpu.c, for VM-exit handlers see exit.c
  *
- * For the macro magic (aka STATIC_DEFINE_DPC, etc.) see dpc.h,
- * DPCs are for per-processor callbacks.
+ * For the macro magic (aka STATIC_DEFINE_DPC, etc.) see percpu.h.
  */
 static inline bool init_msr_bitmap(struct ksm *k)
 {
@@ -145,14 +144,12 @@ int __ksm_init_cpu(struct ksm *k)
 			return ERR_NOMEM;
 		}
 
-		k->kernel_cr3 = __readcr3();
 		u8 ret = __vmx_vminit(vcpu);
 		VCPU_DEBUG("Started: %d\n", !ret);
 
 		if (ret == 0)
 			k->active_vcpus++, vcpu->subverted = true;
-		else
-			/* vcpu_run() failed, cleanup:  */
+		else	/* vcpu_run() failed, cleanup:  */
 			vcpu_free(vcpu);
 		return ret;
 #ifndef __GNUC__
@@ -175,16 +172,10 @@ STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
 int ksm_subvert(void)
 {
 	int err;
-	struct vcpu *vcpu = ksm_current_cpu();
-	if (vcpu->subverted)
-		return 0;
+	ksm.origin_cr3 = __readcr3();
 
 	STATIC_CALL_DPC(__call_init, &ksm);
-	err = STATIC_DPC_RET();
-	if (err == 0)
-		vcpu->subverted = true;
-
-	return err;
+	return STATIC_DPC_RET();
 }
 
 /*
@@ -211,9 +202,6 @@ int ksm_init(void)
 	 * loader)
 	 */
 	__stosq((u64 *)&ksm, 0, sizeof(ksm) >> 3);
-
-	/* Caller cr3 (could be user)  */
-	ksm.origin_cr3 = __readcr3();
 
 #ifdef EPAGE_HOOK
 	htable_init(&ksm.ht, rehash, NULL);

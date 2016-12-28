@@ -575,6 +575,15 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 	vcpu->pin_ctl = vm_pinctl;
 
+	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
+		CPU_BASED_USE_IO_BITMAPS
+#if 0
+		| CPU_BASED_TPR_SHADOW
+#endif
+		;
+	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
+	vcpu->cpu_ctl = vm_cpuctl;
+
 	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID
 		| SECONDARY_EXEC_XSAVES //| SECONDARY_EXEC_UNRESTRICTED_GUEST
 #ifndef EMULATE_VMFUNC
@@ -601,15 +610,6 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		vm_2ndctl |= SECONDARY_EXEC_DESC_TABLE_EXITING;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
 	vcpu->secondary_ctl = vm_2ndctl;
-
-	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
-		CPU_BASED_USE_IO_BITMAPS;
-#if 0
-	if (vm_2ndctl & apicv)
-		vm_cpuctl |= CPU_BASED_TPR_SHADOW;
-#endif
-	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
-	vcpu->cpu_ctl = vm_cpuctl;
 
 	/* Processor control fields  */
 	err |= vmcs_write32(VM_ENTRY_CONTROLS, vm_entry);
@@ -659,7 +659,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 
 			if (vm_2ndctl & SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES)
 				err |= vmcs_write64(APIC_ACCESS_ADDR,
-						    __readmsr(MSR_IA32_APICBASE_BASE) & MSR_IA32_APICBASE_BASE);
+						    __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE);
 		}
 	}
 #endif
