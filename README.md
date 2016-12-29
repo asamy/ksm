@@ -271,6 +271,7 @@ controls, the processor offers 4 fields that control access to those:
    know when they tried to set it and emulate VMX if needed.)
 
 The following control fields are also useful:
+
 1. `EXCEPTION_BITMAP` - Each bit index in this bitmap causes the processor to
    cause a VM exit each time the respective exception is thrown (say page
 								 faults, if bit
@@ -303,7 +304,7 @@ is used to control guest address translation but on the physical level.
 
 Without EPT, the processor normally goes through translating a virtual address
 its backing physical address, with EPT, the processor adds another level of
-translation, which is the physical address (now called "guest physical address"
+translation, which translates the physical address (now called "guest physical address"
 					    or GPA) to "host physical address"
 (HPA).
 
@@ -336,10 +337,10 @@ Here's an example of what happens during both phases:
 	/* Second level: Translate GPA to HPA */
 	EPTP = read_eptp_from_current_vmcs;
 	PML4 = VA_OF(EPTP & PAGE_PA_MASK);
-	PDPT = VA_OF(PML4[pdpt_index(GVA)] & PAGE_PA_MASK);
-	PDT = VA_OF(PDPT[pdt_index(GVA)] & PAGE_PA_MASK);
-	PT = VA_OF(PDT[pt_index(GVA)] & PAGE_PA_MASK);
-	PAGE = PT[page_index(GVA)];
+	PDPT = VA_OF(PML4[pdpt_index(GPA)] & PAGE_PA_MASK);
+	PDT = VA_OF(PDPT[pdt_index(GPA)] & PAGE_PA_MASK);
+	PT = VA_OF(PDT[pt_index(GPA)] & PAGE_PA_MASK);
+	PAGE = PT[page_index(GPA)];
 	HPA = PAGE & PA_PA_MASK;
 ```
 
