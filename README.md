@@ -6,10 +6,18 @@ KSM aims to be fully feature fledged and as general purpose as possible,
 although there are absolutely no barriers, even extending it to be a
 multi-purpose thing is perfeclty fine, e.g. a sandbox, etc.
 
-Currently, KSM supports Windows and Linux kernels natively, and aims to support
+Currently, KSM runs on Windows and Linux kernels natively, and aims to support
 macOS by 2017, if you want to port KSM see porting guidelines down below.  Note
 that the `master` branch may be unstable (bugs, unfinished features, etc.), so
 you might want to stick with the releases for a captured stable state.
+
+Unlike other hypervisors (e.g. KVM, XEN, etc.), KSM's purpose is not to run
+other Operating Systems, instead, KSM can be used as an extra layer of
+protection to the existing running OS.  This type of virtualization is usually
+seen in Anti-viruses, or sandboxers or even Viruses.  KSM also supports
+nesting, that means it can emulate other hardware-assisted virtualization tools
+(VT-x) such as KVM or itself, or so, it's however an experimental feature and
+is not recommended.
 
 ## Features
 
@@ -59,7 +67,6 @@ Since some code is split oddly, and needs to be organized to fit logically
 together, these files should be renamed/merged:
 
 - exit.c and vcpu.c should be merged to make vmx.c
-- functions from ksm.c may need to be merged into vmx.c as #1
 
 ## TODO / In development
 
@@ -76,6 +83,166 @@ together, these files should be renamed/merged:
 
 See also Github issues.  Some of these features are unfortunately not
 (fully) implemented due to lack of hardware (support) or similar.
+
+## Some technical information
+
+### Some notes
+
+To simplify things, the following terms are used as an abbreviation:
+
+1. Host - refers to the VMM (Virtual Machine Monitor) aka VMX root mode
+2. Guest or Kernel - refers to the running guest kernel (i.e. Windows or Linux)
+
+Some things need to be used with extra care especially inside Host as
+this is a sensitive mode and things may go unexpected if used improperly.
+
+- The timestamp counter does not _pause_ during entry to Host, so
+things like APIC timer can fire on next guest entry (`vmresume`).
+- Interrupts are disabled.  On entry to `__vmx_entrypoint`, the CPU had already
+disabled interrupts.  So, addresses referenced inside root mode should be
+physically contiguous, otherwise if you enable interrupts by yourself, you
+might cause havoc if a preemption happens.
+- Calling a Kernel function inside the Host can be dangerous, especially
+because the Host stack is different, so any kind of stack probing
+functions will most likely fail.
+- Single stepping `vmresume` or `vmlaunch` is invaluable, the debugger will
+never give you back control, for obvious reasons.  If you want that behavior,
+      then rather set a breakpoint on whatever `vcpu->ip` is set to.
+- Virtualization Exceptions (#VE) will not occur if:
+	1. The processor is delivering another exception
+	2. The `except_mask` inside `ve_except_info` is set to non-zero value.
+- If the processor does not support Virtualization Exceptions, the VM exit path
+will be taken instead (Note that the VM exit path is _always_ handled).
+- If the processor does not support VMFUNC, it's emulated via VMCALL instead.
+
+Some notes on Guest:
+
+- VMFUNC does **not** have CPL checks, that means a user-space program can
+execute it.
+
+### Debugging and/or testing
+
+Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it,
+you can now test under VMs with emulation for VMFUNC.
+
+#### Live debugging under Windows
+
+You may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in secondary controls,
+otherwise it makes WinDBG go **maniac**.  I have not investigated the root cause, but it keeps
+loading GDT and LDT all the time, which is _insane_.
+
+### Initialization
+
+The main initialization code is in `ksm.c` which manages all-cpus
+{,de}initialization, however, `vcpu.c` is to handle per-cpu initialization and
+is called from `ksm.c` on a high-level understanding, then `exit.c` handles
+violations from the guest kernel.
+
+This is the flow:
+
+```
+	driver entry -> ksm_init()
+	(later on or in another context):
+		ksm_subvert() ->
+			for each cpu call __ksm_init_cpu:
+		__ksm_init_cpu:
+			vcpu_create(vcpu) -> __vmx_vminit(vcpu) ->
+				save guest state
+				set guest start point
+				save guest stack ptr
+	
+				then call:
+				vcpu_run(vcpu, stack, start_point)
+					vmcs_write()
+					vmcs_write()
+					....
+					if not launch:
+						print error
+					else
+						/* CPU already jumped to start
+						   point  */
+			guest_start_point:
+				restore guest state
+				restore stack ptr
+				return to __ksm_init_cpu
+
+		__ksm_init_cpu (contd.):
+			if __vmx_vminit failed:
+				throw error and return
+			else
+				return 0 /* succeeded  */
+		ksm_subvert() (contd.):
+			return whatever_ksm_init_cpu_returned
+```
+
+During a guest violation (e.g. CPUID execution, etc.), this is what happens:
+
+```
+	CPU:
+		save guest state
+		load host state
+		jump to host RIP (__vmx_entrypoint)
+
+	KSM:
+		__vmx_entrypoint:
+			push guest registers
+			if not vcpu_handle_exit(regs) (exit.c) then
+				do_vmx_off
+			else
+				pop guest registers
+				vmresume
+				if fail:
+					shutdown (sort of)
+				endif
+			endif
+
+		do_vmx_off:
+			vmxoff
+			jump to guest defined RIP
+			if fail:
+				shutdown (sort of)
+			endif
+```
+
+### IDT shadowing
+
+- By enabling the descriptor table exiting bit in processor secondary control, we can easily establish this
+- On initial startup, we allocate a completely new IDT base and copy the current one in use to it (also save the old
+												   one)
+- When a VM-exit occurs with an `EXIT_REASON_GDT_IDT_ACCESS`, we simply just give them the cached one (on sidt) or (on
+														  lidt),
+	we copy the new one's contents, discarding the hooked entries we know about, thus not letting them know about
+	our stuff.
+
+### #VE setup and handling
+
+We use 3 EPT pointers, one for executable pages, one for readwrite pages, and last one for normal usage.  (see next
+													   section)
+
+- `vcpu.c`: in `setup_vmcs()` where we initially setup the VMCS fields, we then set the relevant fields (`VE_INFO_ADDRESS`,
+													`EPTP_LIST_ADDRESS`,
+													`VM_FUNCTION_CTL`) and enable
+relevant bits VE and VMFUNC in secondary processor control.
+
+- `vmx.asm` (or `vmx.S` for GCC): which contains the `#VE` handler (`__ept_violation`) then does the usual interrupt handling and then calls
+	`__ept_handle_violation` (`vcpu.c`) where it actually does what it needs to do.
+- `vcpu.c`: in `__ept_handle_violation` (`#VE` handler *not* `VM-exit`), usually the processor will do the `#VE` handler instead of
+	the VM-exit route, but sometimes it won't do so if it's delivering another exception.  This is very rare.
+- `vcpu.c`: while handling the violation via `#VE`, we call `vmfunc` only when we detect that the faulting address is one of
+	our interest (e.g. a hooked page), then we determine which `EPTP` we want and execute `VMFUNC` with that EPTP index.
+
+### Hooking executable pages
+
+#### Execute-only EPT for executable page hooking, RW for read or write access
+
+	(... to avoid a lot of violations, we just mark the page as execute only and replace the _final_ page frame
+	 number so that it just goes straight ahead to our trampoline)
+Since we use 3 EPT pointers, and since the page needs to be read and written to sometimes (e.g. patchguard
+											   verification),
+      we also need to catch RW access to the page and then switch the EPTP appropriately according to
+      the access.  In that case we switch over to `EPTP_RWHOOK` to allow RW access only!
+	The third pointer is used for when we need to call the original function.  The third pointer
+	has execute only access rights to the page with the sane page frame number.
 
 ## KSM needs your help to survive!
 
@@ -226,6 +393,24 @@ Please pull from https://github.com/USER_NAME/ksm REMOTE_BRANCH
 It's however, much better if you use `git request-pull` to automatically
 summarize changes.
 
+## Enabling certain features / tests
+
+You can define one or more of the following:
+
+- `EPAGE_HOOK` - Enables executable page shadow hook
+- `ENABLE_PML` - Enables Page Modification Log if supported.
+- `EMULATE_VMFUNC` - Forces emulation of VMFUNC even if CPU supports it.
+- `EPT_SUPPRESS_VE` - Force suppress VE bit in EPT.
+- `ENABLE_RESUBV` - Enable S1-3-S4 power state monitoring for re-virtualization
+- `NESTED_VMX` - Enable experimental VT-x nesting
+- `ENABLE_FILEPRINT` - Available on Windows only.  Enables loggin to
+disk
+- `ENABLE_DBGPRINT` - Available on Windows only.  Enables `DbgPrint`
+log.
+- `VCPU_TRACER_LOG` - Outputs a useless message on some VM-Exit handlers, this
+can be replaced with something more useful such as performance measurements,
+    etc.  See `ksm.h` for more information.
+
 ## Building
 
 ### Building for Linux
@@ -307,111 +492,6 @@ Output can be seen via DebugView or WinDBG if live debugging (You might want to
 							      execute `ed
 							      Kd_DEFAULT_Mask
 							      8`).
-
-## Some technical information
-
-### Some notes
-
-To simplify things, the following terms are used as an abbreviation:
-
-1. Host - refers to the VMM (Virtual Machine Monitor) aka VMX root mode
-2. Guest or Kernel - refers to the running guest kernel (i.e. Windows or Linux)
-
-Some things need to be used with extra care especially inside Host as
-this is a sensitive mode and things may go unexpected if used improperly.
-
-- The timestamp counter does not _pause_ during entry to Host, so
-things like APIC timer can fire on next guest entry (`vmresume`).
-- Interrupts are disabled.  On entry to `__vmx_entrypoint`, the CPU had already
-disabled interrupts.  So, addresses referenced inside root mode should be
-physically contiguous, otherwise if you enable interrupts by yourself, you
-might cause havoc if a preemption happens.
-- Calling a Kernel function inside the Host can be dangerous, especially
-because the Host stack is different, so any kind of stack probing
-functions will most likely fail.
-- Single stepping `vmresume` or `vmlaunch` is invaluable, the debugger will
-never give you back control, for obvious reasons.  If you want that behavior,
-      then rather set a breakpoint on whatever `vcpu->ip` is set to.
-- Virtualization Exceptions (#VE) will not occur if:
-	1. The processor is delivering another exception
-	2. The `except_mask` inside `ve_except_info` is set to non-zero value.
-- If the processor does not support Virtualization Exceptions, the VM exit path
-will be taken instead (Note that the VM exit path is _always_ handled).
-- If the processor does not support VMFUNC, it's emulated via VMCALL instead.
-
-Some notes on Guest:
-
-- VMFUNC does **not** have CPL checks, that means a user-space program can
-execute it.
-
-### Debugging and/or testing
-
-Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it,
-you can now test under VMs with emulation for VMFUNC.
-
-#### Live debugging under Windows
-
-You may want to disable `SECONDARY_EXEC_DESC_TABLE_EXITING` in vcpu.c in secondary controls,
-otherwise it makes WinDBG go **maniac**.  I have not investigated the root cause, but it keeps
-loading GDT and LDT all the time, which is _insane_.
-
-### IDT shadowing
-
-- By enabling the descriptor table exiting bit in processor secondary control, we can easily establish this
-- On initial startup, we allocate a completely new IDT base and copy the current one in use to it (also save the old
-												   one)
-- When a VM-exit occurs with an `EXIT_REASON_GDT_IDT_ACCESS`, we simply just give them the cached one (on sidt) or (on
-														  lidt),
-	we copy the new one's contents, discarding the hooked entries we know about, thus not letting them know about
-	our stuff.
-
-### #VE setup and handling
-
-We use 3 EPT pointers, one for executable pages, one for readwrite pages, and last one for normal usage.  (see next
-													   section)
-
-- `vcpu.c`: in `setup_vmcs()` where we initially setup the VMCS fields, we then set the relevant fields (`VE_INFO_ADDRESS`,
-													`EPTP_LIST_ADDRESS`,
-													`VM_FUNCTION_CTL`) and enable
-relevant bits VE and VMFUNC in secondary processor control.
-
-- `vmx.asm` (or `vmx.S` for GCC): which contains the `#VE` handler (`__ept_violation`) then does the usual interrupt handling and then calls
-	`__ept_handle_violation` (`vcpu.c`) where it actually does what it needs to do.
-- `vcpu.c`: in `__ept_handle_violation` (`#VE` handler *not* `VM-exit`), usually the processor will do the `#VE` handler instead of
-	the VM-exit route, but sometimes it won't do so if it's delivering another exception.  This is very rare.
-- `vcpu.c`: while handling the violation via `#VE`, we call `vmfunc` only when we detect that the faulting address is one of
-	our interest (e.g. a hooked page), then we determine which `EPTP` we want and execute `VMFUNC` with that EPTP index.
-
-### Hooking executable pages
-
-#### Execute-only EPT for executable page hooking, RW for read or write access
-
-	(... to avoid a lot of violations, we just mark the page as execute only and replace the _final_ page frame
-	 number so that it just goes straight ahead to our trampoline)
-Since we use 3 EPT pointers, and since the page needs to be read and written to sometimes (e.g. patchguard
-											   verification),
-      we also need to catch RW access to the page and then switch the EPTP appropriately according to
-      the access.  In that case we switch over to `EPTP_RWHOOK` to allow RW access only!
-	The third pointer is used for when we need to call the original function.  The third pointer
-	has execute only access rights to the page with the sane page frame number.
-
-## Enabling certain features / tests
-
-You can define one or more of the following:
-
-- `EPAGE_HOOK` - Enables executable page shadow hook
-- `ENABLE_PML` - Enables Page Modification Log if supported.
-- `EMULATE_VMFUNC` - Forces emulation of VMFUNC even if CPU supports it.
-- `EPT_SUPPRESS_VE` - Force suppress VE bit in EPT.
-- `ENABLE_RESUBV` - Enable S1-3-S4 power state monitoring for re-virtualization
-- `NESTED_VMX` - Enable experimental VT-x nesting
-- `ENABLE_FILEPRINT` - Available on Windows only.  Enables loggin to
-disk
-- `ENABLE_DBGPRINT` - Available on Windows only.  Enables `DbgPrint`
-log.
-- `VCPU_TRACER_LOG` - Outputs a useless message on some VM-Exit handlers, this
-can be replaced with something more useful such as performance measurements,
-    etc.  See `ksm.h` for more information.
 
 ## Reporting bugs (or similar)
 
