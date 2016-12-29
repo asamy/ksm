@@ -582,6 +582,10 @@ Then `make`.
 1. `C=1` - Prepare for cross-compiling.
 2. `V=1` - Verbose output (the default, pass 0 for quiet.)
 
+You may need to adjust the windows version you're compiling for, in that case
+adjust `_WIN32_WINNT` inside the Makefile manually or pass it through command:
+`make -f Makefile.windows C=1 -D_WIN32_wINNT=0x0602`.
+
 ##### Cross under Linux
 
 Install the following packages:
@@ -607,6 +611,9 @@ compiler, etc lie.
 
 The solution under `ksm/` directory is a VS 2015 solution, you can use it to build, you'll
 also need the Windows Driver Development Kit.
+
+**NOTE**:  You need to adjust the Windows version you are targetting via the
+project properities, go to Driver Settings -> General -> Target OS Version.
 
 To build from VS command line, simply cd to where `ksm` is and:
 
