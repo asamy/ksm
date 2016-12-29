@@ -64,6 +64,7 @@ static struct notifier_block cpu_notify = {
 	.notifier_call = cpu_callback
 };
 
+#ifdef ENABLE_RESUBV
 /*
  * On S1-3 S4 states the CPU automatically disables virtualization, so shut it
  * down gracefully.  On S0 state, restore virtualization.
@@ -83,6 +84,7 @@ static struct syscore_ops syscore_ops = {
 	.resume = ksm_resume,
 	.suspend = ksm_suspend,
 };
+#endif
 
 int __init ksm_start(void)
 {
@@ -110,7 +112,9 @@ int __init ksm_start(void)
 	ksm.kernel_cr3 = __pa(mm->pgd);
 
 	register_hotcpu_notifier(&cpu_notify);
+#ifdef ENABLE_RESUBV
 	register_syscore_ops(&syscore_ops);
+#endif
 	return ret;
 
 out_wq:
@@ -126,7 +130,9 @@ void __exit ksm_cleanup(void)
 
 	destroy_workqueue(wq);
 	unregister_hotcpu_notifier(&cpu_notify);
+#ifdef ENABLE_RESUBV
 	unregister_syscore_ops(&syscore_ops);
+#endif
 
 	active = ksm.active_vcpus;
 	ret = ksm_exit();
