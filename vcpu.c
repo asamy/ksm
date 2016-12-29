@@ -342,9 +342,8 @@ static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa,
 			return EPT_MAX_EPTP_LIST;
 #endif
 
-		for_each_eptp(i)
-			if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, gpa, gpa))
-				return EPT_MAX_EPTP_LIST;
+		if (!ept_alloc_page(EPT4(ept, eptp), EPT_ACCESS_ALL, gpa, gpa))
+			return EPT_MAX_EPTP_LIST;
 	} else {
 #ifdef EPAGE_HOOK
 		struct page_hook_info *phi = ksm_find_page((void *)gva);
@@ -475,14 +474,14 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	/*
 	 * This function is called from __vmx_vminit, which is in assembly.
 	 *
-	 * Note: that we return to __ksm_init_cpu anyway regardless of failure or
+	 * Note: that we end up in __ksm_init_cpu anyway regardless of failure or
 	 * success, but the difference is, if we fail, __vmx_vmlaunch() will give
-	 * us back control instead of directly returning to __ksm_init_cpu.
+	 * us back control instead of directly ending up in __ksm_init_cpu.
 	 *
-	 * The guest start is do_resume in assembly, which ends up in __ksm_init_cpu.
+	 * The guest start is do_resume in assembly, which returns to __ksm_init_cpu.
 	 *	The following are restored on entry:
 	 *		- GUEST_RFLAGS
-	 *		- Register values prior to this call
+	 *		- Guest registers
 	 */
 	struct vmcs *vmcs, *vmxon;
 	struct gdtr gdtr;
@@ -540,14 +539,14 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		goto off;
 
 #if 0
-	u32 apicv = 0;
 	/* This needs serious fixing  */
+	u32 apicv = 0;
 	if (lapic_in_kernel()) {
-		apicv |= SECONDARY_EXEC_APIC_REGISTER_VIRT | SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES;
-		if (cpu_has_x2apic() && x2apic_enabled()) {
+		apicv |= SECONDARY_EXEC_APIC_REGISTER_VIRT;
+		if (x2apic_enabled())
 			apicv |= SECONDARY_EXEC_VIRTUALIZE_X2APIC_MODE;
-			apicv &= ~SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES;
-		}
+		else
+			apicv |= SECONDARY_EXEC_VIRTUALIZE_APIC_ACCESSES;
 	}
 #endif
 
@@ -575,8 +574,9 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 	vcpu->pin_ctl = vm_pinctl;
 
-	u32 vm_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
-		CPU_BASED_USE_IO_BITMAPS
+	const u32 req_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
+		CPU_BASED_USE_IO_BITMAPS;
+	u32 vm_cpuctl = req_cpuctl
 #if 0
 		| CPU_BASED_TPR_SHADOW
 #endif
@@ -584,7 +584,14 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
 	vcpu->cpu_ctl = vm_cpuctl;
 
-	u32 vm_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID
+	if ((vm_cpuctl & req_cpuctl) != req_cpuctl) {
+		VCPU_DEBUG("Primary controls required are not supported: 0x%X 0x%X\n",
+			   req_cpuctl, vm_cpuctl & req_cpuctl);
+		return;
+	}
+
+	const u32 req_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID;
+	u32 vm_2ndctl = req_2ndctl
 		| SECONDARY_EXEC_XSAVES //| SECONDARY_EXEC_UNRESTRICTED_GUEST
 #ifndef EMULATE_VMFUNC
 		| SECONDARY_EXEC_ENABLE_VMFUNC
@@ -610,6 +617,11 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		vm_2ndctl |= SECONDARY_EXEC_DESC_TABLE_EXITING;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
 	vcpu->secondary_ctl = vm_2ndctl;
+	if ((vm_2ndctl & req_2ndctl) != req_2ndctl) {
+		VCPU_DEBUG("Secondary controls required are not supported: 0x%X 0x%X\n",
+			   req_2ndctl, vm_2ndctl & req_2ndctl);
+		return;
+	}
 
 	/* Processor control fields  */
 	err |= vmcs_write32(VM_ENTRY_CONTROLS, vm_entry);
@@ -891,9 +903,7 @@ void vcpu_free(struct vcpu *vcpu)
 #endif
 	mm_free_page(vcpu->vapic_page);
 	mm_free_pool(vcpu->stack, KERNEL_STACK_SIZE);
-
 	free_ept(&vcpu->ept);
-	__stosq((u64 *)vcpu, 0, sizeof(*vcpu) >> 3);
 }
 
 void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
@@ -913,16 +923,3 @@ void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 	__invept_all();
 }
 
-bool ept_check_capabilitiy(void)
-{
-	u64 vpid = __readmsr(MSR_IA32_VMX_EPT_VPID_CAP);
-	u64 req = KSM_EPT_REQUIRED_EPT
-#ifdef ENABLE_PML
-		| VMX_EPT_AD_BIT
-#endif
-#ifdef EPAGE_HOOK
-		| VMX_EPT_EXECUTE_ONLY_BIT
-#endif
-		;
-	return (vpid & req) == req;
-}
