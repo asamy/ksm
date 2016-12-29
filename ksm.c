@@ -120,7 +120,7 @@ static inline void free_io_bitmaps(struct ksm *k)
 int __ksm_init_cpu(struct ksm *k)
 {
 	struct vcpu *vcpu;
-	int ret = -ENOMEM;
+	int ret = ERR_NOMEM;
 	u64 feat_ctl;
 	u64 required_feat_bits = FEATURE_CONTROL_LOCKED |
 		FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
@@ -155,9 +155,9 @@ int __ksm_init_cpu(struct ksm *k)
 	 * works...
 	 */
 #ifdef __linux__
-	ksm.origin_cr3 = __readcr3();
+	k->origin_cr3 = __readcr3();
 #else
-	ksm.kernel_cr3 = __readcr3();
+	k->kernel_cr3 = __readcr3();
 #endif
 
 	ret = __vmx_vminit(vcpu);
@@ -243,7 +243,7 @@ int ksm_init(void)
  */
 int __ksm_exit_cpu(struct ksm *k)
 {
-	u8 ret = ERR_NOTH;
+	int ret = ERR_NOTH;
 	struct vcpu *vcpu = ksm_current_cpu();
 
 	if (!vcpu->subverted)

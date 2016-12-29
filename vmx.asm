@@ -180,14 +180,14 @@ __vmx_vminit PROC
 	POPAQ
 	popfq
 
-	mov	al, 1
+	mov	eax, -1
 	ret
 
 do_resume:
 	POPAQ
 	popfq
 
-	xor	al, al
+	xor	eax, eax
 	ret
 __vmx_vminit ENDP
 

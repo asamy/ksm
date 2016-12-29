@@ -188,6 +188,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (!NT_SUCCESS(status = ksm_init()))
 		goto err1;
 
+	if (!NT_SUCCESS(status = ksm_subvert()))
+		goto exit;
+
 #ifdef ENABLE_RESUBV
 	if (!NT_SUCCESS(status = register_power_callback(&g_dev_ext)))
 		goto exit;
@@ -210,10 +213,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	driverObject->DriverUnload = DriverUnload;
 	goto out;
 
-#ifdef ENABLE_RESUBV
 exit:
 	ksm_exit();
-#endif
 err1:
 	KeDeregisterProcessorChangeCallback(hotplug_cpu);
 err:
