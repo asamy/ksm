@@ -135,6 +135,7 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 #endif
 }
 
+#if 0
 #ifdef EPAGE_HOOK
 static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
 			    _In_ SIZE_T              NumberOfBytes,
@@ -147,6 +148,7 @@ static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
 	vcpu_vmfunc(EPTP_EXHOOK, 0);
 	return ret;
 }
+#endif
 #endif
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
@@ -196,6 +198,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		goto exit;
 #endif
 
+#if 0
 #ifdef EPAGE_HOOK
 	/* Just a simple example...  */
 	if (ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace) == 0) {
@@ -207,6 +210,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 
 		ksm_unhook_page(MmMapIoSpace);
 	}
+#endif
 #endif
 
 	/* Succeeded  */
