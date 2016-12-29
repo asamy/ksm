@@ -529,7 +529,6 @@ extern struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn);
 extern bool vcpu_create(struct vcpu *vcpu);
 extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
-extern bool ept_check_capabilitiy(void);
 extern u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa);
 extern u64 *ept_pte(u64 *pml4, u64 gpa);
 extern bool ept_handle_violation(struct vcpu *vcpu);

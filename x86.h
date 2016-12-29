@@ -1,12 +1,11 @@
 /*
- * Mostly MSR indices, APIC stuff, etc.
+ * Mostly MSR indices, APIC definitions, etc.
  * Hacked off the Linux Kernel.
  *
  * From:
  *	arch/x86/include/uapi/asm
  *
- * Along with modifications for backward compatibility
- * and other stuff (vmfunc, etc.)
+ * Also helpers for segmentation and inline assembly.
  */
 #ifndef __X86_H
 #define __X86_H

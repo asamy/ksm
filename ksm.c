@@ -119,50 +119,59 @@ static inline void free_io_bitmaps(struct ksm *k)
  */
 int __ksm_init_cpu(struct ksm *k)
 {
-	/* Required MSR_IA32_FEATURE_CONTROL bits:  */
+	struct vcpu *vcpu;
+	int ret = -ENOMEM;
+	u64 feat_ctl;
 	u64 required_feat_bits = FEATURE_CONTROL_LOCKED |
 		FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
+
 #ifdef __linux__
 	if (tboot_enabled())
 		required_feat_bits |= FEATURE_CONTROL_VMXON_ENABLED_INSIDE_SMX;
 #endif
 
-#ifndef __GNUC__
-	__try {
-#endif
-		u64 feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
-		if ((feat_ctl & required_feat_bits) != required_feat_bits) {
-			__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl | required_feat_bits);
-			feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
-			if ((feat_ctl & required_feat_bits) != required_feat_bits)
-				return ERR_DENIED;
-		}
-
-		struct vcpu *vcpu = ksm_current_cpu();
-		if (!vcpu_create(vcpu)) {
-			VCPU_DEBUG_RAW("failed to create vcpu, oom?\n");
-			return ERR_NOMEM;
-		}
-
-		k->kernel_cr3 = __readcr3();
-		u8 ret = __vmx_vminit(vcpu);
-		VCPU_DEBUG("Started: %d\n", !ret);
-
-		if (ret == 0)
-			k->active_vcpus++, vcpu->subverted = true;
-		else	/* vcpu_run() failed, cleanup:  */
-			vcpu_free(vcpu);
-		return ret;
-#ifndef __GNUC__
-	} __except (EXCEPTION_EXECUTE_HANDLER)
-	{
-		__writecr4(__readcr4() & ~X86_CR4_VMXE);
-		return ERR_EXCEPT;
+	feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
+	if ((feat_ctl & required_feat_bits) != required_feat_bits) {
+		__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl | required_feat_bits);
+		feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
+		if ((feat_ctl & required_feat_bits) != required_feat_bits)
+			return ERR_DENIED;
 	}
+
+	vcpu = ksm_current_cpu();
+	if (!vcpu_create(vcpu)) {
+		VCPU_DEBUG_RAW("failed to create vcpu, oom?\n");
+		return ERR_NOMEM;
+	}
+
+	/*
+	 * On windows, driver entry is not reliable to get kernel cr3, but the
+	 * DPC callback (this one) is guaranteed to run inside kernel context.
+	 *
+	 * On Linux, the situation is different, this will run in whatever
+	 * process-context this CPU had...
+	 *
+	 * This is really trivial, I am not even sure if this is right, but it
+	 * works...
+	 */
+#ifdef __linux__
+	ksm.origin_cr3 = __readcr3();
+#else
+	ksm.kernel_cr3 = __readcr3();
 #endif
 
-	__writecr4(__readcr4() & ~X86_CR4_VMXE);
-	return ERR_UNSUP;
+	ret = __vmx_vminit(vcpu);
+	VCPU_DEBUG("Started: %d\n", !ret);
+
+	if (ret == 0) {
+		k->active_vcpus++;
+		vcpu->subverted = true;
+	} else {
+		vcpu_free(vcpu);
+		__writecr4(__readcr4() & ~X86_CR4_VMXE);
+	}
+
+	return ret;
 }
 
 /*
@@ -172,7 +181,10 @@ int __ksm_init_cpu(struct ksm *k)
 STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
 int ksm_subvert(void)
 {
+#ifndef __linux__
+	/* See comments in __ksm_init_cpu...  */
 	ksm.origin_cr3 = __readcr3();
+#endif
 
 	STATIC_CALL_DPC(__call_init, &ksm);
 	return STATIC_DPC_RET();
@@ -184,24 +196,27 @@ int ksm_subvert(void)
  */
 int ksm_init(void)
 {
-	int err;
 	int info[4];
-	__cpuidex(info, 1, 0);
+	u64 vpid;
+	u64 req = KSM_EPT_REQUIRED_EPT
+#ifdef ENABLE_PML
+		| VMX_EPT_AD_BIT
+#endif
+#ifdef EPAGE_HOOK
+		| VMX_EPT_EXECUTE_ONLY_BIT
+#endif
+		;
 
+	__cpuidex(info, 1, 0);
 	if (!(info[2] & (1 << (X86_FEATURE_VMX & 31))))
 		return ERR_CPUID;
 
 	if (__readcr4() & X86_CR4_VMXE)
-		return ERR_NESTED;
+		return ERR_BUSY;
 
-	if (!ept_check_capabilitiy())
+	vpid = __readmsr(MSR_IA32_VMX_EPT_VPID_CAP);
+	if ((vpid & req) != req)
 		return ERR_FEAT;
-
-	/*
-	 * Zero out everything (this is allocated by the kernel device driver
-	 * loader)
-	 */
-	__stosq((u64 *)&ksm, 0, sizeof(ksm) >> 3);
 
 #ifdef EPAGE_HOOK
 	htable_init(&ksm.ht, rehash, NULL);
@@ -211,17 +226,15 @@ int ksm_init(void)
 		return ERR_NOMEM;
 
 	if (!init_io_bitmaps(&ksm)) {
+		/*
+		 * Hashtable is on-demand allocation, no need to clear it
+		 * here...
+		 */
 		free_msr_bitmap(&ksm);
 		return ERR_NOMEM;
 	}
 
-	err = ksm_subvert();
-	if (err < 0) {
-		free_msr_bitmap(&ksm);
-		free_io_bitmaps(&ksm);
-	}
-
-	return err;
+	return 0;
 }
 
 /*
@@ -230,33 +243,21 @@ int ksm_init(void)
  */
 int __ksm_exit_cpu(struct ksm *k)
 {
-	u8 err;
+	u8 ret = ERR_NOTH;
 	struct vcpu *vcpu = ksm_current_cpu();
 
 	if (!vcpu->subverted)
-		return ERR_NOTH;
+		return ret;
 
-#ifndef __GNUC__
-	__try {
-#endif
-		err = __vmx_vmcall(HYPERCALL_STOP, NULL);
-		VCPU_DEBUG("Stopped: %d\n", !err);
-#ifndef __GNUC__
-	} __except (EXCEPTION_EXECUTE_HANDLER)
-	{
-		VCPU_DEBUG("this processor is not virtualized: 0x%08X\n", ERR_EXCEPT);
-		return ERR_EXCEPT;
-	}
-#endif
-
-	if (err == 0) {
+	ret = __vmx_vmcall(HYPERCALL_STOP, NULL);
+	if (ret == 0) {
 		k->active_vcpus--;
 		vcpu->subverted = false;
 		vcpu_free(vcpu);
 		__writecr4(__readcr4() & ~X86_CR4_VMXE);
 	}
 
-	return err;
+	return ret;
 }
 
 /*

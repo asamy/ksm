@@ -22,18 +22,18 @@
 #include <linux/workqueue.h>
 #include <linux/sched.h>
 #include <linux/cpu.h>
+#include <linux/syscore_ops.h>
 
 #include "ksm.h"
 
-/*
- * FIXME: Get rid of this work queue stuff.
- * Currently they are just a workaround since init_mm / init_task /
- * init_level4_pgd aren't exported, so we need some way to hack some resident
- * CR3 which is kworker in this case...  Rather than using insmod/modprobe's
- * CR3 which will die eventually.
- */
-static void ksm_worker(struct work_struct *);
+static struct mm_struct *mm;
 static struct workqueue_struct *wq;
+
+static void ksm_worker(struct work_struct *w)
+{
+	int r = ksm_subvert();
+	VCPU_DEBUG("ret: %d (%d active)\n", r, ksm.active_vcpus);
+}
 static DECLARE_DELAYED_WORK(work, ksm_worker);
 
 static inline void do_cpu(void *v)
@@ -64,37 +64,74 @@ static struct notifier_block cpu_notify = {
 	.notifier_call = cpu_callback
 };
 
-static void ksm_worker(struct work_struct *w)
+/*
+ * On S1-3 S4 states the CPU automatically disables virtualization, so shut it
+ * down gracefully.  On S0 state, restore virtualization.
+ */
+static void ksm_resume(void)
 {
-	int ret;
-	VCPU_DEBUG("in ksm_worker(): %s\n", current->comm);
-
-	ret = ksm_init();
-	VCPU_DEBUG("init: %d\n", ret);
+	VCPU_DEBUG("in resume: %d\n", ksm_subvert());
 }
+
+static int ksm_suspend(void)
+{
+	VCPU_DEBUG("in suspend: %d\n", ksm_unsubvert());
+	return 0;
+}
+
+static struct syscore_ops syscore_ops = {
+	.resume = ksm_resume,
+	.suspend = ksm_suspend,
+};
 
 int __init ksm_start(void)
 {
+	int ret = -ENOMEM;
+
+	/*
+	 * Zero out everything (this is allocated by the kernel device driver
+	 * loader)
+	 */
+	__stosq((u64 *)&ksm, 0, sizeof(ksm) >> 3);
+
+	ret = ksm_init();
+	if (ret < 0)
+		return ret;
+
 	wq = create_singlethread_workqueue("worker_ksm");
 	if (!wq)
-		return -ENOMEM;
+		goto out_exit;
 
-	if (!queue_delayed_work(wq, &work, 100)) {
-		destroy_workqueue(wq);
-		return -EINVAL;
-	}
+	if (!queue_delayed_work(wq, &work, 100))
+		goto out_wq;
 
-	VCPU_DEBUG_RAW("Done, wait for wq to fire\n");
+	mm = current->active_mm;
+	atomic_inc(&mm->mm_count);
+	ksm.kernel_cr3 = __pa(mm->pgd);
+
 	register_hotcpu_notifier(&cpu_notify);
-	return 0;
+	register_syscore_ops(&syscore_ops);
+	return ret;
+
+out_wq:
+	destroy_workqueue(wq);
+out_exit:
+	ksm_exit();
+	return ret;
 }
 
 void __exit ksm_cleanup(void)
 {
-	unregister_hotcpu_notifier(&cpu_notify);
+	int ret, active;
+
 	destroy_workqueue(wq);
-	VCPU_DEBUG("exit: %d\n", ksm_exit());
-	VCPU_DEBUG("Bye\n");
+	unregister_hotcpu_notifier(&cpu_notify);
+	unregister_syscore_ops(&syscore_ops);
+
+	active = ksm.active_vcpus;
+	ret = ksm_exit();
+	VCPU_DEBUG("%d active: exit: %d\n", active, ret);
+	mmdrop(mm);
 }
 
 module_init(ksm_start);

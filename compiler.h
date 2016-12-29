@@ -65,6 +65,7 @@
 #define ENABLE_PRINT
 #endif
 
+#ifndef __ASSEMBLY__
 /* Long names  */
 typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
@@ -87,13 +88,6 @@ typedef sint16_t s16;
 typedef sint32_t s32;
 typedef sint64_t s64;
 
-#ifndef _bool_true_false_are_defined
-#define bool	_Bool
-#define true	1
-#define false	0
-#define _bool_true_false_are_defined
-#endif
-
 #ifndef _UINTPTR_T_DEFINED
 typedef unsigned long long uintptr_t;
 #define _UINTPTR_T_DEFINED
@@ -103,6 +97,15 @@ typedef unsigned long long uintptr_t;
 typedef signed long long intptr_t;
 #define _INTPTR_T_DEFINED
 #endif
+
+#ifndef _bool_true_false_are_defined
+#define bool	_Bool
+#define true	1
+#define false	0
+#define _bool_true_false_are_defined
+#endif
+#endif
+
 #ifndef _MSC_VER
 #define STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR	((NTSTATUS)0xC035003CL)
 #define STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE	((NTSTATUS)0xC0350071L)
@@ -112,7 +115,7 @@ typedef signed long long intptr_t;
 #endif
 #define ERR_NOTH 		STATUS_HV_NOT_PRESENT
 #define ERR_CPUID		STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR
-#define ERR_NESTED		STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE
+#define ERR_BUSY		STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE
 #define ERR_FEAT		STATUS_HV_FEATURE_UNAVAILABLE
 #define ERR_UNSUP		STATUS_NOT_SUPPORTED
 #define ERR_FAIL		STATUS_UNSUCCESSFUL
@@ -120,13 +123,17 @@ typedef signed long long intptr_t;
 #define ERR_NOMEM		STATUS_NO_MEMORY
 #define ERR_EXCEPT		GetExceptionCode()
 #else
+#ifndef __ASSEMBLY__
 #include <stdbool.h>
+#endif
+#include <asm-generic/errno-base.h>
+
 #define __align(alignment)	__attribute__((__aligned__(alignment)))
 #define KERNEL_STACK_SIZE	(6 << PAGE_SHIFT)
 
 #define ERR_NOTH 		-ENOENT
 #define ERR_CPUID		-EOPNOTSUPP
-#define ERR_NESTED		-ENODEV
+#define ERR_BUSY		-EBUSY
 #define ERR_FEAT		-ENOENT
 #define ERR_UNSUP		-EOPNOTSUPP
 #define ERR_FAIL		-EIO

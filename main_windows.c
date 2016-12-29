@@ -179,6 +179,12 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		goto err;
 	}
 
+	/*
+	 * Zero out everything (this is allocated by the kernel device driver
+	 * loader)
+	 */
+	__stosq((u64 *)&ksm, 0, sizeof(ksm) >> 3);
+
 	if (!NT_SUCCESS(status = ksm_init()))
 		goto err1;
 

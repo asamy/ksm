@@ -18,8 +18,8 @@
  *
  * Along with modification from:
  *	Ahmed Samy, 2016 <f.fallen45@gmail.com>
- * Windows fixes, and updates from the Intel manual tables.
- *
+ * Windows fixes, inline assembler intrinsics definitions
+ * and updates from the Intel manual tables.
  *
  * Virtual VMCS layout From XEN:
  *	include/asm-x86/hvm/vmx/vvmx.h
@@ -1000,7 +1000,7 @@ static inline u8 __invvpid_addr(u16 vpid, u64 gva)
 struct vcpu;
 
 /* Defined in assembly.  */
-extern u8 __vmx_vminit(struct vcpu *);
+extern int __vmx_vminit(struct vcpu *);
 extern void __vmx_entrypoint(void);
 extern void __ept_violation(void);
 

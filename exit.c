@@ -933,19 +933,6 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
-#ifdef NESTED_VMX
-	struct nested_vcpu *nested = &vcpu->nested_vcpu;
-	if (nested_entered(nested)) {
-		vcpu_enter_nested_hypervisor(vcpu, EXIT_REASON_VMCALL);
-		return true;
-	}
-
-	if (nested->current_vmxon) {
-		vcpu_vm_fail_valid(vcpu, VMXERR_VMCALL_IN_VMX_ROOT_OPERATION);
-		return true;
-	}
-#endif
-
 	/* VMFUNC does not have CPL checks, so emulator shouldn't have too...  */
 	uint8_t nr = ksm_read_reg32(vcpu, REG_CX);
 	if (nr != HYPERCALL_VMFUNC && vcpu_inject_gp_if(vcpu, !vcpu_probe_cpl(0)))
@@ -1494,7 +1481,7 @@ static bool vcpu_handle_vmread(struct vcpu *vcpu)
 	if (!nested_can_exec_vmx(vcpu) || vmcs == 0)
 		goto err;
 
-	u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
+	u32 inst = vmcs_read32(VMX_INSTRUCTION_INFO);
 	u32 field = ksm_read_reg(vcpu, (inst >> 28) & 15);
 	u64 value;
 	if (!nested_vmcs_read(vmcs, field, &value)) {
@@ -2701,6 +2688,33 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_PCOMMIT] = vcpu_nop
 };
 
+static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *regs)
+{
+	VCPU_DEBUG("%p: ax=0x%016llX   cx=0x%016llX  dx=0x%016llX\n"
+		   "    bx=0x%016llX   sp=0x%016llX  bp=0x%016llX\n"
+		   "    si=0x%016llX   di=0x%016llX  r08=0x%016llX\n"
+		   "    r09=0x%016llX  r10=0x%016llX r11=0x%016llX\n"
+		   "    r12=0x%016llX  r13=0x%016llX r14=0x%016llX\n"
+		   "    r15=0x%016llX  rip=0x%016llX efl=0x%08lX"
+		   "    cs=0x%02X      ds=0x%02X     es=0x%02X\n"
+		   "    fs=0x%016llX   gs=0x%016llX  kgs=0x%016llX\n"
+		   "    cr0=0x%016llX  cr3=0x%016llX cr4=0x%016llX\n"
+		   "	dr0=0x%016llX  dr1=0x%016llX dr2=0x%016llX\n"
+		   "	dr3=0x%016llX  dr6=0x%016llX dr7=0x%016llX\n",
+		   vcpu, regs->gp[REG_AX], regs->gp[REG_CX], regs->gp[REG_DX],
+		   regs->gp[REG_BX], vmcs_read(GUEST_RSP), regs->gp[REG_BP],
+		   regs->gp[REG_SI], regs->gp[REG_DI], regs->gp[REG_R8],
+		   regs->gp[REG_R9], regs->gp[REG_R10], regs->gp[REG_R11],
+		   regs->gp[REG_R12], regs->gp[REG_R13], regs->gp[REG_R14],
+		   regs->gp[REG_R15], vmcs_read(GUEST_RIP), (u32)regs->eflags,
+		   vmcs_read(GUEST_CS_SELECTOR), vmcs_read(GUEST_DS_SELECTOR),
+		   vmcs_read(GUEST_ES_SELECTOR), vmcs_read(GUEST_FS_BASE),
+		   vmcs_read(GUEST_GS_BASE), __readmsr(MSR_IA32_KERNEL_GS_BASE),
+		   vmcs_read(GUEST_CR0), vmcs_read(GUEST_CR3), vmcs_read(GUEST_CR4),
+		   __readdr(0), __readdr(1), __readdr(2),
+		   __readdr(3), __readdr(6), vmcs_read(GUEST_DR7));
+}
+
 bool vcpu_handle_exit(uintptr_t *regs)
 {
 	/* Only called from assembly (__vmx_entrypoint)  */
@@ -2744,8 +2758,9 @@ bool vcpu_handle_exit(uintptr_t *regs)
 	    curr_handler != EXIT_REASON_INVALID_STATE) {
 		/*
 		 * Mostly comes via invalid guest state, and is due to a cruical
-		 * error that happened past VM-exit, let the handler see what it does first
+		 * error that happened past VM-exit, let the handler see itt
 		 */
+		vcpu_dump_state(vcpu, &(struct regs) { regs });
 		dbgbreak();
 		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, vcpu->ip,
 			      vmcs_read(EXIT_QUALIFICATION), curr_handler);
@@ -2777,33 +2792,6 @@ do_pending_irq:
 	}
 
 	return ret;
-}
-
-static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *regs)
-{
-	VCPU_DEBUG("%p: ax=0x%016llX   cx=0x%016llX  dx=0x%016llX\n"
-		   "    bx=0x%016llX   sp=0x%016llX  bp=0x%016llX\n"
-		   "    si=0x%016llX   di=0x%016llX  r08=0x%016llX\n"
-		   "    r09=0x%016llX  r10=0x%016llX r11=0x%016llX\n"
-		   "    r12=0x%016llX  r13=0x%016llX r14=0x%016llX\n"
-		   "    r15=0x%016llX  rip=0x%016llX efl=0x%08lX"
-		   "    cs=0x%02X      ds=0x%02X     es=0x%02X\n"
-		   "    fs=0x%016llX   gs=0x%016llX  kgs=0x%016llX\n"
-		   "    cr0=0x%016llX  cr3=0x%016llX cr4=0x%016llX\n"
-		   "	dr0=0x%016llX  dr1=0x%016llX dr2=0x%016llX\n"
-		   "	dr3=0x%016llX  dr6=0x%016llX dr7=0x%016llX\n",
-		   vcpu, regs->gp[REG_AX], regs->gp[REG_CX], regs->gp[REG_DX],
-		   regs->gp[REG_BX], vmcs_read(GUEST_RSP), regs->gp[REG_BP],
-		   regs->gp[REG_SI], regs->gp[REG_DI], regs->gp[REG_R8],
-		   regs->gp[REG_R9], regs->gp[REG_R10], regs->gp[REG_R11],
-		   regs->gp[REG_R12], regs->gp[REG_R13], regs->gp[REG_R14],
-		   regs->gp[REG_R15], vmcs_read(GUEST_RIP), (u32)regs->eflags,
-		   vmcs_read(GUEST_CS_SELECTOR), vmcs_read(GUEST_DS_SELECTOR),
-		   vmcs_read(GUEST_ES_SELECTOR), vmcs_read(GUEST_FS_BASE),
-		   vmcs_read(GUEST_GS_BASE), __readmsr(MSR_IA32_KERNEL_GS_BASE),
-		   vmcs_read(GUEST_CR0), vmcs_read(GUEST_CR3), vmcs_read(GUEST_CR4),
-		   __readdr(0), __readdr(1), __readdr(2),
-		   __readdr(3), __readdr(6), vmcs_read(GUEST_DR7));
 }
 
 void vcpu_handle_fail(struct regs *regs)

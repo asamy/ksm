@@ -18,6 +18,12 @@
  * with this program; if not, write to the Free Software Foundation, Inc.,
  * 51 Franklin Street, Fifth Floor, Boston, MA 02110-1301 USA.
 */
+#ifndef __ASSEMBLY__
+#error __ASSEMBLY__ is not defined...
+#endif
+
+#include "compiler.h"
+
 #ifdef __linux__
 /* Arguments  */
 #define REG_A1		%rdi
@@ -155,12 +161,12 @@
 	addq	$0xE8, %rsp
 .endm
 
-#ifndef __linux__
 /*
  * Fix this if XMM (floating point) really is needed inside C code, for now
  * this is commented out on just Linux, because it's not tested.
  */
 .macro TRAP_REST_XMM
+#ifndef __linux__
 	ldmxcsr KFRAME_CSR(%rbp)
 	movaps KFRAME_XMM0(%rbp), %xmm0
 	movaps KFRAME_XMM1(%rbp), %xmm1
@@ -168,9 +174,11 @@
 	movaps KFRAME_XMM3(%rbp), %xmm3
 	movaps KFRAME_XMM4(%rbp), %xmm4
 	movaps KFRAME_XMM5(%rbp), %xmm5
+#endif
 .endm
 
 .macro TRAP_SAVE_XMM
+#ifndef __linux__
 	stmxcsr KFRAME_CSR(%rbp)
 	ldmxcsr %gs:0x180
 	movaps	%xmm0, KFRAME_XMM0(%rbp)
@@ -179,8 +187,8 @@
 	movaps	%xmm3, KFRAME_XMM3(%rbp)
 	movaps	%xmm4, KFRAME_XMM4(%rbp)
 	movaps	%xmm5, KFRAME_XMM5(%rbp)
-.endm
 #endif
+.endm
 
 .macro irq_entry symbol:req handler:req no_error_code:req
 .globl \symbol
@@ -192,9 +200,7 @@
 
 1:
 	cld
-#ifndef __linux__
 	TRAP_SAVE_XMM
-#endif
 
 	movq	KFRAME_CS(%rbp), REG_A1
 	movq	KFRAME_IP(%rbp), REG_A2
@@ -203,17 +209,13 @@
 	testb	$1, KFRAME_RPL(%rbp)
 	jz	2f
 
-#ifndef __linux__
 	TRAP_REST_XMM
-#endif
 	TRAP_EXIT
 	swapgs
 	iretq
 
 2:
-#ifndef __linux__
 	TRAP_REST_XMM
-#endif
 	TRAP_EXIT
 	iretq
 .endm
@@ -228,7 +230,7 @@ __vmx_vminit:
 	pushfq
 	PUSH_REGS
 
- 	/* parameter one is pass-through (vcpu).  */
+	/* parameter one is pass-through (vcpu).  */
 	movq	%rsp, REG_A2
 	movabs	$do_resume, REG_A3
 	call	vcpu_run
@@ -237,7 +239,7 @@ __vmx_vminit:
 	POP_REGS
 	popfq
 
-	movb	$1, %al
+	movl	ERR_FAIL, %eax
 	ret
 
 do_resume:
@@ -245,7 +247,7 @@ do_resume:
 	POP_REGS
 	popfq
 
-	xorb	%al, %al
+	xorl 	%eax, %eax
 	ret
 
 .globl __vmx_entrypoint
@@ -253,6 +255,9 @@ __vmx_entrypoint:
 	/*
 	 * Host entry point (aka VMX root mode).
 	 * Note: all interrupts are disabled at this point.
+	 *
+	 * Save all guest general purpose registers, then let the C handler do
+	 * the rest.
 	 */
 	PUSH_REGS
 	movq	%rsp, REG_A1
@@ -263,9 +268,12 @@ __vmx_entrypoint:
 
 	POP_REGS
 	vmresume
+
+	/* Something went wrong during re-entry to guest...  */
 	jmp	2f
 
 1:
+	/* See exit.c (vcpu_do_exit)  */
 	POP_REGS
 	vmxoff
 	jna	2f
@@ -273,6 +281,7 @@ __vmx_entrypoint:
 	/* Give them their stack pointer  */
 	movq	%rdx, %rsp
 
+	/* and their rflags (adjusted to indicate successful vmcall)  */
 	pushq	%rax
 	popfq
 
@@ -284,12 +293,14 @@ __vmx_entrypoint:
 	ret
 
 2:
+	/* Either vmresume or vmxoff failure...  */
+	nop
 	pushfq
 	PUSH_REGS
 	movq	%rsp, REG_A1
 	call	vcpu_handle_fail
 
-3:	/* not reached  */
+3:	/* shouldn't come here, but incase it does, hlt forever:  */
 	hlt
 	jmp 3b
 
