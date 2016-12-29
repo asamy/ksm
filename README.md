@@ -86,6 +86,9 @@ See also Github issues.  Some of these features are unfortunately not
 
 ## Some technical information
 
+If any of them is confusing, please open an issue and I'll happily explain and
+perhaps improve this inline-manual...
+
 ### Some notes
 
 To simplify things, the following terms are used as an abbreviation:
@@ -119,6 +122,8 @@ Some notes on Guest:
 
 - VMFUNC does **not** have CPL checks, that means a user-space program can
 execute it.
+- The virtual processor ID cannot be 0 since VMX root mode already uses that
+one, so we have to use whatever the current processor number is + 1.
 
 ### Debugging and/or testing
 
@@ -141,11 +146,14 @@ violations from the guest kernel.
 This is the flow:
 
 ```
-	driver entry -> ksm_init()
+	driver entry (any process context) -> ksm_init()
 	(later on or in another context):
 		ksm_subvert() ->
 			for each cpu call __ksm_init_cpu:
 		__ksm_init_cpu:
+			set feature control MSR appropriately
+			set CR4.VMXE bit
+
 			vcpu_create(vcpu) -> __vmx_vminit(vcpu) ->
 				save guest state
 				set guest start point
@@ -153,56 +161,197 @@ This is the flow:
 	
 				then call:
 				vcpu_run(vcpu, stack, start_point)
+					...
+					/* write important fields to VM Control
+					   structure:  */
 					vmcs_write()
 					vmcs_write()
 					....
-					if not launch:
+					if not vmlaunch():
 						print error
 					else
 						/* CPU already jumped to start
 						   point  */
+					endif
 			guest_start_point:
-				restore guest state
-				restore stack ptr
+				restore guest state (registers incl rflags, etc.)
 				return to __ksm_init_cpu
 
 		__ksm_init_cpu (contd.):
 			if __vmx_vminit failed:
-				throw error and return
+				throw error
+				remove CR4.VMXE bit
+				return error
 			else
 				return 0 /* succeeded  */
+			endif
 		ksm_subvert() (contd.):
-			return whatever_ksm_init_cpu_returned
+			return whatever___ksm_init_cpu_returned
 ```
 
-During a guest violation (e.g. CPUID execution, etc.), this is what happens:
+During a guest event (e.g. CPUID execution, etc.), this is what happens:
 
 ```
 	CPU:
 		save guest state
-		load host state
+		load host state (rsp, fs, gs, ...)
 		jump to host RIP (__vmx_entrypoint)
 
 	KSM:
 		__vmx_entrypoint:
 			push guest registers
 			if not vcpu_handle_exit(regs) (exit.c) then
-				do_vmx_off
+				jump do_vmx_off
 			else
 				pop guest registers
 				vmresume
 				if fail:
-					shutdown (sort of)
+					jump handle_fail
 				endif
 			endif
 
 		do_vmx_off:
+			pop guest registers
 			vmxoff
 			jump to guest defined RIP
 			if fail:
-				shutdown (sort of)
+				jump handle_fail
 			endif
+		handle_fail:
+			push guest registers
+			push guest flags
+			vcpu_handle_fail()	/* should not return  */
+		do_hlt:		/* incase vcpu_handle_fail() somehow
+				   returned...  */
+			hlt
+			jump do_hlt
 ```
+
+### Controling processor events
+
+You can probably tell from that that the execution is now split into 2 things and
+that we pretty much "kicked" the kernel (Linux or Windows) out of the physical
+CPU, and took over, and each time they execute something that we want to
+monitor, the physical processor does the so-called "VM exit" which makes it
+enter a "supervision" mode then we can decide what to do with that event, there
+are some events that are forced to do a VM-exit ("unconditional vm-exit") such
+as execution of CPUID, VMX instructions, etc, which we don't have control over,
+so when the CPU encounters such instructions, it will exit to us and then we
+can emulate the instruction.
+
+To control which events do a VM-exit, the processor offers 3 main "VM control
+structure" fields, which are (see vmx.h for a full list of controls):
+
+1. Primary processor control (stuff like MSR, I/O, cr3-load-exiting,
+   cr3-store-exiting, etc.)
+2. Secondary processor control (which must be activated by setting a bit inside
+   primary, and offers stuff like Extended Page Tables, Virtual Processor ID,
+   and even descriptor tables like GDT/IDT/TR/LDT, etc.)
+3. Pin based control (External interrupts, posted interrupts, preemption timer,
+   virtual non-maskable interrupt).  This basically controls interrupt
+delivery, the "External interrupts" bit means that the processor will exit each
+time it's delivering an external interrupt (e.g. Mouse, keyboard, etc.  Things
+					    that are attached to the Local
+					    APIC basically, ...)
+
+	Note: Those are the "main" controls, there are also other fields that
+	can conditionally cause vm-exits.
+
+Since there is no bit that controls store or load to cr0 or cr4 in those "main"
+controls, the processor offers 4 fields that control access to those:
+
+1. `CR0_READ_SHADOW` (If a bit is not set in this variable, then the guest kernel
+   won't see it visible.)
+2. `CR4_READ_SHADOW` (Same as CR0, we shadow the VMXE bit, so that they can't
+   easily know that we have VMX mode on, and so that we can emulate VMX mode
+   for them if needed.)
+3. `CR0_GUEST_HOST_MASK` (If a bit is set in this variable, the processor causes
+   a VM-exit when they try to set that specific bit in their CR0)
+4. `CR4_GUEST_HOST_MASK` (Same as CR0, we set the VMXE bit here, so that we can
+   know when they tried to set it and emulate VMX if needed.)
+
+The following control fields are also useful:
+1. `EXCEPTION_BITMAP` - Each bit index in this bitmap causes the processor to
+   cause a VM exit each time the respective exception is thrown (say page
+								 faults, if bit
+								 14 is set,
+								 then each time
+								 there is a
+								 page fault,
+								 the processor
+								 gets kicked
+								 out of guest
+								 mode and gives
+								 us control.)
+2. `MSR_BITMAP` - This is described in more detail in `ksm.c`, see
+   `init_msr_bitmap`.
+3. `IO_BITMAP_A` - Same for MSR bitmap, but basically I/O Ports (e.g. read from
+   Mice/Keyboard port, etc.)
+4. `IO_BITMAP_B` - Same thing.
+
+There are also other control fields, but these are mainly not used.  The rest
+of the fields are mostly guest and host setup (e.g. setting where the
+					       guest/host entry point is,
+					       etc.).
+It's rather better if you look at `vcpu_run()` in vcpu.c, that way you can get
+a "realistic" view of things.
+
+### How we work with EPT
+
+EPT (Extended Page Tables) also called SLAT (Second Level Address Translation)
+is used to control guest address translation but on the physical level.
+
+Without EPT, the processor normally goes through translating a virtual address
+its backing physical address, with EPT, the processor adds another level of
+translation, which is the physical address (now called "guest physical address"
+					    or GPA) to "host physical address"
+(HPA).
+
+Normally, the base PML4 table is stored in CR3, which the processor uses to
+translate a virtual address to it's backing physical address, EPT is very
+similar, with a configured EPT pointer (EPTP) which also contains the PML4
+table, the processor uses this table to translate the GPA to HPA.
+
+Here's an example of what happens during both phases:
+
+```c
+#define PAGE_PA_MASK	(0xFFFFFFFFF << PAGE_SHIFT);
+#define ENTRY_COUNT	512
+#define ENTRY_MASK	(ENTRY_COUNT - 1)
+#define pdpt_index(a)	(a >> 39) & ENTRY_MASK
+#define pdt_index(a)	(a >> 30) & ENTRY_MASK
+#define pt_index(a)	(a >> 21) & ENTRY_MASK
+#define page_index(a)	(a >> 12) & ENTRY_MASK
+
+	/* First level:  Translate GVA to GPA:  */
+	GVA = some_arbitrary_value;
+	PML4 = VA_OF(CR3 & PAGE_PA_MASK);
+	PDPT = VA_OF(PML4[pdpt_index(GVA)] & PAGE_PA_MASK);
+	PDT = VA_OF(PDPT[pdt_index(GVA)] & PAGE_PA_MASK);
+	PT = VA_OF(PDT[pt_index(GVA)] & PAGE_PA_MASK);
+	PAGE = PT[page_index(GVA)];
+	GPA = PAGE & PAGE_PA_MASK;
+
+	/* We now have GPA, and we know it's valid!  (assume so)  */
+	/* Second level: Translate GPA to HPA */
+	EPTP = read_eptp_from_current_vmcs;
+	PML4 = VA_OF(EPTP & PAGE_PA_MASK);
+	PDPT = VA_OF(PML4[pdpt_index(GVA)] & PAGE_PA_MASK);
+	PDT = VA_OF(PDPT[pdt_index(GVA)] & PAGE_PA_MASK);
+	PT = VA_OF(PDT[pt_index(GVA)] & PAGE_PA_MASK);
+	PAGE = PT[page_index(GVA)];
+	HPA = PAGE & PA_PA_MASK;
+```
+
+Pretty much repeating ourselves, but this is basically what happens.  An
+example for this kind of use is executable page hooking which is described in
+more detail in `page.c` (also below).
+
+Just like page faults, EPT has "EPT violation" and "EPT misconfig", in the
+latter case, it can happen when an unsupported bit is set (e.g. a reserved bit
+							   is set somewhere),
+in the former case, it can happen when for example an access bit is not there
+(e.g. trying to execute but there is no execute access given.)
 
 ### IDT shadowing
 

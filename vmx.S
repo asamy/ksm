@@ -239,7 +239,7 @@ __vmx_vminit:
 	POP_REGS
 	popfq
 
-	movl	ERR_FAIL, %eax
+	movl	ERR_DENIED, %eax
 	ret
 
 do_resume:
