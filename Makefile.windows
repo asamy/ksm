@@ -46,7 +46,7 @@ OBJCOPY = $(CROSS_BUILD)objcopy --only-keep-debug
 # 	0x0602 = Windows 8
 # 	0x0603 = Windows 8.1
 # 	0x0A00 = Windows 10
-WINVER=0x0601
+WINVER=0x0A00
 
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEP_DIR)/$*.d
 DBGFLAGS = -DDBG -O0 -ggdb
