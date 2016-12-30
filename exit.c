@@ -2739,7 +2739,6 @@ bool vcpu_handle_exit(uintptr_t *regs)
 	 * the case, then throw back whatever we have to the nested hypervisor
 	 * however, we need to do some checks first.
 	 */
-	VCPU_DEBUG("Exit: %d\n", curr_handler);
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	if (nested_entered(nested) && nested_can_handle(nested, exit_reason) &&
 	    vcpu_enter_nested_hypervisor(vcpu, exit_reason)) {

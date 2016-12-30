@@ -17,11 +17,12 @@
 # this program; If not, see <http://www.gnu.org/licenses/>.
 obj-m += ksmlinux.o
 ksmlinux-objs := exit.o htable.o ksm.o page.o vcpu.o main_linux.o vmx.o
-ccflags-y := -Wno-format -Wno-declaration-after-statement -Wno-unused-function -DDBG -DENABLE_PRINT -std=gnu99 -DNESTED_VMX
+ccflags-y := -Wno-format -Wno-declaration-after-statement -Wno-unused-function -DDBG -DENABLE_PRINT -std=gnu99
 
 BIN := ksmlinux.ko
 KVERSION := $(shell uname -r)
-KDIR := /lib/modules/$(KVERSION)/build
+KDIR := /lib/modules/$(KVERSION)
+KBUILD = $(KDIR)/build
 PWD := $(shell pwd)
 MAKEFLAGS += --no-print-directory
 
@@ -30,6 +31,9 @@ all:
 
 clean:
 	@make -C $(KDIR) M=$(PWD) clean
+
+install: $(BIN)
+	@cp $(BIN) $(KDIR)
 
 load:
 	@echo Loading $(BIN)

@@ -24,8 +24,8 @@ is not recommended.
 - IDT Shadowing
 - EPT violation #VE (if not available natively, VM-exit path is taken)
 - EPTP switching VMFUNC (if not available natively, it will be emulated using a VMCALL)
-- APIC virtualization
-- VMX Nesting
+- APIC virtualization (Experimental, do not use)
+- VMX Nesting (Experimental, do not use)
 
 ## Why not other hypervisors?
 

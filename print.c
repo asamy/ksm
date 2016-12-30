@@ -41,9 +41,11 @@
 
 #include "ksm.h"
 
+#define PRINT_FLUSH_DELAY	1000
+#define PRINT_BUF_BUFFERS	2
 #define PRINT_BUF_SHIFT		PAGE_SHIFT
 #define PRINT_BUF_STRIDE	(1 << PAGE_SHIFT)
-#define PRINT_BUF_SIZE		(PRINT_BUF_STRIDE << 1)
+#define PRINT_BUF_SIZE		(PRINT_BUF_STRIDE * PRINT_BUF_BUFFERS)
 
 #ifdef ENABLE_FILEPRINT
 #define FILE_PATH		L"\\SystemRoot\\ksm.log"
@@ -139,7 +141,7 @@ static inline char *stpcpy(char *dst, const char *src)
 
 static inline void print_flush(void)
 {
-	char on_stack[PRINT_BUF_STRIDE];
+	char on_stack[512];
 	u32 len = 0;
 	KLOCK_QUEUE_HANDLE q;
 #ifdef ENABLE_FILEPRINT
@@ -147,11 +149,11 @@ static inline void print_flush(void)
 #endif
 
 	KeAcquireInStackQueuedSpinLock(&lock, &q);
-	char *printbuf = buf + ((next & 1) << PRINT_BUF_SHIFT);
-	char *p = stpcpy(on_stack, printbuf);
-	len = p - &on_stack[0];
+	char *printbuf = buf + ((next & (PRINT_BUF_BUFFERS - 1)) << PRINT_BUF_SHIFT);
+	strncpy(on_stack, printbuf, sizeof(on_stack));
+	len = (u32)strlen(on_stack);
 
-	head_use = buf + ((++next & 1) << PRINT_BUF_SHIFT);
+	head_use = buf + ((++next & (PRINT_BUF_BUFFERS - 1)) << PRINT_BUF_SHIFT);
 	next_use = head_use;
 	KeReleaseInStackQueuedSpinLock(&q);
 
@@ -180,7 +182,7 @@ static void print_thread(void)
 	 */
 	while (!do_exit) {
 		while (next_use == head_use && !do_exit)
-			sleep_ms(10);
+			sleep_ms(PRINT_FLUSH_DELAY);
 
 		print_flush();
 		cpu_relax();
@@ -257,7 +259,7 @@ void print_exit(void)
 
 void do_print(const char *fmt, ...)
 {
-	char buffer[PRINT_BUF_SIZE];
+	char buffer[512];
 	va_list va;
 	NTSTATUS status;
 	KLOCK_QUEUE_HANDLE q;

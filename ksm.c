@@ -66,13 +66,17 @@ static inline bool init_msr_bitmap(struct ksm *k)
 	 */
 	bitmap_t *read_lo = (bitmap_t *)k->msr_bitmap;
 	set_bit(MSR_IA32_FEATURE_CONTROL, read_lo);
+#ifdef NESTED_VMX
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		set_bit(msr, read_lo);
+#endif
 
 	bitmap_t *write_lo = (bitmap_t *)((char *)k->msr_bitmap + 2048);
 	set_bit(MSR_IA32_FEATURE_CONTROL, write_lo);
+#ifdef NESTED_VMX
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		set_bit(msr, write_lo);
+#endif
 
 	return true;
 }

@@ -430,7 +430,7 @@ static inline uintptr_t ksm_read_reg(struct vcpu *vcpu, int reg)
 
 static inline u32 ksm_combine_reg32(struct vcpu *vcpu, int lo, int hi)
 {
-	return (u32)ksm_read_reg32(vcpu, lo) | (u32)ksm_read_reg32(vcpu, hi) << 16;
+	return (u32)ksm_read_reg16(vcpu, lo) | (u32)ksm_read_reg16(vcpu, hi) << 16;
 }
 
 static inline u64 ksm_combine_reg64(struct vcpu *vcpu, int lo, int hi)
