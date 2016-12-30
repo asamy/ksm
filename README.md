@@ -89,42 +89,6 @@ See also Github issues.  Some of these features are unfortunately not
 If any of them is confusing, please open an issue and I'll happily explain and
 perhaps improve this inline-manual...
 
-### Some notes
-
-To simplify things, the following terms are used as an abbreviation:
-
-1. Host - refers to the VMM (Virtual Machine Monitor) aka VMX root mode
-2. Guest or Kernel - refers to the running guest kernel (i.e. Windows or Linux)
-
-Some things need to be used with extra care especially inside Host as
-this is a sensitive mode and things may go unexpected if used improperly.
-
-- The timestamp counter does not _pause_ during entry to Host, so
-things like APIC timer can fire on next guest entry (`vmresume`).
-- Interrupts are disabled.  On entry to `__vmx_entrypoint`, the CPU had already
-disabled interrupts.  So, addresses referenced inside root mode should be
-physically contiguous, otherwise if you enable interrupts by yourself, you
-might cause havoc if a preemption happens.
-- Calling a Kernel function inside the Host can be dangerous, especially
-because the Host stack is different, so any kind of stack probing
-functions will most likely fail.
-- Single stepping `vmresume` or `vmlaunch` is invaluable, the debugger will
-never give you back control, for obvious reasons.  If you want that behavior,
-      then rather set a breakpoint on whatever `vcpu->ip` is set to.
-- Virtualization Exceptions (#VE) will not occur if:
-	1. The processor is delivering another exception
-	2. The `except_mask` inside `ve_except_info` is set to non-zero value.
-- If the processor does not support Virtualization Exceptions, the VM exit path
-will be taken instead (Note that the VM exit path is _always_ handled).
-- If the processor does not support VMFUNC, it's emulated via VMCALL instead.
-
-Some notes on Guest:
-
-- VMFUNC does **not** have CPL checks, that means a user-space program can
-execute it.
-- The virtual processor ID cannot be 0 since VMX root mode already uses that
-one, so we have to use whatever the current processor number is + 1.
-
 ### Debugging and/or testing
 
 Since #VE and VMFUNC are now optional and will not be enabled unless the CPU support it,
@@ -187,6 +151,7 @@ This is the flow:
 			endif
 		ksm_subvert() (contd.):
 			return whatever___ksm_init_cpu_returned
+	...
 ```
 
 During a guest event (e.g. CPUID execution, etc.), this is what happens:
@@ -200,7 +165,7 @@ During a guest event (e.g. CPUID execution, etc.), this is what happens:
 	KSM:
 		__vmx_entrypoint:
 			push guest registers
-			if not vcpu_handle_exit(regs) (exit.c) then
+			if not vcpu_handle_exit(regs) then
 				jump do_vmx_off
 			else
 				pop guest registers
@@ -213,10 +178,10 @@ During a guest event (e.g. CPUID execution, etc.), this is what happens:
 		do_vmx_off:
 			pop guest registers
 			vmxoff
-			jump to guest defined RIP
 			if fail:
 				jump handle_fail
 			endif
+			jump to guest defined RIP
 		handle_fail:
 			push guest registers
 			push guest flags
@@ -273,7 +238,7 @@ controls, the processor offers 4 fields that control access to those:
 The following control fields are also useful:
 
 1. `EXCEPTION_BITMAP` - Each bit index in this bitmap causes the processor to
-   cause a VM exit each time the respective exception is thrown (say page
+   cause a VM exit each time the respective exception vector is thrown (say page
 								 faults, if bit
 								 14 is set,
 								 then each time
@@ -316,7 +281,10 @@ table, the processor uses this table to translate the GPA to HPA.
 Here's an example of what happens during both phases:
 
 ```c
-#define PAGE_PA_MASK	(0xFFFFFFFFF << PAGE_SHIFT);
+#define MAX_PHYS	36
+#define PAGE_SHIFT	12
+#define PA_MASK		((1 << MAX_PHYS) - 1)
+#define PAGE_PA_MASK	(PA_MASK << PAGE_SHIFT);
 #define ENTRY_COUNT	512
 #define ENTRY_MASK	(ENTRY_COUNT - 1)
 #define pdpt_index(a)	(a >> 39) & ENTRY_MASK
@@ -353,6 +321,50 @@ latter case, it can happen when an unsupported bit is set (e.g. a reserved bit
 							   is set somewhere),
 in the former case, it can happen when for example an access bit is not there
 (e.g. trying to execute but there is no execute access given.)
+
+The traditional EPT violation handling is via the VM exit path, but modern
+processors (starting off from Intel Broadwell) supports a new IDT exception
+called "Virtualization Exceptions" and that is defined at vector 20 in the IDT.
+When set and also the relevant bits in VMCS are also set, the processor will
+throw exceptions to that vector instead of causing a VM exit, but under certain
+conditions it will take the vm-exit path instead, see notes below.
+
+### Some notes
+
+To simplify things, the following terms are used as an abbreviation:
+
+1. Host - refers to the VMM (Virtual Machine Monitor) aka VMX root mode
+2. Guest or Kernel - refers to the running guest kernel (i.e. Windows or Linux)
+
+Some things need to be used with extra care especially inside Host as
+this is a sensitive mode and things may go unexpected if used improperly.
+
+- The timestamp counter does not _pause_ during entry to Host, so
+things like APIC timer can fire on next guest entry (`vmresume`).
+- Interrupts are disabled.  On entry to `__vmx_entrypoint`, the CPU had already
+disabled interrupts.  So, addresses referenced inside root mode should be
+physically contiguous, otherwise if you enable interrupts by yourself, you
+might cause havoc if a preemption happens.
+- Calling a Kernel function inside the Host can be dangerous, especially
+because the Host stack is different, so any kind of stack probing
+functions will most likely fail.
+- Single stepping `vmresume` or `vmlaunch` is invaluable, the debugger will
+never give you back control, for obvious reasons.  If you want that behavior,
+      then rather set a breakpoint on whatever `vcpu->ip` is set to.
+- Virtualization Exceptions (#VE) will not occur if:
+	1. The processor is delivering another exception
+	2. The `except_mask` inside `ve_except_info` is set to non-zero value.
+- If the processor does not support Virtualization Exceptions, the VM exit path
+will be taken instead (Note that the VM exit path is _always_ handled).
+- If the processor does not support VMFUNC, it's emulated via VMCALL instead.
+
+Some notes on Guest:
+
+- VMFUNC does **not** have CPL checks, that means a user-space program can
+execute it.
+- The virtual processor ID (VPID) cannot be 0 since VMX root mode already uses that
+one, so we use the current processor number is + 1.  VPIDs are used to control
+processor cache.
 
 ### IDT shadowing
 
@@ -460,22 +472,51 @@ For the sake of simplicity, we're going to use some names placeholders (which
 
 	Note: you do not have to have a remote repository, you can commit to
 	your local copy, then just use patches, see below.
-4. `USER_NAME` - Your username
+4. `USER_NAME` - Your github username
 
-Get to it:
+Clone the repository locally:
 
-1. Get a local copy: `git clone git@host.com:name/ksm`
-2. Switch to a new branch: `git checkout -b LOCAL_BRANCH`
-2. Setup remote: `git remote add upstream https://github.com/asamy/ksm` (Can be
-skipped)
-3. (When there is a change in my tree) Pull my tree: `git pull --rebase upstream master` (If #2 is skipped, then use
-						     the complete URL in place
-						     of `upstream`.)  You can
-also use `git rebase -i upstream/master` to rebase your commit(s) on top of my
-new changes, but pulling is better and will also rebase.
-4. Commit something: `git commit -a --signoff -m "commit message"` (Signing off
-   commits is optional, you can also sign with PGP, but if you're going to
-   submit patches, then the PGP signature is going to get purged.)
+`git clone https://github.com/USER_NAME/ksm`
+
+Switch to a new branch:
+
+`git checkout -b LOCAL_BRANCH`
+
+Setup remote (skip if you want to use the full URL each time):
+
+`git remote add upstream https://github.com/asamy/ksm`
+
+If there are changes in my tree that you want to get, then:
+
+`git pull --rebase upstream master`
+
+	**Note**: If you skipped remote setup, then replace `upstream` with the
+	URL.
+
+	**Note**: You might want to switch to the master branch first to pull
+	my changes there, then switch back to your branch, then merge them
+	together later using `git merge --ff master` (`ff` is fast-forward,
+						      which means it will not
+						      generate a merge commit,
+						      you can skip it).
+
+	This will rebase my changes on top of your local tree.
+
+If you have local changes, `--rebase` will stop and ask you to commit, you can
+do this without comitting:
+
+`git stash && git pull --rebase upstream master && git stash pop`
+
+What this does is, stashes your changes, then pulls my changes and prepares to
+rebase your stashed changes on top of mine, then pops the stashed changes on
+top, if there any conflicts, then it will let you know and you should fix them,
+after doing so, commit your changes:
+
+```
+git add ...
+git add ...
+git commit --signoff -m "commit message"
+```
 
 #### Submitting your changes
 
@@ -483,13 +524,13 @@ If you're going to use patches, then simply:
 
 `git format-patch HEAD~X`
 
-Where X is the number of commits (patches) to create, can be ommitted if 1
-commit only, e.g.:
+Where X is the number of commits to create patches from, can be ommitted to
+take HEAD  commit only, e.g.:
 
 `git format-patch HEAD~`
 
 You can then use the patch file(s) as an attachment and e-mail them manually, or
-you can use git SMTP with `git send-email` to do it for you.
+you can use `git send-email` to do it for you.
 
 ##### Using pull requests
 
