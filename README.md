@@ -309,7 +309,7 @@ Here's an example of what happens during both phases:
 	PDT = VA_OF(PDPT[pdt_index(GPA)] & PAGE_PA_MASK);
 	PT = VA_OF(PDT[pt_index(GPA)] & PAGE_PA_MASK);
 	PAGE = PT[page_index(GPA)];
-	HPA = PAGE & PA_PA_MASK;
+	HPA = PAGE & PAGE_PA_MASK;
 ```
 
 Pretty much repeating ourselves, but this is basically what happens.  An
@@ -490,6 +490,8 @@ If there are changes in my tree that you want to get, then:
 
 `git pull --rebase upstream master`
 
+This will rebase my changes on top of your local tree.
+
 	**Note**: If you skipped remote setup, then replace `upstream` with the
 	URL.
 
@@ -500,15 +502,14 @@ If there are changes in my tree that you want to get, then:
 						      generate a merge commit,
 						      you can skip it).
 
-	This will rebase my changes on top of your local tree.
 
 If you have local changes, `--rebase` will stop and ask you to commit, you can
 do this without comitting:
 
 `git stash && git pull --rebase upstream master && git stash pop`
 
-What this does is, stashes your changes, then pulls my changes and prepares to
-rebase your stashed changes on top of mine, then pops the stashed changes on
+What this does is 1) stashes your changes, 2) pulls my changes and prepares to
+rebase your stashed changes on top of mine, 3) pops the stashed changes on
 top, if there any conflicts, then it will let you know and you should fix them,
 after doing so, commit your changes:
 
