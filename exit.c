@@ -2155,7 +2155,7 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 	 * Synchronize shadow IDT with Guest's IDT, taking into account
 	 * entries that we set, by simply just discarding them.
 	 */
-	size_t entries = min((size_t)idt->limit, (PAGE_SIZE - 1) / sizeof(struct kidt_entry64));
+	size_t entries = min((size_t)idt->limit, (PAGE_SIZE - 1)) / sizeof(struct kidt_entry64);
 	struct kidt_entry64 *current_idt = (struct kidt_entry64 *)idt->base;
 	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
 
@@ -2165,7 +2165,7 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 	vcpu->g_idt = *idt;
 	vcpu->idt.limit = idt->limit;
 	for (size_t n = 0; n < entries; ++n)
-		if (n > X86_TRAP_VE || !idte_present(&vcpu->shadow_idt[n]))
+		if (!idte_present(&vcpu->shadow_idt[n]))
 			memcpy(&shadow[n], &current_idt[n], sizeof(*shadow));
 	vcpu_flush_idt(vcpu);
 }
