@@ -207,11 +207,11 @@ can emulate the instruction.
 To control which events do a VM-exit, the processor offers 3 main "VM control
 structure" fields, which are (see vmx.h for a full list of controls):
 
-1. Primary processor control (stuff like MSR, I/O, cr3-load-exiting,
+1. Primary processor control (stuff like enabling MSR/IO controls, cr3-load-exiting,
    cr3-store-exiting, etc.)
 2. Secondary processor control (which must be activated by setting a bit inside
-   primary, and offers stuff like Extended Page Tables, Virtual Processor ID,
-   and even descriptor tables like GDT/IDT/TR/LDT, etc.)
+   primary, and offers stuff like enabling Extended Page Tables, Virtual Processor ID (for cache control),
+   and even descriptor table-exiting like when they load/store GDT/IDT/TR/LDT, etc.)
 3. Pin based control (External interrupts, posted interrupts, preemption timer,
    virtual non-maskable interrupt).  This basically controls interrupt
 delivery, the "External interrupts" bit means that the processor will exit each
@@ -222,7 +222,7 @@ time it's delivering an external interrupt (e.g. Mouse, keyboard, etc.  Things
 	Note: Those are the "main" controls, there are also other fields that
 	can conditionally cause vm-exits.
 
-Since there is no bit that controls store or load to cr0 or cr4 in those "main"
+Since there is no bits that controls cr0/cr4 stores/loads4 in those "main"
 controls, the processor offers 4 fields that control access to those:
 
 1. `CR0_READ_SHADOW` (If a bit is not set in this variable, then the guest kernel
@@ -237,8 +237,7 @@ controls, the processor offers 4 fields that control access to those:
 
 The following control fields are also useful:
 
-1. `EXCEPTION_BITMAP` - Each bit index in this bitmap causes the processor to
-   cause a VM exit each time the respective exception vector is thrown (say page
+1. `EXCEPTION_BITMAP` - The bit index is the exception vector in the IDT (say page
 								 faults, if bit
 								 14 is set,
 								 then each time
@@ -250,10 +249,11 @@ The following control fields are also useful:
 								 mode and gives
 								 us control.)
 2. `MSR_BITMAP` - This is described in more detail in `ksm.c`, see
-   `init_msr_bitmap`.
-3. `IO_BITMAP_A` - Same for MSR bitmap, but basically I/O Ports (e.g. read from
-   Mice/Keyboard port, etc.)
-4. `IO_BITMAP_B` - Same thing.
+   `init_msr_bitmap`.  Controls when the processor does VM exits for an MSR
+   read/write.
+3. `IO_BITMAP_A` - I/O ports (low part from 0 up to 7FFF), controls when an
+   in/out instruction for a specific port will cause a VM exit.
+4. `IO_BITMAP_B` - I/O ports (high part from 8000 to FFFF), ^^^^.
 
 There are also other control fields, but these are mainly not used.  The rest
 of the fields are mostly guest and host setup (e.g. setting where the
@@ -281,16 +281,21 @@ table, the processor uses this table to translate the GPA to HPA.
 Here's an example of what happens during both phases:
 
 ```c
-#define MAX_PHYS	36
-#define PAGE_SHIFT	12
+#define MAX_PHYS	36				/* physical addr width
+							   */
+#define PAGE_SHIFT	12				/* bits 0:11 are the
+							   offset.  */
 #define PA_MASK		((1 << MAX_PHYS) - 1)
-#define PAGE_PA_MASK	(PA_MASK << PAGE_SHIFT);
-#define ENTRY_COUNT	512
+#define PAGE_PA_MASK	(PA_MASK << PAGE_SHIFT);	/* bits 12:47 of an
+							   entry is the Page
+							   physical address.
+							 */
+#define ENTRY_COUNT	512				/* per table  */
 #define ENTRY_MASK	(ENTRY_COUNT - 1)
-#define pdpt_index(a)	(a >> 39) & ENTRY_MASK
-#define pdt_index(a)	(a >> 30) & ENTRY_MASK
-#define pt_index(a)	(a >> 21) & ENTRY_MASK
-#define page_index(a)	(a >> 12) & ENTRY_MASK
+#define pdpt_index(a)	(a >> 39) & ENTRY_MASK		/* bits 38:30  */
+#define pdt_index(a)	(a >> 30) & ENTRY_MASK		/* bits 29:21  */
+#define pt_index(a)	(a >> 21) & ENTRY_MASK		/* bits 20:12  */
+#define page_index(a)	(a >> 12) & ENTRY_MASK		/* bits 11:0  */
 
 	/* First level:  Translate GVA to GPA:  */
 	GVA = some_arbitrary_value;
@@ -541,7 +546,9 @@ You have 2 options (if using 1st, then skip the rest):
    interface.
 2. If you're going to use git request-pull follow.
 
-###### Using git-request-pull
+##### Using git-request-pull
+
+(Skip this if you're using Github pull requests.)
 
 Usage:
 
@@ -571,19 +578,6 @@ changes.
 `REMOTE_BRANCH` can be omitted if same as `LOCAL_BRANCH`.
 You can also specify a tag of your choice, in that case, use tag names instead
 of commit hashes/branch names.
-
-###### Request a pull manually
-
-Simply e-mail me the remote and branch of which to pull from, e.g.:
-
-```
-...
-Please pull from https://github.com/USER_NAME/ksm REMOTE_BRANCH
-...
-```
-
-It's however, much better if you use `git request-pull` to automatically
-summarize changes.
 
 ## Enabling certain features / tests
 
@@ -691,6 +685,10 @@ Output can be seen via DebugView or WinDBG if live debugging (You might want to
 							      execute `ed
 							      Kd_DEFAULT_Mask
 							      8`).
+
+**Note for Windows 10**: DebugView seems to be having problems starting a 2nd
+time there, to workaround this, rename it's driver
+C:\windows\system32\drivers\Dbgv.sys to something else, then start it again.
 
 ## Reporting bugs (or similar)
 
