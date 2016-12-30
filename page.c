@@ -99,8 +99,8 @@ static void epage_init_trampoline(struct trampoline *trampo, u64 to)
 	trampo->ret = 0xC3;
 }
 
-STATIC_DEFINE_DPC(__do_hook_page, __vmx_vmcall, HYPERCALL_HOOK, ctx);
-STATIC_DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
+static DEFINE_DPC(__do_hook_page, __vmx_vmcall, HYPERCALL_HOOK, ctx);
+static DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
 
 /*
  * Note!!!
@@ -180,7 +180,7 @@ int ksm_hook_epage(void *original, void *redirect)
 	phi->origin = (u64)aligned;
 	phi->ops = &epage_ops;
 
-	STATIC_CALL_DPC(__do_hook_page, phi);
+	CALL_DPC(__do_hook_page, phi);
 	htable_add(&ksm.ht, page_hash(phi->origin), phi);
 	return 0;
 }
@@ -196,11 +196,11 @@ int ksm_unhook_page(void *va)
 
 int __ksm_unhook_page(struct page_hook_info *phi)
 {
-	STATIC_CALL_DPC(__do_unhook_page, (void *)phi->dpa);
-	mm_free_page(phi->c_va);
+	CALL_DPC(__do_unhook_page, (void *)phi->dpa);
 	htable_del(&ksm.ht, page_hash(phi->origin), phi);
+	mm_free_page(phi->c_va);
 	mm_free_pool(phi, sizeof(*phi));
-	return STATIC_DPC_RET();
+	return DPC_RET();
 }
 
 struct page_hook_info *ksm_find_page(void *va)

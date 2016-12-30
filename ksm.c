@@ -35,7 +35,7 @@ struct ksm ksm = {
  * This file manages CPUs initialization, for per-cpu initializaiton
  * see vcpu.c, for VM-exit handlers see exit.c
  *
- * For the macro magic (aka STATIC_DEFINE_DPC, etc.) see percpu.h.
+ * For the macro magic (aka DEFINE_DPC, etc.) see percpu.h.
  */
 static inline bool init_msr_bitmap(struct ksm *k)
 {
@@ -178,7 +178,7 @@ int __ksm_init_cpu(struct ksm *k)
  * Subvert (i.e. virtualize) all processors, this should be
  * called on initialization or to re-virtualize.
  */
-STATIC_DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
+static DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
 int ksm_subvert(void)
 {
 #ifndef __linux__
@@ -186,8 +186,8 @@ int ksm_subvert(void)
 	ksm.origin_cr3 = __readcr3();
 #endif
 
-	STATIC_CALL_DPC(__call_init, &ksm);
-	return STATIC_DPC_RET();
+	CALL_DPC(__call_init, &ksm);
+	return DPC_RET();
 }
 
 /*
@@ -264,14 +264,14 @@ int __ksm_exit_cpu(struct ksm *k)
  * Devirtualize all processors, returning an error if one or
  * more aren't virtualized...
  */
-STATIC_DEFINE_DPC(__call_exit, __ksm_exit_cpu, ctx);
+DEFINE_DPC(__call_exit, __ksm_exit_cpu, ctx);
 int ksm_unsubvert(void)
 {
 	if (ksm.active_vcpus == 0)
 		return ERR_NOTH;
 
-	STATIC_CALL_DPC(__call_exit, &ksm);
-	return STATIC_DPC_RET();
+	CALL_DPC(__call_exit, &ksm);
+	return DPC_RET();
 }
 
 /*
@@ -300,14 +300,14 @@ int ksm_exit(void)
  * virtualized, may throw an exception since it does __vmx_vmcall
  * without checking.
  */
-STATIC_DEFINE_DPC(__call_idt_hook, __vmx_vmcall, HYPERCALL_IDT, ctx);
+static DEFINE_DPC(__call_idt_hook, __vmx_vmcall, HYPERCALL_IDT, ctx);
 int ksm_hook_idt(unsigned n, void *h)
 {
-	STATIC_CALL_DPC(__call_idt_hook, &(struct shadow_idt_entry) {
+	CALL_DPC(__call_idt_hook, &(struct shadow_idt_entry) {
 		.n = n,
 		.h = h,
 	});
-	return STATIC_DPC_RET();
+	return DPC_RET();
 }
 
 /*
@@ -318,13 +318,13 @@ int ksm_hook_idt(unsigned n, void *h)
  * IDT is always restored to the real one when devirtualization happens,
  * disregarding all entries that were set prior.
  */
-STATIC_DEFINE_DPC(__call_idt_unhook, __vmx_vmcall, HYPERCALL_UIDT, ctx);
+static DEFINE_DPC(__call_idt_unhook, __vmx_vmcall, HYPERCALL_UIDT, ctx);
 int ksm_free_idt(unsigned n)
 {
-	STATIC_CALL_DPC(__call_idt_unhook, &(struct shadow_idt_entry) {
+	CALL_DPC(__call_idt_unhook, &(struct shadow_idt_entry) {
 		.n = n,
 		.h = NULL,
 	});
-	return STATIC_DPC_RET();
+	return DPC_RET();
 }
 
