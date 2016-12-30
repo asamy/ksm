@@ -456,46 +456,46 @@ typedef struct {
 static inline u8 __vmx_on(unsigned long long *pa)
 {
 	u8 error;
-	__asm __volatile(ASM_VMX_VMXON_RAX "; setna %0"
-			 : "=q" (error)
-			 : "a"(pa), "m"(*pa)
-			 : "memory", "cc");
+	__asm(ASM_VMX_VMXON_RAX "; setna %0"
+	      : "=q" (error)
+	      : "a"(pa), "m"(*pa)
+	      : "memory", "cc");
 	return error;
 }
 
 static inline u8 __vmx_off(void)
 {
 	u8 error;
-	__asm __volatile(ASM_VMX_VMXOFF "; setna %0"
-			 : "=q" (error)
-			 : /* no reads  */
-			 : "cc");
+	__asm(ASM_VMX_VMXOFF "; setna %0"
+	      : "=q" (error)
+	      : /* no reads  */
+	      : "cc");
 	return error;
 }
 
 static inline u8 __vmx_vmlaunch(void)
 {
 	u8 error;
-	__asm __volatile(ASM_VMX_VMLAUNCH "; setna %0"
-			 : "=q" (error) :: "cc");
+	__asm(ASM_VMX_VMLAUNCH "; setna %0"
+	      : "=q" (error) :: "cc");
 	return error;
 }
 
 static inline u8 __vmx_vmclear(unsigned long long *pa)
 {
 	u8 error;
-	__asm __volatile(ASM_VMX_VMCLEAR_RAX "; setna %0"
-			 : "=qm" (error) : "a" (pa), "m" (*pa)
-			 : "cc", "memory");
+	__asm(ASM_VMX_VMCLEAR_RAX "; setna %0"
+	      : "=qm" (error) : "a" (pa), "m" (*pa)
+	      : "cc", "memory");
 	return error;
 }
 
 static inline u8 __vmx_vmptrld(unsigned long long *pa)
 {
 	u8 error;
-	__asm __volatile(ASM_VMX_VMPTRLD_RAX "; setna %0"
-			 : "=qm" (error) : "a" (pa), "m" (*pa)
-			 : "cc", "memory");
+	__asm(ASM_VMX_VMPTRLD_RAX "; setna %0"
+	      : "=qm" (error) : "a" (pa), "m" (*pa)
+	      : "cc", "memory");
 	return error;
 }
 
@@ -503,10 +503,10 @@ static inline u8 __vmx_vmread(size_t field, size_t *value)
 {
 	size_t tmp;
 	u8 error;
-	__asm __volatile("vmread %[Field], %[Value]; setna %[Err]"
-			 : [Value] "=r" (tmp), [Err] "=qm" (error)
-			 : [Field] "r" (field)
-			 : "cc");
+	__asm("vmread %2, %0; setna %1"
+	      : "=r" (tmp), "=qm" (error)
+	      : "r" (field)
+	      : "cc");
 	*value = tmp;
 	return error;
 }
@@ -514,46 +514,46 @@ static inline u8 __vmx_vmread(size_t field, size_t *value)
 static inline u8 __vmx_vmwrite(size_t field, size_t value)
 {
 	u8 error;
-	__asm __volatile("vmwrite %[Value], %[Field]; setna %[Err]"
-			 : [Err] "=qm" (error)
-			 : [Value] "r" (value), [Field] "r" (field)
-			 : "cc");
+	__asm("vmwrite %1, %2; setna %0"
+	      : "=qm" (error)
+	      : "r" (value), "r" (field)
+	      : "cc");
 	return error;
 }
 
 static inline u8 __vmx_vmcall(uintptr_t hc, void *d)
 {
 	u8 error;
-	__asm __volatile("vmcall; setna %0"
-			 : "=q" (error) : "c" (hc), "d" (d)
-			 : "cc");
+	__asm("vmcall; setna %0"
+	      : "=q" (error) : "c" (hc), "d" (d)
+	      : "cc");
 	return error;
 }
 
 static inline u8 __vmx_vmfunc(u32 eptp, u32 func)
 {
 	u8 error;
-	__asm __volatile(ASM_VMX_VMFUNC "; setna %0"
-			 : "=q" (error) : "c" (eptp), "a" (func)
-			 : "cc");
+	__asm(ASM_VMX_VMFUNC "; setna %0"
+	      : "=q" (error) : "c" (eptp), "a" (func)
+	      : "cc");
 	return error;
 }
 
 static inline u8 __invept(int ext, const invept_t *i)
 {
 	u8 error;
-	__asm __volatile(ASM_VMX_INVEPT "; setna %0"
-			 : "=q" (error) : "d" (i), "c" (ext)
-			 : "cc", "memory");
+	__asm(ASM_VMX_INVEPT "; setna %0"
+	      : "=q" (error) : "d" (i), "c" (ext)
+	      : "cc", "memory");
 	return error;
 }
 
 static inline u8 __invvpid(int ext, const invvpid_t *i)
 {
 	u8 error;
-	__asm __volatile(ASM_VMX_INVVPID "; setna %0"
-			 : "=q" (error): "d" (i), "c" (ext)
-			 : "cc", "memory");
+	__asm(ASM_VMX_INVVPID "; setna %0"
+	      : "=q" (error): "d" (i), "c" (ext)
+	      : "cc", "memory");
 	return error;
 }
 #else

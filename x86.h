@@ -1011,13 +1011,13 @@ complete list. */
 
 #ifndef _MSC_VER
 #define __writedr(dr, val)					\
-	__asm __volatile("movq	%[Val], %%dr" #dr		\
-			 : : [Val] "r" ((val)))
+	__asm("movq	%[Val], %%dr" #dr		\
+	      : : [Val] "r" ((val)))
 
 #define __readdr(dr) __extension__ ({			\
 	unsigned long long val;				\
-	__asm __volatile("movq	%%dr" #dr ", %[Val]"	\
-			 : [Val] "=r" (val));		\
+	__asm("movq	%%dr" #dr ", %[Val]"	\
+	      : [Val] "=r" (val));		\
 	val;						\
 })
 
@@ -1026,16 +1026,16 @@ static inline void _xsetbv(u32 index, u64 value)
 	u32 eax = value;
 	u32 edx = value >> 32;
 
-	__asm __volatile(".byte 0x0f,0x01,0xd1"
-			 :: "a" (eax), "d" (edx), "c" (index));
+	__asm(".byte 0x0f,0x01,0xd1"
+	      :: "a" (eax), "d" (edx), "c" (index));
 }
 
 static inline void __cpuidex(int *ret, int func, int subf)
 {
 	u32 eax, ebx, ecx, edx;
-	__asm __volatile("cpuid"
-			 : "=a" (eax), "=D" (ebx), "=c" (ecx), "=d" (edx)
-			 : "a" (func), "c" (subf));
+	__asm("cpuid"
+	      : "=a" (eax), "=D" (ebx), "=c" (ecx), "=d" (edx)
+	      : "a" (func), "c" (subf));
 	ret[0] = eax;
 	ret[1] = ebx;
 	ret[2] = ecx;
@@ -1045,9 +1045,9 @@ static inline void __cpuidex(int *ret, int func, int subf)
 static inline u64 __lar(u64 sel)
 {
 	u64 ar;
-	__asm __volatile("lar %[sel], %[ar]"
-			 : [ar] "=r" (ar)
-			 : [sel] "r" (sel));
+	__asm("lar %[sel], %[ar]"
+	      : [ar] "=r" (ar)
+	      : [sel] "r" (sel));
 	return ar;
 }
 
@@ -1055,16 +1055,14 @@ static inline u64 __lar(u64 sel)
 static inline u64 __rdtsc(void)
 {
 	u32 eax, edx;
-	__asm __volatile("rdtsc"
-			 : "=a" (eax), "=d" (edx));
+	__asm("rdtsc" : "=a" (eax), "=d" (edx));
 	return (u64)eax | (u64)edx << 32;
 }
 
 static inline u64 __rdtscp(u32 *cpu)
 {
 	u32 eax, edx;
-	__asm __volatile("rdtscp"
-			 : "=c" (*cpu), "=a" (eax), "=d" (edx));
+	__asm("rdtscp" : "=c" (*cpu), "=a" (eax), "=d" (edx));
 	return (u64)eax | (u64)edx << 32;
 }
 
@@ -1124,7 +1122,7 @@ static inline void __writemsr(u32 msr, u64 val)
 #define __invlpg(addr)	__asm __volatile("invlpg (%0)" :: "r" (addr) : "memory")
 #define __readeflags()	({							\
 	u64 rflags;								\
-	__asm __volatile("pushfq\n\tpopq %[rf]" : [rf] "=r" (rflags));		\
+	__asm("pushfq\n\tpopq %0" : "=r" (rflags));		\
 	rflags;									\
 })
 
@@ -1132,7 +1130,7 @@ static inline void __writemsr(u32 msr, u64 val)
 	static inline u16 name(void)				\
 	{							\
 		u16 tmp;					\
-		__asm __volatile(instr : "=r" (tmp));		\
+		__asm(instr : "=r" (tmp));		\
 		return tmp;					\
 	}
 
