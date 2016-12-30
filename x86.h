@@ -993,14 +993,20 @@ complete list. */
 #define __return_addr()		__builtin_return_address(0)
 #define cpu_relax()		__asm __volatile("pause\n\t" ::: "memory")
 #ifndef __linux__
-#define barrier() 		__asm __volatile("lock orq $0, 0(%%rsp)" ::: "memory")
+#define barrier()		__asm __volatile("" ::: "memory")
+#define smp_mb()		__asm __volatile("mfence" ::: "memory")
+#define smp_rmb()		__asm __volatile("lfence" ::: "memory")
+#define smp_wmb()		__asm __volatile("sfence" ::: "memory")
 #endif
 #else
 #define __cli()			_disable()
 #define __sti()			_enable()
 #define __return_addr()		_ReturnAddress()
 #define cpu_relax()		_mm_pause()
-#define barrier() 		_ReadWriteBarrier()
+#define barrier()		_ReadWriteBarrier()
+#define smp_mb()		_mm_mfence()
+#define smp_rmb()		_mm_lfence()
+#define smp_wmb() 		_mm_sfence()
 #endif
 
 #ifndef _MSC_VER

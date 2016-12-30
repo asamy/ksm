@@ -109,7 +109,7 @@ int __init ksm_start(void)
 
 	mm = current->active_mm;
 	atomic_inc(&mm->mm_count);
-	ksm.kernel_cr3 = __pa(mm->pgd);
+	ksm.host_pgd = __pa(mm->pgd);
 
 	register_hotcpu_notifier(&cpu_notify);
 #ifdef ENABLE_RESUBV

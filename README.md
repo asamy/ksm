@@ -42,8 +42,7 @@ technique that I can relay on.
 ## Requirements
 
 - An Intel processor (with VT-x and EPT support)
-- A working C compiler (GCC or CLang or Microsoft compiler aka CL).  CLang may
-not be able to compile it and is not tested.
+- A working C compiler (GCC or Microsoft compiler aka CL are supported)
 
 ## Supported Kernels
 
@@ -120,11 +119,9 @@ This is the flow:
 
 			vcpu_create(vcpu) -> __vmx_vminit(vcpu) ->
 				save guest state
-				set guest start point
-				save guest stack ptr
-	
-				then call:
-				vcpu_run(vcpu, stack, start_point)
+				vcpu_run()
+
+				vcpu_run(vcpu, stack_ptr, guest_start_point) ->
 					...
 					/* write important fields to VM Control
 					   structure:  */

@@ -39,8 +39,8 @@
 #define __EXCEPTION_BITMAP	0
 
 #define HYPERCALL_STOP		0	/* Stop virtualization on this CPU  */
-#define HYPERCALL_IDT		1	/* Hook IDT entry (see idt.h, exit.c)  */
-#define HYPERCALL_UIDT		2	/* Unhook IDT entry  */
+#define HYPERCALL_IDT		1	/* Hook IDT entry (see vcpu_put_idt())  */
+#define HYPERCALL_UIDT		2	/* Unhook IDT entry */
 #ifdef EPAGE_HOOK
 #define HYPERCALL_HOOK		3	/* Hook page  */
 #define HYPERCALL_UNHOOK	4	/* Unhook page  */
@@ -51,8 +51,8 @@
  * NOTE:
  *	All of these are relative to current stack
  *	pointer, do not change!!!  These are supposed
- *	to match ones defined by intel in Exit Qualification.
- *	Those are also matched with the assembly, see PUSH_REGS.
+ *	to match ones defined by Intel in Exit Qualification.
+ *	Those are also matched with the assembly code, see PUSH_REGS.
  */
 #define REG_AX			0
 #define REG_CX			1
@@ -95,11 +95,9 @@
 #else
 #define cpu_nr()			KeGetCurrentProcessorNumberEx(NULL)
 #endif
-#define vpid_nr()			(cpu_nr() + 1)
 
-#ifndef __func__
-#define __func__ __FUNCTION__
-#endif
+/* VPID 0 is used by VMX root.  */
+#define vpid_nr()			(cpu_nr() + 1)
 
 #ifdef ENABLE_PRINT
 #ifdef __linux__
@@ -132,6 +130,12 @@
 #define VCPU_TRACER_END()
 #endif
 
+/*
+ * FIXME: This needs to be removed and instead `kmap_iomem()` can be used, this
+ * is very unsafe...
+ *
+ * Used only in GDT/IDT/LDT/TR VM-exit handlers.
+ */
 #define VCPU_ENTER_GUEST()				\
 	uintptr_t __g_cr3 = vmcs_read(GUEST_CR3);	\
 	uintptr_t __save_cr3 = __readcr3();		\
@@ -483,8 +487,8 @@ extern void deregister_power_callback(PDEV_EXT ext);
 struct ksm {
 	int active_vcpus;
 	struct vcpu vcpu_list[KSM_MAX_VCPUS];
-	uintptr_t origin_cr3;
-	uintptr_t kernel_cr3;
+	uintptr_t orig_pgd;
+	uintptr_t host_pgd;
 #ifdef EPAGE_HOOK
 	struct htable ht;
 #endif

@@ -751,7 +751,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write64(GUEST_IA32_DEBUGCTL, __readmsr(MSR_IA32_DEBUGCTLMSR));
 	err |= vmcs_write(GUEST_PENDING_DBG_EXCEPTIONS, 0);
 	err |= vmcs_write(GUEST_CR0, cr0);
-	err |= vmcs_write(GUEST_CR3, ksm.origin_cr3);
+	err |= vmcs_write(GUEST_CR3, ksm.orig_pgd);
 	err |= vmcs_write(GUEST_CR4, cr4);
 	err |= vmcs_write(GUEST_ES_BASE, 0);
 	err |= vmcs_write(GUEST_CS_BASE, 0);
@@ -780,7 +780,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write16(HOST_GS_SELECTOR, gs & 0xf8);
 	err |= vmcs_write16(HOST_TR_SELECTOR, tr & 0xf8);
 	err |= vmcs_write(HOST_CR0, cr0);
-	err |= vmcs_write(HOST_CR3, ksm.kernel_cr3);
+	err |= vmcs_write(HOST_CR3, ksm.host_pgd);
 	err |= vmcs_write(HOST_CR4, cr4);
 	err |= vmcs_write(HOST_FS_BASE, __readmsr(MSR_IA32_FS_BASE));
 	err |= vmcs_write(HOST_GS_BASE, __readmsr(MSR_IA32_GS_BASE));

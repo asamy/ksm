@@ -41,7 +41,8 @@
 
 #include "ksm.h"
 
-#define PRINT_FLUSH_DELAY	1000
+#define PRINT_FLUSH_DELAY	200
+#define PRINT_BUF_ATONCE	512
 #define PRINT_BUF_BUFFERS	2
 #define PRINT_BUF_SHIFT		PAGE_SHIFT
 #define PRINT_BUF_STRIDE	(1 << PAGE_SHIFT)
@@ -55,6 +56,8 @@
  * @head_use - points to the head of the buffer we should be buffering to
  * @next_use - points to next buffering location
  * @next - specifies next index of the buffer slice to use
+ * @next_off - specifies next offset to print off the current buffer slice,
+ *	       since DbgPrint() only allows up to 512 chars.
  *
  * head_use is switched between buf + 0 and buf + PRINT_BUF_STRIDE, to avoid
  * confusions and to make it better in terms of performance, between do_print()
@@ -71,6 +74,7 @@ static char buf[PRINT_BUF_SIZE];
 static char *head_use = buf;
 static char *next_use = buf;
 static size_t next = 0;
+static size_t next_off = 0;
 static KSPIN_LOCK lock;
 #ifdef ENABLE_FILEPRINT
 static ERESOURCE resource;
@@ -141,21 +145,34 @@ static inline char *stpcpy(char *dst, const char *src)
 
 static inline void print_flush(void)
 {
-	char on_stack[512];
-	u32 len = 0;
+	char on_stack[PRINT_BUF_ATONCE + 1];
+	char *printbuf;
+	size_t max;
+	size_t rem;
+	size_t len;
 	KLOCK_QUEUE_HANDLE q;
 #ifdef ENABLE_FILEPRINT
 	IO_STATUS_BLOCK sblk;
 #endif
 
+	smp_rmb();
 	KeAcquireInStackQueuedSpinLock(&lock, &q);
-	char *printbuf = buf + ((next & (PRINT_BUF_BUFFERS - 1)) << PRINT_BUF_SHIFT);
-	strncpy(on_stack, printbuf, sizeof(on_stack));
-	len = (u32)strlen(on_stack);
+	printbuf = buf + next_off + ((next & (PRINT_BUF_BUFFERS - 1)) << PRINT_BUF_SHIFT);
+	max = next_use - head_use;
 
-	head_use = buf + ((++next & (PRINT_BUF_BUFFERS - 1)) << PRINT_BUF_SHIFT);
-	next_use = head_use;
+	strncpy(on_stack, printbuf, PRINT_BUF_ATONCE);
+	on_stack[PRINT_BUF_ATONCE] = '\0';
+	len = strlen(on_stack);
+	next_off += len;
+	rem = max - next_off;
+
+	if (rem == 0) {
+		head_use = buf + ((++next & (PRINT_BUF_BUFFERS - 1)) << PRINT_BUF_SHIFT);
+		next_use = head_use;
+		next_off = 0;
+	}
 	KeReleaseInStackQueuedSpinLock(&q);
+	smp_wmb();
 
 #ifdef ENABLE_DBGPRINT
 	DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", on_stack);
@@ -163,7 +180,7 @@ static inline void print_flush(void)
 #ifdef ENABLE_FILEPRINT
 	ExEnterCriticalRegionAndAcquireResourceExclusive(&resource);
 	ZwWriteFile(file, NULL, NULL, NULL,
-		    &sblk, on_stack, len,
+		    &sblk, on_stack, (u32)len,
 		    NULL, NULL);
 	ExReleaseResourceAndLeaveCriticalRegion(&resource);
 #endif
@@ -259,8 +276,10 @@ void print_exit(void)
 
 void do_print(const char *fmt, ...)
 {
-	char buffer[512];
+	char buffer[PRINT_BUF_ATONCE];
 	va_list va;
+	size_t len;
+	size_t pos;
 	NTSTATUS status;
 	KLOCK_QUEUE_HANDLE q;
 
@@ -298,17 +317,17 @@ void do_print(const char *fmt, ...)
 		/* Acquire lock to update head:  */
 		KeAcquireInStackQueuedSpinLock(&lock, &q);
 
-		size_t len = strlen(buffer);
-		size_t pos = (size_t)next_use - (size_t)head_use;
+		len = strlen(buffer);
+		pos = (size_t)next_use - (size_t)head_use;
 		if (pos + len >= PRINT_BUF_STRIDE)
 			return KeReleaseInStackQueuedSpinLock(&q);
 
 		next_use = stpcpy(next_use, buffer);
 		*next_use = '\0';
+		KeReleaseInStackQueuedSpinLock(&q);
 
 		/* Make sure print_thread() will see the update:  */
-		barrier();
-		KeReleaseInStackQueuedSpinLock(&q);
+		smp_wmb();
 	}
 }
 #endif

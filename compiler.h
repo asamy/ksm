@@ -142,5 +142,10 @@ typedef signed long long intptr_t;
 #define ERR_EXCEPT		-EINVAL
 
 #endif
+
+#ifndef __func__
+#define __func__ __FUNCTION__
+#endif
+
 #endif
 

@@ -159,9 +159,9 @@ int __ksm_init_cpu(struct ksm *k)
 	 * works...
 	 */
 #ifdef __linux__
-	k->origin_cr3 = __readcr3();
+	k->orig_pgd = __readcr3();
 #else
-	k->kernel_cr3 = __readcr3();
+	k->host_pgd = __readcr3();
 #endif
 
 	ret = __vmx_vminit(vcpu);
@@ -187,7 +187,7 @@ int ksm_subvert(void)
 {
 #ifndef __linux__
 	/* See comments in __ksm_init_cpu...  */
-	ksm.origin_cr3 = __readcr3();
+	ksm.orig_pgd = __readcr3();
 #endif
 
 	CALL_DPC(__call_init, &ksm);
