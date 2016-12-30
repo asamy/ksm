@@ -27,10 +27,10 @@ PWD := $(shell pwd)
 MAKEFLAGS += --no-print-directory
 
 all:
-	@make -C $(KDIR) M=$(PWD) modules
+	@make -C $(KBUILD) M=$(PWD) modules
 
 clean:
-	@make -C $(KDIR) M=$(PWD) clean
+	@make -C $(KBUILD) M=$(PWD) clean
 
 install: $(BIN)
 	@cp $(BIN) $(KDIR)
