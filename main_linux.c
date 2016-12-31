@@ -20,9 +20,6 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/workqueue.h>
-#include <linux/sched.h>
-#include <linux/cpu.h>
-#include <linux/syscore_ops.h>
 
 #include "ksm.h"
 
