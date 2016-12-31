@@ -170,9 +170,9 @@ static inline void print_flush(void)
 		head_use = buf + ((++next & (PRINT_BUF_BUFFERS - 1)) << PRINT_BUF_SHIFT);
 		next_use = head_use;
 		next_off = 0;
+		smp_wmb();
 	}
 	KeReleaseInStackQueuedSpinLock(&q);
-	smp_wmb();
 
 #ifdef ENABLE_DBGPRINT
 	DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", on_stack);
