@@ -664,12 +664,38 @@ Then `make`.
 
 ##### Makefile variables:
 
-1. `C=1` - Prepare for cross-compiling.
-2. `V=1` - Verbose output (the default, pass 0 for quiet.)
+You can pass one or more of the following variables to the `make` command:
+
+- `WINVER=0x0602` - Explicility specify windows version to build for.
+- `C=1` - Prepare for cross-compiling.
+- `V=1` - Verbose output (the default, pass 0 for quiet.)
+- `BIN_DIR=xxx` - Generate binary and symbols to this directory
+- `OBJ_DIR=xxx` - Generate object files to this directory
+- `DEP_DIR=xxx` - Generate dependency files to this directory
+- `CROSS_INC=xxx` - Path to include directory if they reside in a special place
+- `CROSS_LIB=xxx` - Path to library directory if they reside in a special place
+- `CROSS_BUILD=xxx` - Prefix to toolchain binaries (e.g.
+						    `x86-_64-w64-mingw32-XXX`)
+- `PREPEND=xxx` - Prepend something to the compiler/linker executable (e.g. if
+								       this is
+								       "c" and
+								       compiler
+								       is "gcc"
+								       then
+								       full
+								       command
+								       is going
+								       to be
+								       "cgcc")
+- `CEXTRA=xxx` - Print something out after compiling a C file.
+- `AEXTRA=xxx` - Print something out after compiling an Assembler file.
+- `LEXTRA=xxx` - Print something out after linking
 
 You may need to adjust the windows version you're compiling for, in that case
-adjust `_WIN32_WINNT` inside the Makefile manually or pass it through command:
-`make -f Makefile.windows C=1 -D_WIN32_wINNT=0x0602`.
+adjust `_WIN32_WINNT` inside the Makefile manually or pass it through
+commandline:
+
+	`make -f Makefile.windows C=1 WINVER=0x0602`.
 
 ##### Cross under Linux
 

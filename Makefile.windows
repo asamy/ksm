@@ -46,7 +46,7 @@ OBJCOPY = $(CROSS_BUILD)objcopy --only-keep-debug
 # 	0x0602 = Windows 8
 # 	0x0603 = Windows 8.1
 # 	0x0A00 = Windows 10
-WINVER=0x0A00
+WINVER ?= 0x0A00
 
 DEPFLAGS = -MT $@ -MMD -MP -MF $(DEP_DIR)/$*.d
 DBGFLAGS = -DDBG -O2
@@ -63,9 +63,9 @@ LIBS = -L$(CROSS_LIB) -lntoskrnl -lhal -lmingwex
 SRC = exit.c htable.c hotplug.c ksm.c main_windows.c page.c print.c resubv.c vcpu.c
 ASM = vmx.S
 
-BIN_DIR = bin
-OBJ_DIR = obj
-DEP_DIR = dep
+BIN_DIR ?= bin
+OBJ_DIR ?= obj
+DEP_DIR ?= dep
 DEP  = $(SRC:%.c=$(DEP_DIR)/%.d)
 OBJ  = $(SRC:%.c=$(OBJ_DIR)/%.o)
 OBJ += $(ASM:%.S=$(OBJ_DIR)/%.o)
