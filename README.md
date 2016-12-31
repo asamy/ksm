@@ -178,7 +178,13 @@ During a guest event (e.g. CPUID execution, etc.), this is what happens:
 			if fail:
 				jump handle_fail
 			endif
+
+			/* Now we're off VMX root mode and preparing to return
+			   to normal mode, aka no guest-host barrier.  */
+			restore guest stack pointer
+			set guest rflags
 			jump to guest defined RIP
+
 		handle_fail:
 			push guest registers
 			push guest flags
@@ -187,6 +193,52 @@ During a guest event (e.g. CPUID execution, etc.), this is what happens:
 				   returned...  */
 			hlt
 			jump do_hlt
+
+	CPU:
+	/* Note: We assume all these came from us (the host, or root mode), in
+	   the other case where these instructions are not executed in root
+	   mode, the CPU will either:
+		1) VM exit to root mode if it's inside non-root mode (i.e.
+		virtualized)
+		2) throw exception if non-root mode.
+	*/
+		if did_vmresume:	/* if vmresume was executed  */
+			if not check_host_state_fields or
+			   not check_guest_state_fields:
+				set_eflags_to_indicate_failure
+				advance_instruction_pointer
+				return to caller
+			endif
+
+			/* check if some stuff need to be done on vm-entry
+			   (e.g. MSR load or exceptions):  */
+			if msr_entry_fields:
+				load msrs
+			endif
+		
+			save_host_state_fields (very unlikely to be updated...)
+			load guest_state_fields 
+			set instruction_pointer to guest_start /* defined by us
+							  in that case
+							  */
+			if exception_queued:
+				throw exception
+			else:
+				jump to guest_start
+			endif
+		elif did_vmxoff:	/* if vmxoff was executed  */
+			if not do_sanity_checks:
+				set_eflags_to_indicate_failure
+				advance instruction_pointer
+				return to caller
+			endif
+
+			turn off root mode (i.e. set VMXON pointer to none)
+			set vmcs pointer to 0
+			set_eflags_to_indicate_success
+			advance instruction_pointer
+			return to caller
+		endif
 ```
 
 ### Controling processor events
