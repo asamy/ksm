@@ -201,6 +201,7 @@ int ksm_subvert(void)
 int ksm_init(void)
 {
 	int info[4];
+	int ret = ERR_NOMEM;
 	u64 vpid;
 	u64 req = KSM_EPT_REQUIRED_EPT
 #ifdef ENABLE_PML
@@ -229,16 +230,23 @@ int ksm_init(void)
 	if (!init_msr_bitmap(&ksm))
 		return ERR_NOMEM;
 
-	if (!init_io_bitmaps(&ksm)) {
-		/*
-		 * Hashtable is on-demand allocation, no need to clear it
-		 * here...
-		 */
-		free_msr_bitmap(&ksm);
-		return ERR_NOMEM;
-	}
+	if (!init_io_bitmaps(&ksm))
+		goto out_msr;
 
-	return 0;
+	ret = register_power_callback();
+	if (ret < 0)
+		goto out_io;
+
+	ret = register_cpu_callback();
+	if (ret == 0)
+		return ret;
+
+	unregister_power_callback();
+out_io:
+	free_io_bitmaps(&ksm);
+out_msr:
+	free_msr_bitmap(&ksm);
+	return ret;
 }
 
 /*
@@ -293,6 +301,8 @@ int ksm_exit(void)
 #ifdef EPAGE_HOOK
 		htable_clear(&ksm.ht);
 #endif
+		unregister_cpu_callback();
+		unregister_power_callback();
 	}
 
 	return err;
@@ -331,4 +341,3 @@ int ksm_free_idt(unsigned n)
 	});
 	return DPC_RET();
 }
-

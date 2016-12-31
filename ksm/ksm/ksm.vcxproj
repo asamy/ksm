@@ -93,6 +93,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="..\..\exit.c" />
+    <ClCompile Include="..\..\hotplug.c" />
     <ClCompile Include="..\..\htable.c" />
     <ClCompile Include="..\..\ksm.c" />
     <ClCompile Include="..\..\main_windows.c" />

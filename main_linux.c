@@ -36,56 +36,6 @@ static void ksm_worker(struct work_struct *w)
 }
 static DECLARE_DELAYED_WORK(work, ksm_worker);
 
-static inline void do_cpu(void *v)
-{
-	int (*f) (struct ksm *) = v;
-	VCPU_DEBUG("On CPU calling %p\n", f);
-	f(&ksm);
-}
-
-static int cpu_callback(struct notifier_block *nfb, unsigned long action, void *hcpu)
-{
-	unsigned long cpu = (unsigned long)hcpu;
-
-	VCPU_DEBUG("CPU %d action: %d\n", cpu, action);
-	switch (action) {
-	case CPU_ONLINE:
-		smp_call_function_single(cpu, do_cpu, __ksm_init_cpu, 1);
-		break;
-	case CPU_DOWN_PREPARE:
-		smp_call_function_single(cpu, do_cpu, __ksm_exit_cpu, 1);
-		break;
-	}
-
-	return NOTIFY_OK;
-}
-
-static struct notifier_block cpu_notify = {
-	.notifier_call = cpu_callback
-};
-
-#ifdef ENABLE_RESUBV
-/*
- * On S1-3 S4 states the CPU automatically disables virtualization, so shut it
- * down gracefully.  On S0 state, restore virtualization.
- */
-static void ksm_resume(void)
-{
-	VCPU_DEBUG("in resume: %d\n", ksm_subvert());
-}
-
-static int ksm_suspend(void)
-{
-	VCPU_DEBUG("in suspend: %d\n", ksm_unsubvert());
-	return 0;
-}
-
-static struct syscore_ops syscore_ops = {
-	.resume = ksm_resume,
-	.suspend = ksm_suspend,
-};
-#endif
-
 int __init ksm_start(void)
 {
 	int ret = -ENOMEM;
@@ -110,11 +60,6 @@ int __init ksm_start(void)
 	mm = current->active_mm;
 	atomic_inc(&mm->mm_count);
 	ksm.host_pgd = __pa(mm->pgd);
-
-	register_hotcpu_notifier(&cpu_notify);
-#ifdef ENABLE_RESUBV
-	register_syscore_ops(&syscore_ops);
-#endif
 	return ret;
 
 out_wq:
@@ -127,13 +72,8 @@ out_exit:
 void __exit ksm_cleanup(void)
 {
 	int ret, active;
-
 	destroy_workqueue(wq);
-	unregister_hotcpu_notifier(&cpu_notify);
-#ifdef ENABLE_RESUBV
-	unregister_syscore_ops(&syscore_ops);
-#endif
-
+	
 	active = ksm.active_vcpus;
 	ret = ksm_exit();
 	VCPU_DEBUG("%d active: exit: %d\n", active, ret);

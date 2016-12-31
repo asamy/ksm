@@ -37,11 +37,6 @@ typedef struct _LDR_DATA_TABLE_ENTRY {
 	ULONG TimeDateStamp;
 } LDR_DATA_TABLE_ENTRY, *PLDR_DATA_TABLE_ENTRY;
 
-#ifdef ENABLE_RESUBV
-static DEV_EXT g_dev_ext = { NULL, NULL };
-#endif
-static void *hotplug_cpu;
-
 #ifndef __GNUC__
 DRIVER_INITIALIZE DriverEntry;
 #pragma alloc_text(INIT, DriverEntry)
@@ -55,29 +50,6 @@ uintptr_t pxe_base = 0xfffff6fb7dbed000ull;
 uintptr_t ppe_base = 0xfffff6fb7da00000ull;
 uintptr_t pde_base = 0xfffff6fb40000000ull;
 uintptr_t pte_base = 0xfffff68000000000ull;
-
-static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT change_ctx, PNTSTATUS op_status)
-{
-	/* CPU Hotplug callback, a CPU just came online.  */
-	GROUP_AFFINITY affinity;
-	GROUP_AFFINITY prev;
-	PPROCESSOR_NUMBER pnr;
-	int status;
-
-	if (change_ctx->State == KeProcessorAddCompleteNotify) {
-		pnr = &change_ctx->ProcNumber;
-		affinity.Group = pnr->Group;
-		affinity.Mask = 1ULL << pnr->Number;
-		KeSetSystemGroupAffinityThread(&affinity, &prev);
-
-		VCPU_DEBUG_RAW("New processor\n");
-		status = __ksm_init_cpu(&ksm);
-		if (!NT_SUCCESS(status))
-			*op_status = status;
-
-		KeRevertToUserGroupAffinityThread(&prev);
-	}
-}
 
 static inline NTSTATUS check_dynamic_pgtables(void)
 {
@@ -124,12 +96,11 @@ static inline NTSTATUS check_dynamic_pgtables(void)
 
 static void DriverUnload(PDRIVER_OBJECT driverObject)
 {
+	int ret;
 	UNREFERENCED_PARAMETER(driverObject);
-	KeDeregisterProcessorChangeCallback(hotplug_cpu);
-#ifdef ENABLE_RESUBV
-	deregister_power_callback(&g_dev_ext);
-#endif
-	VCPU_DEBUG("ret: 0x%08X\n", ksm_exit());
+
+	ret = ksm_exit();
+	VCPU_DEBUG("ret: 0x%08X\n", ret);
 #ifdef ENABLE_PRINT
 	print_exit();
 #endif
@@ -175,12 +146,6 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	g_driver_base = (uintptr_t)entry->DllBase;
 	g_driver_size = entry->SizeOfImage;
 
-	hotplug_cpu = KeRegisterProcessorChangeCallback(ksm_hotplug_cpu, NULL, 0);
-	if (!hotplug_cpu) {
-		status = STATUS_UNSUCCESSFUL;
-		goto err;
-	}
-
 	/*
 	 * Zero out everything (this is allocated by the kernel device driver
 	 * loader)
@@ -188,15 +153,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	__stosq((u64 *)&ksm, 0, sizeof(ksm) >> 3);
 
 	if (!NT_SUCCESS(status = ksm_init()))
-		goto err1;
+		goto err;
 
 	if (!NT_SUCCESS(status = ksm_subvert()))
 		goto exit;
-
-#ifdef ENABLE_RESUBV
-	if (!NT_SUCCESS(status = register_power_callback(&g_dev_ext)))
-		goto exit;
-#endif
 
 #if 0
 #ifdef EPAGE_HOOK
@@ -219,8 +179,6 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 
 exit:
 	ksm_exit();
-err1:
-	KeDeregisterProcessorChangeCallback(hotplug_cpu);
 err:
 #ifdef ENABLE_PRINT
 	print_exit();

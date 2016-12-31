@@ -475,14 +475,15 @@ static inline size_t rehash(const void *e, void *unused)
 #endif
 
 #ifdef ENABLE_RESUBV
-typedef struct _DEV_EXT {
-	void *CbRegistration;
-	void *CbObject;
-} DEV_EXT, *PDEV_EXT;
-
-extern NTSTATUS register_power_callback(PDEV_EXT ext);
-extern void deregister_power_callback(PDEV_EXT ext);
+extern int register_power_callback(void);
+extern void unregister_power_callback(void);
+#else
+static int register_power_callback(void) { return 0; }
+static void unregister_power_callback(void) { }
 #endif
+
+extern int register_cpu_callback(void);
+extern void unregister_cpu_callback(void);
 
 struct ksm {
 	int active_vcpus;
