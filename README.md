@@ -49,24 +49,6 @@ technique that I can relay on.
 - All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested under Windows 7/8/8.1/10.
 - Linux kernel (tested under 3.16, 4.8.13 and mainline)
 
-## Porting to other kernels guidelines
-
-- Port `mm.h` functions (`mm_alloc_page`, `__mm_free_page`, `mm_alloc_pool`,
-			 etc.)
-- Port `resubv.c` (not really needed) for re-virtualization on S1-3 or S4 state (commenting it out is OK).
-- Write module for initialization
-- Port `print.c` for printing interface (Some kernels may not require it)
-- Port `vmx.S` for the assembly based stuff, please use macros for calling conventions, etc.
-
-Hopefully didn't miss something important, but these are definitely the mains.
-
-## Porting to other x86 processors
-
-Since some code is split oddly, and needs to be organized to fit logically
-together, these files should be renamed/merged:
-
-- exit.c and vcpu.c should be merged to make vmx.c
-
 ## TODO / In development
 
 - APIC virtualization (Partially implemented, needs testing & fixes)
@@ -104,7 +86,15 @@ loading GDT and LDT all the time, which is _insane_.
 The main initialization code is in `ksm.c` which manages all-cpus
 {,de}initialization, however, `vcpu.c` is to handle per-cpu initialization and
 is called from `ksm.c` on a high-level understanding, then `exit.c` handles
-violations from the guest kernel.
+events from the guest kernel.
+
+**Note**: there are more things that happen during this transition, but to simplify
+things, only a few stuff is explained.
+
+**Note**: Most `ksm` prefixed functions are either defined in `ksm.c` or `ksm.h`
+or `main_KERNELNAME.c`, all of `vcpu` prefixed functions are defined in
+`vcpu.c` and `exit.c`, `vmx` prefixed functions are mostly inline assembly
+(vmx.h in that case) or compiler-intrinsics or defined in assembler.
 
 This is the flow:
 
@@ -161,6 +151,9 @@ During a guest event (e.g. CPUID execution, etc.), this is what happens:
 
 	KSM:
 		__vmx_entrypoint:
+			/* Note: The guest registers are still untouched at
+			   this point!  so we can save them and write to them
+			   if needed.  */
 			push guest registers
 			if not vcpu_handle_exit(regs) then
 				jump do_vmx_off
@@ -182,8 +175,14 @@ During a guest event (e.g. CPUID execution, etc.), this is what happens:
 			/* Now we're off VMX root mode and preparing to return
 			   to normal mode, aka no guest-host barrier.  */
 			restore guest stack pointer
-			set guest rflags
-			jump to guest defined RIP
+			set guest rflags	/* important to do this after
+						   restoring the stack pointer
+						   and not before, because this
+						   may cause interrupts to be
+						   re-enabled...  */
+			jump to guest defined RIP	/* last guest RIP +
+							   last instruction
+							   length.  */
 
 		handle_fail:
 			push guest registers
@@ -317,7 +316,7 @@ EPT (Extended Page Tables) also called SLAT (Second Level Address Translation)
 is used to control guest address translation but on the physical level.
 
 Without EPT, the processor normally goes through translating a virtual address
-its backing physical address, with EPT, the processor adds another level of
+to its backing physical address, with EPT, the processor adds another level of
 translation, which translates the physical address (now called "guest physical address"
 					    or GPA) to "host physical address"
 (HPA).
@@ -460,6 +459,24 @@ Since we use 3 EPT pointers, and since the page needs to be read and written to 
 	The third pointer is used for when we need to call the original function.  The third pointer
 	has execute only access rights to the page with the sane page frame number.
 
+## Porting to other kernels guidelines
+
+- Port `mm.h` functions (`mm_alloc_page`, `__mm_free_page`, `mm_alloc_pool`,
+			 etc.)
+- Port `resubv.c` (not really needed) for re-virtualization on S1-3 or S4 state (commenting it out is OK).
+- Write module for initialization
+- Port `print.c` for printing interface (Some kernels may not require it)
+- Port `vmx.S` for the assembly based stuff, please use macros for calling conventions, etc.
+
+Hopefully didn't miss something important, but these are definitely the mains.
+
+## Porting to other x86 processors
+
+Since some code is split oddly, and needs to be organized to fit logically
+together, these files should be renamed/merged:
+
+- exit.c and vcpu.c should be merged to make vmx.c
+
 ## KSM needs your help to survive!
 
 Contributions are really appreciated and can be submitted by one of the following:
@@ -468,15 +485,11 @@ Contributions are really appreciated and can be submitted by one of the followin
 - Github pull requests
 - git request-pull
 
-It'd be appreciated if you use a separate branch for your submissions (other
-								       than
-								       master,
-								       that
-								       is).
+	The github issues is a great place to start, although implementing new features
+	is perfectly fine and very welcome, feel free to do whatever your little heart
+	wants.
 
-The github issues is a great place to start, although implementing new features
-is perfectly fine and very welcome, feel free to do whatever your little heart
-wants.
+	See also (TODO / In development) seciton in this README.
 
 The following is _not_ required, but **prefered**:
 
@@ -497,7 +510,7 @@ with your changes.  Something like:
    **not** required, note: you can use `git commit --signoff` instead of writing
    manually.  See also Linux kernel contribution guidelines for more perks):
 ```
-vmx: fix issue with xxx
+vmx: fix issue with arg
 
 Write as much as you would like as needed or point to some issue, although
 writing is prefered, or even comments in the code itself is much better.
@@ -532,11 +545,14 @@ Clone the repository locally:
 
 `git clone https://github.com/USER_NAME/ksm`
 
-Switch to a new branch:
+**Note**: replace USER_NAME with mine (asamy) if you're not going to use
+pull-requests.
+
+Switch to a new branch (**Optional but preferred**):
 
 `git checkout -b LOCAL_BRANCH`
 
-Setup remote (skip if you want to use the full URL each time):
+Setup remote (**Optional**: skip if you want to use the full URL each time):
 
 `git remote add upstream https://github.com/asamy/ksm`
 
@@ -564,8 +580,9 @@ do this without comitting:
 
 What this does is 1) stashes your changes, 2) pulls my changes and prepares to
 rebase your stashed changes on top of mine, 3) pops the stashed changes on
-top, if there any conflicts, then it will let you know and you should fix them,
-after doing so, commit your changes:
+top, if there any conflicts, then it will let you know and you should fix them.
+
+Then commit your changes:
 
 ```
 git add ...
@@ -580,9 +597,11 @@ If you're going to use patches, then simply:
 `git format-patch HEAD~X`
 
 Where X is the number of commits to create patches from, can be ommitted to
-take HEAD  commit only, e.g.:
+take HEAD (i.e. most recent) commit only, e.g.:
 
 `git format-patch HEAD~`
+
+(You can use commit hashes instead, too.)
 
 You can then use the patch file(s) as an attachment and e-mail them manually, or
 you can use `git send-email` to do it for you.
@@ -669,14 +688,14 @@ You can pass one or more of the following variables to the `make` command:
 - `WINVER=0x0602` - Explicility specify windows version to build for.
 - `C=1` - Prepare for cross-compiling.
 - `V=1` - Verbose output (the default, pass 0 for quiet.)
-- `BIN_DIR=xxx` - Generate binary and symbols to this directory
-- `OBJ_DIR=xxx` - Generate object files to this directory
-- `DEP_DIR=xxx` - Generate dependency files to this directory
-- `CROSS_INC=xxx` - Path to include directory if they reside in a special place
-- `CROSS_LIB=xxx` - Path to library directory if they reside in a special place
-- `CROSS_BUILD=xxx` - Prefix to toolchain binaries (e.g.
+- `BIN_DIR=arg` - Generate binary and symbols to this directory
+- `OBJ_DIR=arg` - Generate object files to this directory
+- `DEP_DIR=arg` - Generate dependency files to this directory
+- `CROSS_INC=arg` - Path to include directory if they reside in a special place
+- `CROSS_LIB=arg` - Path to library directory if they reside in a special place
+- `CROSS_BUILD=arg` - Prefix to toolchain binaries (e.g.
 						    `x86-_64-w64-mingw32-XXX`)
-- `PREPEND=xxx` - Prepend something to the compiler/linker executable (e.g. if
+- `PREPEND=arg` - Prepend something to the compiler/linker executable (e.g. if
 								       this is
 								       "c" and
 								       compiler
@@ -687,9 +706,9 @@ You can pass one or more of the following variables to the `make` command:
 								       is going
 								       to be
 								       "cgcc")
-- `CEXTRA=xxx` - Print something out after compiling a C file.
-- `AEXTRA=xxx` - Print something out after compiling an Assembler file.
-- `LEXTRA=xxx` - Print something out after linking
+- `CEXTRA=arg` - Print something out after compiling a C file.
+- `AEXTRA=arg` - Print something out after compiling an Assembler file.
+- `LEXTRA=arg` - Print something out after linking
 
 You may need to adjust the windows version you're compiling for, in that case
 adjust `_WIN32_WINNT` inside the Makefile manually or pass it through
