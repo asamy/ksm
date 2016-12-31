@@ -49,6 +49,9 @@ static inline void init_epte(u64 *entry, int access, u64 hpa)
  *				PDTE (aka PT or Page Table) ->
  *					PTE (aka Page)
  *
+ * Note: Each table contains 512 entries, which makes it each table occupy 4096
+ * bytes (8 * 512 or PAGE_SIZE), which is a page.
+ *
  * Assuming:
  *	1) Each PML4 entry is 1 GB, so that makes the whole PML4 table 512 GB
  *	2) Each PDPT entry is 2 MB, so that makes the whole PDPT table 1 GB
@@ -61,10 +64,6 @@ static inline void init_epte(u64 *entry, int access, u64 hpa)
  *	- __ppe_idx(pa)		- Gives an offset into PDPT to get the PDT
  *	- __pde_idx(pa)		- Gives an offset into PDT to get the PT 
  *	- __pte_idx(pa)		- Gives an offset into PT to get the final page!
- *
- * Do also note that each table contain 512 entries, 512 * 8 = 4096 (0x1000) which is
- * surprisingly happens to be PAGE_SIZE (which also happens to be 1 <<
- * PAGE_SHIFT)!!!
  *
  * And since each of those entries contain a physical address, we need to use
  * page_addr() to obtain the virtual address for that specific table, what page_addr()

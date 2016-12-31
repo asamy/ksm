@@ -67,6 +67,12 @@
 #endif
 
 #ifndef __linux__
+/* be in the same boat  */
+typedef struct { unsigned long long pgd; } pgd_t;
+typedef struct { unsigned long long pud; } pud_t;
+typedef struct { unsigned long long pmd; } pmd_t;
+typedef struct { unsigned long long pte; } pte_t;
+
 extern uintptr_t pxe_base;
 extern uintptr_t ppe_base;
 extern uintptr_t pde_base;
@@ -88,6 +94,8 @@ extern uintptr_t pte_base;
 #define PAGE_PA_MASK		(0xFFFFFFFFFULL << PAGE_SHIFT)
 #define PAGE_PA(page)		((page) & PAGE_PA_MASK)
 #define PAGE_FN(page)		(((page) >> PTI_SHIFT) & PTI_MASK)
+#define PAGE_PPA(pte)		(PAGE_PA(pte->pte))
+#define PAGE_PFN(pte)		(PAGE_FN(pte->pte))
 #define PAGE_SOFT_WS_IDX_SHIFT	52
 #define PAGE_SOFT_WS_IDX_MASK	0xFFF
 #define PAGE_NX			0x8000000000000000
@@ -140,46 +148,33 @@ static inline bool is_canonical_addr(u64 addr)
 	return (s64)addr >> 47 == (s64)addr >> 63;
 }
 
-static inline u64 *page_addr(u64 *pte)
+static inline bool pte_large(pte_t pte)
 {
-	if (!pte || !*pte)
-		return 0;
-
-	return __va(PAGE_PA(*pte));
-}
-
-static inline int pte_soft_ws_idx(u64 *pte)
-{
-	return (*pte >> PAGE_SOFT_WS_IDX_SHIFT) & PAGE_SOFT_WS_IDX_MASK;
-}
-
-static inline bool pte_large(u64 *pte)
-{
-	return *pte & PAGE_LARGE;
+	return pte.pte & PAGE_LARGE;
 }
 
 #ifndef __linux__
-static inline bool pte_present(u64 pte)
+static inline bool pte_present(pte_t pte)
 {
-	return pte & PAGE_PRESENT;
+	return pte.pte & (PAGE_PRESENT | PAGE_GLOBAL);
 }
 
-static inline bool pte_trans(u64 pte)
+static inline bool pte_trans(pte_t pte)
 {
-	return pte & PAGE_TRANSIT;
+	return pte.pte & PAGE_TRANSIT;
 }
 
-static inline bool pte_prototype(u64 pte)
+static inline bool pte_prototype(pte_t pte)
 {
-	return pte & PAGE_PROTOTYPE;
+	return pte.pte & PAGE_PROTOTYPE;
 }
 
-static inline bool pte_large_present(u64 pte)
+static inline bool pte_large_present(pte_t pte)
 {
-	return (pte & PAGE_LPRESENT) == PAGE_LPRESENT;
+	return (pte.pte & PAGE_LPRESENT) == PAGE_LPRESENT;
 }
 
-static inline bool pte_swapper(u64 pte)
+static inline bool pte_swapper(pte_t pte)
 {
 	if (!pte_present(pte))
 		return false;
@@ -187,194 +182,124 @@ static inline bool pte_swapper(u64 pte)
 	return pte_trans(pte) && !pte_prototype(pte);
 }
 
-static inline u64 *va_to_pxe(uintptr_t va)
+static inline pgd_t *va_to_pgd(uintptr_t va)
 {
 	uintptr_t off = (va >> PXI_SHIFT) & PTX_MASK;
-	return (u64 *)pxe_base + off;
+	return (pgd_t *)pxe_base + off;
 }
 
-static inline u64 *va_to_ppe(uintptr_t va)
+static inline pud_t *va_to_pud(uintptr_t va)
 {
 	uintptr_t off = (va >> PPI_SHIFT) & PPI_MASK;
-	return (u64 *)ppe_base + off;
+	return (pud_t *)ppe_base + off;
 }
 
-static inline u64 *va_to_pde(uintptr_t va)
+static inline pmd_t *va_to_pmd(uintptr_t va)
 {
 	uintptr_t off = (va >> PDI_SHIFT) & PDI_MASK;
-	return (u64 *)pde_base + off;
+	return (pmd_t *)pde_base + off;
 }
 
-static inline u64 *va_to_pte(uintptr_t va)
+static inline pte_t *va_to_pte(uintptr_t va)
 {
 	uintptr_t off = (va >> PTI_SHIFT) & PTI_MASK;
-	return (u64 *)pte_base + off;
+	return (pte_t *)pte_base + off;
 }
 
-static inline uintptr_t __pte_to_va(u64 pte)
+static inline uintptr_t __pte_to_va(pte_t pte)
 {
-	return (((pte - pte_base) << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
-}
-
-static inline u64 va_to_pa(uintptr_t va)
-{
-	uintptr_t *pte = va_to_pde(va);
-	if (!pte_large(pte))
-		pte = va_to_pte(va);
-
-	if (!(*pte & PAGE_PRESENT))
-		return 0;
-
-	return PAGE_PA(*pte) | addr_offset(va);
-}
-
-static inline u64 *__cr3_resolve_va(u64 cr3, u64 va)
-{
-	/* NB: You can also use va_to_pte / va_to_pde, etc.  */
-	u64 *pml4 = __va(cr3 & PAGE_PA_MASK);
-	u64 *pdpt = page_addr(&pml4[__pxe_idx(va)]);
-	if (!pdpt)
-		return 0;
-
-	u64 *pdt = page_addr(&pdpt[__ppe_idx(va)]);
-	if (!pdt)
-		return 0;
-
-	u64 *pdte = &pdt[__pde_idx(va)];
-	if (!(*pdte & PAGE_PRESENT))
-		return 0;
-
-	if (pte_large(pdte))
-		return pdte;
-
-	u64 *pt = page_addr(pdte);
-	if (pt)
-		return &pt[__pte_idx(va)];
-
-	return 0;
+	return (((pte.pte - pte_base) << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
 }
 
 static inline bool consult_vad(u64 va)
 {
-	return !(*va_to_pde(va) & PAGE_PRESENT) || *va_to_pte(va) == 0;
+	return !pte_present(*(pte_t *)va_to_pmd(va)) || va_to_pte(va)->pte == 0;
 }
 
-static inline bool is_software_pte(u64 pte)
+static inline bool is_software_pte(pte_t pte)
 {
 	return !pte_trans(pte) && !pte_prototype(pte);
 }
 
-static inline bool is_subsection_pte(u64 pte)
+static inline bool is_subsection_pte(pte_t pte)
 {
 	return !pte_present(pte) && pte_prototype(pte);
 }
 
-static inline bool is_demandzero_pte(u64 pte)
+static inline bool is_demandzero_pte(pte_t pte)
 {
 	return !pte_present(pte) && !pte_prototype(pte) && !pte_trans(pte);
 }
 
 static inline bool is_phys(uintptr_t va)
 {
-	return (*va_to_pxe(va) & PAGE_PRESENT) && (*va_to_ppe(va) & PAGE_PRESENT) &&
-		(pte_large_present(*va_to_pde(va)) || (pte_present(*va_to_pte(va))));
-}
-
-/* Transitition page  (Unique defines only...)  */
-#define PTT_PROTECTION_SHIFT	5
-#define PTT_PROTECTION_MASK	0x1F
-
-static inline u8 ptt_protection(uintptr_t *pte)
-{
-	return (*pte >> PTT_PROTECTION_SHIFT) & PTT_PROTECTION_MASK;
-}
-
-/* Prototype PTE  (Unique defines only...)  */
-#define PRT_PROTECTION_SHIFT		11
-#define PRT_PROTECTION_MASK		0x3F
-#define PRT_PROTO_ADDRESS_SHIFT		VA_SHIFT
-#define PRT_PROTO_ADDRESS_MASK		VA_MASK
-#define PRT_READONLY			0x100
-
-static inline u8 prt_prot(u64 pte)
-{
-	return (pte >> PRT_PROTECTION_SHIFT) & PRT_PROTECTION_MASK;
-}
-
-static inline uintptr_t prt_addr(u64 pte)
-{
-	return (pte >> PRT_PROTO_ADDRESS_SHIFT) & PRT_PROTO_ADDRESS_MASK;
-}
-
-static inline bool prt_ro(u64 pte)
-{
-	return pte & PRT_READONLY;
-}
-
-static inline bool prt_is_vad(u64 pte)
-{
-	return prt_addr(pte) == 0xFFFFFFFF0000;
-}
-
-/* Software PTE  */
-#define SPTE_PF_LO_SHIFT	1			/* Number of page file (up to 16) */
-#define SPTE_PF_LO_MASK		0x1F
-#define SPTE_PF_HI_SHIFT	32			/* Page file offset (multiple of PAGE_SIZE)  */
-#define SPTE_PF_HI_MASK		0xFFFFFFFF
-#define SPTE_IN_STORE_MASK	0x400000
-#define SPTE_PROTECTION_SHIFT	5
-#define SPTE_PROTECTION_MASK	0x1F
-
-static inline bool spte_in_store(u64 spte)
-{
-	return spte & SPTE_IN_STORE_MASK;
-}
-
-static inline bool spte_prot(u64 spte)
-{
-	return (spte >> SPTE_PROTECTION_SHIFT) & SPTE_PROTECTION_MASK;
-}
-
-static inline u32 spte_pg_hi(u64 spte)
-{
-	return (spte >> SPTE_PF_HI_SHIFT) & SPTE_PF_HI_MASK;
-}
-
-static inline u32 spte_pg_lo(u64 spte)
-{
-	return (spte >> SPTE_PF_LO_SHIFT) & SPTE_PF_LO_MASK;
+	return pte_present(*(pte_t *)va_to_pgd(va)) && pte_present(*(pte_t *)va_to_pud(va)) &&
+		(pte_large_present(*(pte_t *)va_to_pmd(va)) || (pte_present(*va_to_pte(va))));
 }
 #else
-static inline u64 *va_to_pxe(uintptr_t va)
+static inline pgd_t *va_to_pgd(uintptr_t va)
 {
-	return (u64 *)pgd_offset(current->mm, va);
+	return pgd_offset(current->mm, va);
 }
 
-static inline u64 *va_to_ppe(uintptr_t va)
+static inline pud_t *va_to_pud(uintptr_t va)
 {
-	return (u64 *)pud_offset((pgd_t *)va_to_pxe(va), va);
+	return pud_offset(va_to_pgd(va), va);
 }
 
-static inline u64 *va_to_pde(uintptr_t va)
+static inline pmd_t *va_to_pmd(uintptr_t va)
 {
-	return (u64 *)pmd_offset((pud_t *)va_to_ppe(va), va);
+	return pmd_offset(va_to_pud(va), va);
 }
 
-static inline u64 *va_to_pte(uintptr_t va)
+static inline pte_t *va_to_pte(uintptr_t va)
 {
-	return (u64 *)pte_offset_kernel((pmd_t *)va_to_pde(va), va);
+	return pte_offset_kernel(va_to_pmd(va), va);
 }
 
-static inline uintptr_t __pte_to_va(u64 pte)
+static inline uintptr_t __pte_to_va(pte_t pte)
 {
-	struct page *page = pfn_to_page(PAGE_FN(pte));
+	struct page *page = pfn_to_page(PAGE_FN(pte.pte));
 	if (!page)
 		return 0;
 
 	return (uintptr_t)page_address(page);
 }
 
-static inline u64 *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
+static inline void __stosq(unsigned long long *a, unsigned long x, unsigned long count)
+{
+	/* Generates stosq anyway...  */
+	memset(a, x, count << 3);
+}
+#endif
+
+static inline void *pte_to_va(pte_t pte)
+{
+	return (void *)__pte_to_va(pte);
+}
+
+static inline u64 *page_addr(pte_t *pte)
+{
+	if (!pte_present(*pte))
+		return 0;
+
+	return __va(PAGE_PPA(pte));
+}
+
+static inline u64 va_to_pa(uintptr_t va)
+{
+	pte_t *pte = (pte_t *)va_to_pmd(va);
+	if (!pte_large(*pte))
+		pte = va_to_pte(va);
+
+	if (!pte_present(*pte))
+		return 0;
+
+	return PAGE_PPA(pte) | addr_offset(va);
+}
+
+#ifdef __linux__
+static inline pte_t *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
 {
 	pgd_t *pgd;
 	pud_t *pud;
@@ -394,38 +319,44 @@ static inline u64 *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
 		return 0;
 
 	pte = pte_offset_kernel(pmd, va);
-	return (u64 *)pte;
+	return pte;
 }
-
-static inline u64 va_to_pa(uintptr_t va)
+#else
+static inline pte_t *__cr3_resolve_va(u64 cr3, u64 va)
 {
-	u64 *pte = __cr3_resolve_va(0, va);
-	if (!pte || !pte_present(*(pte_t *)pte))
+	/* NB: You can also use va_to_pte / va_to_pmd, etc.  */
+	pte_t *pml4 = __va(cr3 & PAGE_PA_MASK);
+	pgd_t *pdpt = page_addr(&pml4[__pxe_idx(va)]);
+	if (!pdpt)
 		return 0;
 
-	return PAGE_PA(*pte) | addr_offset(va);
-}
+	pud_t *pdt = page_addr(&pdpt[__ppe_idx(va)]);
+	if (!pdt)
+		return 0;
 
-static inline void __stosq(unsigned long long *a, unsigned long x, unsigned long count)
-{
-	/* Generates stosq anyway...  */
-	memset(a, x, count << 3);
+	pmd_t *pdte = &pdt[__pde_idx(va)];
+	if (!pte_present(*(pte_t *)pdte))
+		return 0;
+
+	if (pte_large(*(pte_t *)pdte))
+		return pdte;
+
+	pte_t *pt = page_addr(pdte);
+	if (pt)
+		return &pt[__pte_idx(va)];
+
+	return 0;
 }
-#endif
 
 static inline u64 cr3_resolve_va(uintptr_t cr3, uintptr_t va)
 {
-	u64 *page = __cr3_resolve_va(cr3, va);
-	if (*page & PAGE_PRESENT)
+	pte_t *pte = __cr3_resolve_va(cr3, va);
+	if (!pte_present(*pte))
 		return 0;
 
-	return PAGE_PA(*page) | addr_offset(va);
+	return PAGE_PPA(pte) | addr_offset(va);
 }
-
-static inline void *pte_to_va(u64 pte)
-{
-	return (void *)__pte_to_va(pte);
-}
+#endif
 
 static inline void *mm_alloc_page(void)
 {

@@ -277,11 +277,12 @@ static inline void vcpu_advance_rip(struct vcpu *vcpu)
 #ifdef NESTED_VMX
 static inline u64 gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3, uintptr_t gva, u32 ac)
 {
-	u64 *pte = __cr3_resolve_va(cr3, gva);
+	pte_t *pte;
 	u32 pgf = PGF_PRESENT;
 	if (ac & PAGE_WRITE)
 		pgf |= PGF_WRITE;
 
+	pte = __cr3_resolve_va(cr3, gva);
 	if (!pte || (*pte & ac) != ac) {
 		vcpu_inject_pf(vcpu, gva, pgf);
 		return 0;
@@ -1218,11 +1219,12 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 
 static inline bool nested_translate_gva(struct vcpu *vcpu, u64 gva, u64 mask, u64 *gpa, u64 *hpa)
 {
+	pte_t *pte;
 	u32 ec = PGF_PRESENT;
 	if (mask & PAGE_WRITE)
 		ec |= PGF_WRITE;
 
-	u64 *pte = __cr3_resolve_va(vmcs_read(GUEST_CR3), gva);
+	pte = __cr3_resolve_va(vmcs_read(GUEST_CR3), gva);
 	if (!pte)
 		goto fault;
 

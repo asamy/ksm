@@ -16,8 +16,10 @@
 1) I have read the respective README sections that provide information
    regarding this and found it to be unclear/uninformative in this respective
    matter.
+
 2) I'll provide to my best of knowledge the required information to reproduce
    and/or help improve this matter.
+
 3) I understand and acknowledge to the best of my knowledge that this writing
    is a technical issue and is not outside the scope of this project.
 
@@ -46,6 +48,10 @@ Please refer to each file uploaded in this section in the Issue description
 part, by using [x] where x is the number of the file here.
 
 REMOVE IF NOTHING PROVIDED.
+
+### Stack Trace
+
+Paste stack trace here if any.  REMOVE IF NOTHING PROVIDED.
 
 ### Current Behavior
 
