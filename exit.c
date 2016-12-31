@@ -2759,7 +2759,6 @@ bool vcpu_handle_exit(uintptr_t *regs)
 		 * Mostly comes via invalid guest state, and is due to a cruical
 		 * error that happened past VM-exit, let the handler see itt
 		 */
-		vcpu_dump_state(vcpu, &(struct regs) { regs });
 		dbgbreak();
 		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, vcpu->ip,
 			      vmcs_read(EXIT_QUALIFICATION), curr_handler);
