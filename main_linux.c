@@ -23,7 +23,7 @@
 
 #include "ksm.h"
 
-struct mm_struct *mm;
+static struct mm_struct *mm;
 static struct workqueue_struct *wq;
 
 static void ksm_worker(struct work_struct *w)

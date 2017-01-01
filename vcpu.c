@@ -74,9 +74,7 @@ static inline u64 *ept_page_addr(u64 *pte)
  *	- __pte_idx(pa)		- Gives an offset into PT to get the final page!
  *
  * And since each of those entries contain a physical address, we need to use
- * ept_page_addr() to obtain the virtual address for that specific table, what ept_page_addr()
- * does is quite simple, it checks if the entry is not NULL and is present, then does
- * __va(PAGE_PA(entry)).
+ * ept_page_addr() to obtain the virtual address for that specific table.
  *
  * We currently just do a 1:1 mapping, except for the executable page
  * redirection case, see:

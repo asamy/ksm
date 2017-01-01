@@ -22,7 +22,7 @@ ccflags-y := -Wno-format -Wno-declaration-after-statement -Wno-unused-function -
 BIN := ksmlinux.ko
 KVERSION := $(shell uname -r)
 KDIR := /lib/modules/$(KVERSION)
-KBUILD = $(KDIR)/build
+KBUILD := $(KDIR)/build
 PWD := $(shell pwd)
 MAKEFLAGS += --no-print-directory
 
