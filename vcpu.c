@@ -38,6 +38,14 @@ static inline void init_epte(u64 *entry, int access, u64 hpa)
 #endif
 }
 
+static inline u64 *ept_page_addr(u64 *pte)
+{
+	if (!pte || !(*pte & 1))
+		return 0;
+
+	return __va(PAGE_PA(*pte));
+}
+
 /*
  * Sets up page tables for the required guest physical address, aka AMD64 page
  * tables, which are ugly and can be confusing, so here's an explanation of what
@@ -66,7 +74,7 @@ static inline void init_epte(u64 *entry, int access, u64 hpa)
  *	- __pte_idx(pa)		- Gives an offset into PT to get the final page!
  *
  * And since each of those entries contain a physical address, we need to use
- * page_addr() to obtain the virtual address for that specific table, what page_addr()
+ * ept_page_addr() to obtain the virtual address for that specific table, what ept_page_addr()
  * does is quite simple, it checks if the entry is not NULL and is present, then does
  * __va(PAGE_PA(entry)).
  *
@@ -78,7 +86,7 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 {
 	/* PML4 (512 GB) */
 	u64 *pml4e = &pml4[__pxe_idx(gpa)];
-	u64 *pdpt = page_addr(pml4e);
+	u64 *pdpt = ept_page_addr(pml4e);
 
 	if (!pdpt) {
 		pdpt = mm_alloc_page();
@@ -90,7 +98,7 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 
 	/* PDPT (1 GB)  */
 	u64 *pdpte = &pdpt[__ppe_idx(gpa)];
-	u64 *pdt = page_addr(pdpte);
+	u64 *pdt = ept_page_addr(pdpte);
 	if (!pdt) {
 		pdt = mm_alloc_page();
 		if (!pdt)
@@ -101,7 +109,7 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 
 	/* PDT (2 MB)  */
 	u64 *pdte = &pdt[__pde_idx(gpa)];
-	u64 *pt = page_addr(pdte);
+	u64 *pt = ept_page_addr(pdte);
 	if (!pt) {
 		pt = mm_alloc_page();
 		if (!pt)
@@ -198,9 +206,9 @@ static bool setup_pml4(struct ept *ept)
 
 		uintptr_t nr_pages = round_to_pages(size);
 		for (uintptr_t page = 0; page < nr_pages; ++page) {
-			uintptr_t page_addr = addr + page * PAGE_SIZE;
+			uintptr_t ept_page_addr = addr + page * PAGE_SIZE;
 			for_each_eptp(i)
-				if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, page_addr, page_addr))
+				if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, ept_page_addr, ept_page_addr))
 					goto out;
 		}
 	}
@@ -293,12 +301,12 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
 	u64 *pdpt, *pdt, *pd;
 	u64 *pdpte, *pdte;
 
-	pdpt = page_addr(&pml4[__pxe_idx(gpa)]);
+	pdpt = ept_page_addr(&pml4[__pxe_idx(gpa)]);
 	if (!pdpt)
 		return 0;
 
 	pdpte = &pdpt[__ppe_idx(gpa)];
-	pdt = page_addr(pdpte);
+	pdt = ept_page_addr(pdpte);
 	if (!pdt)
 		return 0;
 
@@ -306,7 +314,7 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
 		return pdpte;	/* 1 GB  */
 
 	pdte = &pdt[__pde_idx(gpa)];
-	pd = page_addr(pdte);
+	pd = ept_page_addr(pdte);
 	if (!pd)
 		return 0;
 
@@ -820,8 +828,12 @@ off:
 	VCPU_DEBUG("%d: something went wrong: %d\n", err, verr);
 }
 
-bool vcpu_create(struct vcpu *vcpu)
+struct vcpu *vcpu_create(void)
 {
+	struct vcpu *vcpu = mm_alloc_pool(sizeof(*vcpu));
+	if (!vcpu)
+		return NULL;
+
 #ifdef NESTED_VMX
 	vcpu->nested_vcpu.feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
 #endif
@@ -841,7 +853,7 @@ bool vcpu_create(struct vcpu *vcpu)
 	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;
 
 	if (!init_ept(&vcpu->ept))
-		return false;
+		goto out;
 
 	vcpu->idt.limit = PAGE_SIZE - 1;
 	vcpu->idt.base = (uintptr_t)mm_alloc_page();
@@ -872,7 +884,7 @@ bool vcpu_create(struct vcpu *vcpu)
 
 	vcpu->stack = mm_alloc_pool(KERNEL_STACK_SIZE);
 	if (vcpu->stack)
-		return true;
+		return vcpu;
 
 out_pml:
 #ifdef ENABLE_PML
@@ -888,7 +900,9 @@ out_idt:
 	mm_free_page((void *)vcpu->idt.base);
 out_ept:
 	free_ept(&vcpu->ept);
-	return false;
+out:
+	mm_free_pool(vcpu, sizeof(*vcpu));
+	return NULL;
 }
 
 void vcpu_free(struct vcpu *vcpu)
@@ -903,6 +917,7 @@ void vcpu_free(struct vcpu *vcpu)
 	mm_free_page(vcpu->vapic_page);
 	mm_free_pool(vcpu->stack, KERNEL_STACK_SIZE);
 	free_ept(&vcpu->ept);
+	mm_free_pool(vcpu, sizeof(*vcpu));
 }
 
 void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)

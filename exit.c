@@ -274,7 +274,6 @@ static inline void vcpu_advance_rip(struct vcpu *vcpu)
 		   interruptibility & ~(GUEST_INTR_STATE_MOV_SS | GUEST_INTR_STATE_STI));
 }
 
-#ifdef NESTED_VMX
 static inline u64 gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3, uintptr_t gva, u32 ac)
 {
 	pte_t *pte;
@@ -283,12 +282,12 @@ static inline u64 gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3, uintptr_t gva, u3
 		pgf |= PGF_WRITE;
 
 	pte = __cr3_resolve_va(cr3, gva);
-	if (!pte || (*pte & ac) != ac) {
+	if (!pte || (pte->pte & ac) != ac) {
 		vcpu_inject_pf(vcpu, gva, pgf);
 		return 0;
 	}
 
-	return PAGE_PA(*pte);
+	return PAGE_PA(pte->pte);
 }
 
 static inline bool gpa_to_hpa(struct vcpu *vcpu, u64 gpa, u64 *hpa)
@@ -302,6 +301,7 @@ static inline bool gpa_to_hpa(struct vcpu *vcpu, u64 gpa, u64 *hpa)
 	return true;
 }
 
+#ifdef NESTED_VMX
 static inline bool nested_inject_ve(struct vcpu *vcpu)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
@@ -2190,6 +2190,7 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 
 	VCPU_DEBUG("GDT/IDT access, addr [%p] (%p, %d, %d)\n", addr, base, index, disp);
 	VCPU_ENTER_GUEST();
+
 	struct gdtr *dt = (struct gdtr *)addr;
 	switch ((info >> 28) & 3) {
 	case 0:		/* sgdt  */
@@ -2207,8 +2208,8 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 		vcpu_sync_idt(vcpu, dt);
 		break;
 	}
-	VCPU_EXIT_GUEST();
 
+	VCPU_EXIT_GUEST();
 	vcpu_advance_rip(vcpu);
 	return true;
 }
@@ -2217,12 +2218,11 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 {
 	uintptr_t info = vmcs_read(VMX_INSTRUCTION_INFO);
 	uintptr_t disp = vmcs_read(EXIT_QUALIFICATION);
-
 	uintptr_t addr;
 	if ((info >> 10) & 1) {
 		// register
 		addr = (uintptr_t)ksm_reg(vcpu, (info >> 3) & 15);
-		VCPU_DEBUG("LDT/TR access, addr %p\n", info);
+		VCPU_DEBUG("LDT/TR access, register %p (%d)\n", addr, (info >> 3) & 15);
 	} else {
 		// base
 		uintptr_t base = 0;
@@ -2257,7 +2257,6 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 		break;
 	}
 	VCPU_EXIT_GUEST();
-
 	vcpu_advance_rip(vcpu);
 	return true;
 }

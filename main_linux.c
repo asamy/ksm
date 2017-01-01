@@ -23,7 +23,7 @@
 
 #include "ksm.h"
 
-static struct mm_struct *mm;
+struct mm_struct *mm;
 static struct workqueue_struct *wq;
 
 static void ksm_worker(struct work_struct *w)
@@ -33,7 +33,7 @@ static void ksm_worker(struct work_struct *w)
 }
 static DECLARE_DELAYED_WORK(work, ksm_worker);
 
-int __init ksm_start(void)
+static int __init ksm_start(void)
 {
 	int ret = -ENOMEM;
 
@@ -66,14 +66,14 @@ out_exit:
 	return ret;
 }
 
-void __exit ksm_cleanup(void)
+static void __exit ksm_cleanup(void)
 {
-	int ret, active;
-	destroy_workqueue(wq);
-	
+	int ret, active;	
+
 	active = ksm.active_vcpus;
+	destroy_workqueue(wq);
 	ret = ksm_exit();
-	VCPU_DEBUG("%d active: exit: %d\n", active, ret);
+	VCPU_DEBUG("%d were active: ret: %d\n", active, ret);
 	mmdrop(mm);
 }
 

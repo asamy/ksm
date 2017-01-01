@@ -142,8 +142,8 @@ int __ksm_init_cpu(struct ksm *k)
 			return ERR_DENIED;
 	}
 
-	vcpu = ksm_current_cpu();
-	if (!vcpu_create(vcpu)) {
+	vcpu = vcpu_create();
+	if (!vcpu) {
 		VCPU_DEBUG_RAW("failed to create vcpu, oom?\n");
 		return ERR_NOMEM;
 	}
@@ -170,6 +170,7 @@ int __ksm_init_cpu(struct ksm *k)
 	if (ret == 0) {
 		k->active_vcpus++;
 		vcpu->subverted = true;
+		ksm.vcpu_list[cpu_nr()] = vcpu;
 	} else {
 		vcpu_free(vcpu);
 		__writecr4(__readcr4() & ~X86_CR4_VMXE);
@@ -292,10 +293,10 @@ int ksm_unsubvert(void)
  */
 int ksm_exit(void)
 {
-	int err;
+	int ret;
 
-	err = ksm_unsubvert();
-	if (err == 0) {
+	ret = ksm_unsubvert();
+	if (ret == 0) {
 		free_msr_bitmap(&ksm);
 		free_io_bitmaps(&ksm);
 #ifdef EPAGE_HOOK
@@ -305,7 +306,7 @@ int ksm_exit(void)
 		unregister_power_callback();
 	}
 
-	return err;
+	return ret;
 }
 
 /*

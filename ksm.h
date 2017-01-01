@@ -130,7 +130,7 @@
 #define VCPU_TRACER_END()
 #endif
 
-/*
+ /*
  * FIXME: This needs to be removed and instead `kmap_iomem()` can be used, this
  * is very unsafe...
  *
@@ -487,7 +487,7 @@ extern void unregister_cpu_callback(void);
 
 struct ksm {
 	int active_vcpus;
-	struct vcpu vcpu_list[KSM_MAX_VCPUS];
+	struct vcpu *vcpu_list[KSM_MAX_VCPUS];
 	uintptr_t orig_pgd;
 	uintptr_t host_pgd;
 #ifdef EPAGE_HOOK
@@ -518,7 +518,7 @@ extern int ksm_free_idt(unsigned n);
 
 static inline struct vcpu *ksm_current_cpu(void)
 {
-	return &ksm.vcpu_list[cpu_nr()];
+	return ksm.vcpu_list[cpu_nr()];
 }
 
 #ifdef EPAGE_HOOK
@@ -531,7 +531,7 @@ extern struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn);
 #endif
 
 /* vcpu.c  */
-extern bool vcpu_create(struct vcpu *vcpu);
+extern struct vcpu *vcpu_create(void);
 extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
 extern u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa);
