@@ -2067,11 +2067,17 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 	 * entries that we set, by simply just discarding them.
 	 */
 	size_t entries = min((size_t)idt->limit, (PAGE_SIZE - 1)) / sizeof(struct kidt_entry64);
-	struct kidt_entry64 current_idt[256];
+	struct kidt_entry64 *current_idt;
 	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
 
-	if (!ksm_read_virt(vcpu, idt->base, (u8 *)&current_idt[0], idt->limit))
+	current_idt = mm_alloc_page();
+	if (!current_idt)
+		return;
+
+	if (!ksm_read_virt(vcpu, idt->base, (u8 *)current_idt, idt->limit)) {
+		mm_free_pool(current_idt, PAGE_SIZE);
 		return vcpu_inject_pf(vcpu, idt->base, PGF_PRESENT);
+	}
 
 	VCPU_DEBUG("Loading new IDT (new size: %d old size: %d)  Copying %d entries\n",
 		   idt->limit, vcpu->idt.limit, entries);
@@ -2082,6 +2088,7 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 		if (!idte_present(&vcpu->shadow_idt[n]))
 			memcpy(&shadow[n], &current_idt[n], sizeof(*shadow));
 	vcpu_flush_idt(vcpu);
+	mm_free_pool(current_idt, PAGE_SIZE);
 }
 
 static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
