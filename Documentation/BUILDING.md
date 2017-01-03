@@ -1,5 +1,23 @@
 # Building
 
+## Enabling certain features / tests
+
+You can define one or more of the following:
+
+- `EPAGE_HOOK` - Enables executable page shadow hook
+- `ENABLE_PML` - Enables Page Modification Log if supported.
+- `EMULATE_VMFUNC` - Forces emulation of VMFUNC even if CPU supports it.
+- `EPT_SUPPRESS_VE` - Force suppress VE bit in EPT.
+- `ENABLE_RESUBV` - Enable S1-3-S4 power state monitoring for re-virtualization
+- `NESTED_VMX` - Enable experimental VT-x nesting
+- `ENABLE_FILEPRINT` - Available on Windows only.  Enables loggin to
+disk
+- `ENABLE_DBGPRINT` - Available on Windows only.  Enables `DbgPrint`
+log.
+- `VCPU_TRACER_LOG` - Outputs a useless message on some VM-Exit handlers, this
+can be replaced with something more useful such as performance measurements,
+    etc.  See `ksm.h` for more information.
+
 ## Building for Linux
 
 Install kernel headers:
