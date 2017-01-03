@@ -70,19 +70,6 @@
 #define PTI_MASK		0xFFFFFFFFF
 #endif
 
-#ifndef __linux__
-/* be in the same boat  */
-typedef struct { unsigned long long pgd; } pgd_t;
-typedef struct { unsigned long long pud; } pud_t;
-typedef struct { unsigned long long pmd; } pmd_t;
-typedef struct { unsigned long long pte; } pte_t;
-
-extern uintptr_t pxe_base;
-extern uintptr_t ppe_base;
-extern uintptr_t pde_base;
-extern uintptr_t pte_base;
-#endif
-
 #define PAGE_PRESENT		0x1
 #define PAGE_WRITE		0x2
 #define PAGE_USER		0x4
@@ -119,10 +106,24 @@ extern uintptr_t pte_base;
 #define __pte_idx(addr)		(((addr) >> PTI_SHIFT) & PTX_MASK)
 
 #ifndef __linux__
+/* be in the same boat  */
+typedef struct { unsigned long long pgd; } pgd_t;
+typedef struct { unsigned long long pud; } pud_t;
+typedef struct { unsigned long long pmd; } pmd_t;
+typedef struct { unsigned long long pte; } pte_t;
+
+extern uintptr_t pxe_base;
+extern uintptr_t ppe_base;
+extern uintptr_t pde_base;
+extern uintptr_t pte_base;
+
 #define __pa(va)	\
 	MmGetPhysicalAddress((void *)(va)).QuadPart
 #define __va(pa)	\
 	(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (uintptr_t)(pa) })
+
+#define pte_present(p)	((((pte_t *)(&(p)))->pte) & (PAGE_PRESENT | PAGE_GLOBAL))
+#define pte_large(p)	((((pte_t *)(&(p)))->pte) & PAGE_LARGE)
 #endif
 
 #define page_align(addr)	((uintptr_t)(addr) & ~(PAGE_SIZE - 1))
@@ -152,95 +153,7 @@ static inline bool is_canonical_addr(u64 addr)
 	return (s64)addr >> 47 == (s64)addr >> 63;
 }
 
-static inline bool pte_large(pte_t pte)
-{
-	return pte.pte & PAGE_LARGE;
-}
-
-#ifndef __linux__
-static inline bool pte_present(pte_t pte)
-{
-	return pte.pte & (PAGE_PRESENT | PAGE_GLOBAL);
-}
-
-static inline bool pte_trans(pte_t pte)
-{
-	return pte.pte & PAGE_TRANSIT;
-}
-
-static inline bool pte_prototype(pte_t pte)
-{
-	return pte.pte & PAGE_PROTOTYPE;
-}
-
-static inline bool pte_large_present(pte_t pte)
-{
-	return (pte.pte & PAGE_LPRESENT) == PAGE_LPRESENT;
-}
-
-static inline bool pte_swapper(pte_t pte)
-{
-	if (!pte_present(pte))
-		return false;
-
-	return pte_trans(pte) && !pte_prototype(pte);
-}
-
-static inline pgd_t *va_to_pgd(uintptr_t va)
-{
-	uintptr_t off = (va >> PXI_SHIFT) & PTX_MASK;
-	return (pgd_t *)pxe_base + off;
-}
-
-static inline pud_t *va_to_pud(uintptr_t va)
-{
-	uintptr_t off = (va >> PPI_SHIFT) & PPI_MASK;
-	return (pud_t *)ppe_base + off;
-}
-
-static inline pmd_t *va_to_pmd(uintptr_t va)
-{
-	uintptr_t off = (va >> PDI_SHIFT) & PDI_MASK;
-	return (pmd_t *)pde_base + off;
-}
-
-static inline pte_t *va_to_pte(uintptr_t va)
-{
-	uintptr_t off = (va >> PTI_SHIFT) & PTI_MASK;
-	return (pte_t *)pte_base + off;
-}
-
-static inline uintptr_t __pte_to_va(pte_t pte)
-{
-	return (((pte.pte - pte_base) << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
-}
-
-static inline bool consult_vad(u64 va)
-{
-	return !pte_present(*(pte_t *)va_to_pmd(va)) || va_to_pte(va)->pte == 0;
-}
-
-static inline bool is_software_pte(pte_t pte)
-{
-	return !pte_trans(pte) && !pte_prototype(pte);
-}
-
-static inline bool is_subsection_pte(pte_t pte)
-{
-	return !pte_present(pte) && pte_prototype(pte);
-}
-
-static inline bool is_demandzero_pte(pte_t pte)
-{
-	return !pte_present(pte) && !pte_prototype(pte) && !pte_trans(pte);
-}
-
-static inline bool is_phys(uintptr_t va)
-{
-	return pte_present(*(pte_t *)va_to_pgd(va)) && pte_present(*(pte_t *)va_to_pud(va)) &&
-		(pte_large_present(*(pte_t *)va_to_pmd(va)) || (pte_present(*va_to_pte(va))));
-}
-#else
+#ifdef __linux__
 static inline pgd_t *va_to_pgd(uintptr_t va)
 {
 	return pgd_offset(current->mm, va);
@@ -275,40 +188,12 @@ static inline void __stosq(unsigned long long *a, unsigned long x, unsigned long
 	/* Generates stosq anyway...  */
 	memset(a, x, count << 3);
 }
-#endif
 
-static inline void *pte_to_va(pte_t pte)
-{
-	return (void *)__pte_to_va(pte);
-}
-
-static inline u64 *page_addr(pte_t *pte)
-{
-	if (!pte_present(*pte))
-		return 0;
-
-	return __va(PAGE_PPA(pte));
-}
-
-static inline u64 va_to_pa(uintptr_t va)
-{
-	pte_t *pte = (pte_t *)va_to_pmd(va);
-	if (!pte_large(*pte))
-		pte = va_to_pte(va);
-
-	if (!pte_present(*pte))
-		return 0;
-
-	return PAGE_PPA(pte) | addr_offset(va);
-}
-
-#ifdef __linux__
-static inline pte_t *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
+static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
 {
 	pgd_t *pgd;
 	pud_t *pud;
 	pmd_t *pmd;
-	pte_t *pte;
 
 	pgd = pgd_offset(current->mm, va);
 	if (pgd_none(*pgd) || pgd_bad(*pgd))
@@ -322,45 +207,96 @@ static inline pte_t *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
 	if (pmd_none(*pmd) || pmd_bad(*pmd))
 		return 0;
 
-	pte = pte_offset_kernel(pmd, va);
-	return pte;
+	return pte_offset_kernel(pmd, va);
 }
 #else
-static inline pte_t *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
+static inline pgd_t *va_to_pgd(uintptr_t va)
 {
-	/* NB: You can also use va_to_pte / va_to_pmd, etc.  */
-	pte_t *pml4 = (pte_t *)__va(cr3 & PAGE_PA_MASK);
-	pgd_t *pdpt = page_addr(&pml4[__pxe_idx(va)]);
-	if (!pdpt)
-		return 0;
-
-	pud_t *pdt = page_addr(&pdpt[__ppe_idx(va)]);
-	if (!pdt)
-		return 0;
-
-	pmd_t *pdte = &pdt[__pde_idx(va)];
-	if (!pte_present(*(pte_t *)pdte))
-		return 0;
-
-	if (pte_large(*(pte_t *)pdte))
-		return pdte;
-
-	pte_t *pt = page_addr(pdte);
-	if (pt)
-		return &pt[__pte_idx(va)];
-
-	return 0;
+	uintptr_t off = (va >> PXI_SHIFT) & PTX_MASK;
+	return (pgd_t *)pxe_base + off;
 }
 
-static inline u64 cr3_resolve_va(uintptr_t cr3, uintptr_t va)
+static inline pud_t *va_to_pud(uintptr_t va)
 {
-	pte_t *pte = __cr3_resolve_va(cr3, va);
+	uintptr_t off = (va >> PPI_SHIFT) & PPI_MASK;
+	return (pud_t *)ppe_base + off;
+}
+
+static inline pmd_t *va_to_pmd(uintptr_t va)
+{
+	uintptr_t off = (va >> PDI_SHIFT) & PDI_MASK;
+	return (pmd_t *)pde_base + off;
+}
+
+static inline pte_t *va_to_pte(uintptr_t va)
+{
+	uintptr_t off = (va >> PTI_SHIFT) & PTI_MASK;
+	return (pte_t *)pte_base + off;
+}
+
+static inline uintptr_t __pte_to_va(pte_t pte)
+{
+	return (((pte.pte - pte_base) << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
+}
+
+static inline pgd_t *pgd_offset(uintptr_t cr3, uintptr_t va)
+{
+	return (pgd_t *)__va(PAGE_PA(cr3)) + __pxe_idx(va);
+}
+
+static inline pud_t *pud_offset(pgd_t *pgd, uintptr_t va)
+{
+	return (pud_t *)__va(PAGE_PPA(pgd)) + __ppe_idx(va);
+}
+
+static inline pmd_t *pmd_offset(pud_t *pud, uintptr_t va)
+{
+	return (pmd_t *)__va(PAGE_PPA(pud)) + __pde_idx(va);
+}
+
+static inline pte_t *pte_offset(pmd_t *pmd, uintptr_t va)
+{
+	return (pte_t *)__va(PAGE_PPA(pmd)) + __pte_idx(va);
+}
+
+static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
+{
+	pgd_t *pgd;
+	pud_t *pud;
+	pmd_t *pmd;
+
+	pgd = pgd_offset(cr3, va);
+	if (!pte_present(*pgd))
+		return 0;
+
+	pud = pud_offset(pgd, va);
+	if (!pte_present(*pud))
+		return 0;
+
+	pmd = pmd_offset(pud, va);
+	if (!pte_present(*pmd))
+		return 0;
+
+	return pte_offset(pmd, va);
+}
+#endif
+
+static inline void *pte_to_va(pte_t pte)
+{
+	return (void *)__pte_to_va(pte);
+}
+
+static inline u64 va_to_pa(uintptr_t va)
+{
+	pte_t *pte = (pte_t *)va_to_pmd(va);
+	if (!pte_large(*pte))
+		pte = va_to_pte(va);
+
 	if (!pte_present(*pte))
 		return 0;
 
 	return PAGE_PPA(pte) | addr_offset(va);
 }
-#endif
 
 static inline void *mm_alloc_page(void)
 {

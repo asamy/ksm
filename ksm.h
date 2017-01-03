@@ -609,7 +609,7 @@ static inline bool ept_gpa_to_hpa(struct ept *ept, int eptp, u64 gpa, u64 *hpa)
 static inline bool gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3,
 			      uintptr_t gva, u32 ac, u64 *gpa)
 {
-	pte_t *pte = __cr3_resolve_va(cr3, gva);
+	pte_t *pte = pte_from_cr3_va(cr3, gva);
 	if (!pte || (pte->pte & ac) != ac)
 		return false;
 
