@@ -368,7 +368,7 @@ bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len)
 		/* Write up to remaining data in the page, not in len.  */
 		off = addr_offset(gva);
 		copy = min(len, PAGE_SIZE - off);
-		memcpy(tmp + addr_offset(gva), data, copy);
+		memcpy(tmp + off, data, copy);
 		mm_unmap(tmp, PAGE_SIZE);
 
 		len -= copy;
@@ -406,7 +406,7 @@ bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len)
 		/* Read up to remaining data in the page, not in len.  */
 		off = addr_offset(gva);
 		copy = min(len, PAGE_SIZE - off);
-		memcpy(d, tmp + addr_offset(gva), copy);
+		memcpy(d, tmp + off, copy);
 		mm_unmap(tmp, PAGE_SIZE);
 
 		len -= copy;

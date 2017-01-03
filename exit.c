@@ -2067,8 +2067,11 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 	 * entries that we set, by simply just discarding them.
 	 */
 	size_t entries = min((size_t)idt->limit, (PAGE_SIZE - 1)) / sizeof(struct kidt_entry64);
-	struct kidt_entry64 *current_idt = (struct kidt_entry64 *)idt->base;
+	struct kidt_entry64 current_idt[256];
 	struct kidt_entry64 *shadow = (struct kidt_entry64 *)vcpu->idt.base;
+
+	if (!ksm_read_virt(vcpu, idt->base, (u8 *)&current_idt[0], idt->limit))
+		return vcpu_inject_pf(vcpu, idt->base, PGF_PRESENT);
 
 	VCPU_DEBUG("Loading new IDT (new size: %d old size: %d)  Copying %d entries\n",
 		   idt->limit, vcpu->idt.limit, entries);
@@ -2369,9 +2372,9 @@ static inline bool nested_can_handle_io(const struct nested_vcpu *nested)
 
 	while (size > 0) {
 		if (port < 0x8000)
-			bitmap = __nested_vmcs_read(vmcs, IO_BITMAP_A);
+			bitmap = __nested_vmcs_read64(vmcs, IO_BITMAP_A);
 		else if (port < 0x10000)
-			bitmap = __nested_vmcs_read(vmcs, IO_BITMAP_B);
+			bitmap = __nested_vmcs_read64(vmcs, IO_BITMAP_B);
 		else
 			return true;
 
@@ -2406,12 +2409,15 @@ static inline bool nested_can_handle_msr(const struct nested_vcpu *nested, bool 
 	u32 msr = ksm_read_reg32(vcpu, REG_CX);
 	u64 gpa = __nested_vmcs_read(nested->vmcs, MSR_BITMAP);
 	u64 hpa;
-	if (!gpa_to_hpa(vcpu, gpa, &hpa))
-		return false;
+	u8 *bitmap;
+	bool ret = false;
 
-	char *bitmap = mm_remap(hpa, PAGE_SIZE);
+	if (!gpa_to_hpa(vcpu, gpa, &hpa))
+		return ret;
+
+	bitmap = mm_remap(hpa, PAGE_SIZE);
 	if (!bitmap)
-		return false;
+		return ret;
 
 	if (write)
 		bitmap += 2048;
@@ -2421,7 +2427,7 @@ static inline bool nested_can_handle_msr(const struct nested_vcpu *nested, bool 
 		bitmap += 1024;
 	}
 
-	bool ret = ((*(u8 *)(bitmap + msr / 8)) >> (msr % 8)) & 1;
+	ret = ((*(u8 *)(bitmap + msr / 8)) >> (msr % 8)) & 1;
 	mm_unmap(bitmap, PAGE_SIZE);
 	return ret;
 }
