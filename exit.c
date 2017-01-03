@@ -2102,16 +2102,16 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 	case 0:		/* sgdt  */
 		dt.limit = vmcs_read32(GUEST_GDTR_LIMIT);
 		dt.base = vmcs_read(GUEST_GDTR_BASE);
-		if (!ksm_write_virt(vcpu, addr, &dt, sizeof(dt)))
+		if (!ksm_write_virt(vcpu, addr, (const u8 *)&dt, sizeof(dt)))
 			vcpu_inject_pf(vcpu, addr, PGF_PRESENT | PGF_WRITE);
 		break;
 	case 1:		/* sidt */
 		dt = vcpu->g_idt;
-		if (!ksm_write_virt(vcpu, addr, &dt, sizeof(dt)))
+		if (!ksm_write_virt(vcpu, addr, (const u8 *)&dt, sizeof(dt)))
 			vcpu_inject_pf(vcpu, addr, PGF_PRESENT | PGF_WRITE);
 		break;
 	case 2:		/* lgdt  */
-		if (ksm_read_virt(vcpu, addr, &dt, sizeof(dt))) {
+		if (ksm_read_virt(vcpu, addr, (u8 *)&dt, sizeof(dt))) {
 			vcpu_inject_pf(vcpu, addr, PGF_PRESENT);
 			break;
 		}
@@ -2120,7 +2120,7 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 		vmcs_write(GUEST_GDTR_BASE, dt.base);
 		break;
 	case 3:		/* lidt  */
-		if (!ksm_read_virt(vcpu, addr, &dt, sizeof(dt)))
+		if (!ksm_read_virt(vcpu, addr, (u8 *)&dt, sizeof(dt)))
 			vcpu_inject_pf(vcpu, addr, PGF_PRESENT);
 		else
 			vcpu_sync_idt(vcpu, &dt);
@@ -2170,22 +2170,22 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 		switch ((info >> 28) & 3) {
 		case 0:
 			sel = vmcs_read16(GUEST_LDTR_SELECTOR);
-			if (!ksm_write_virt(vcpu, addr, &sel, 2))
+			if (!ksm_write_virt(vcpu, addr, (const u8 *)&sel, 2))
 				vcpu_inject_pf(vcpu, addr, PGF_PRESENT | PGF_WRITE);
 			break;
 		case 1:
 			sel = vmcs_read16(GUEST_TR_SELECTOR);
-			if (!ksm_write_virt(vcpu, addr, &sel, 2))
+			if (!ksm_write_virt(vcpu, addr, (const u8 *)&sel, 2))
 				vcpu_inject_pf(vcpu, addr, PGF_PRESENT | PGF_WRITE);
 			break;
 		case 2:
-			if (!ksm_read_virt(vcpu, addr, &sel, 2))
+			if (!ksm_read_virt(vcpu, addr, (u8 *)&sel, 2))
 				vcpu_inject_pf(vcpu, addr, PGF_PRESENT);
 			else
 				vmcs_write16(GUEST_LDTR_SELECTOR, sel);
 			break;
 		case 3:
-			if (!ksm_read_virt(vcpu, addr, &sel, 2))
+			if (!ksm_read_virt(vcpu, addr, (u8 *)&sel, 2))
 				vcpu_inject_pf(vcpu, addr, PGF_PRESENT);
 			else
 				vmcs_write16(GUEST_TR_SELECTOR, sel);
