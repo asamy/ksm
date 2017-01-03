@@ -1,6 +1,6 @@
 /*
  * ksm - a really simple and fast x64 hypervisor
- * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
+ * Copyright (C) 2016 Ahmed Samy <asamy@protonmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -197,7 +197,7 @@ int ksm_subvert(void)
 
 /*
  * Only called once, initializes all shared stuff, MSR bitmap,
- * and IO bitmaps, then virtualizes all available processors.
+ * and IO bitmaps.
  */
 int ksm_init(void)
 {
@@ -341,4 +341,78 @@ int ksm_free_idt(unsigned n)
 		.h = NULL,
 	});
 	return DPC_RET();
+}
+
+bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len)
+{
+	u64 gpa;
+	u64 hpa;
+	size_t off;
+	size_t copy;
+	uintptr_t cr3;
+	char *tmp;
+
+	off = 0;
+	cr3 = vmcs_read(GUEST_CR3);
+	while (len) {
+		if (!gva_to_gpa(vcpu, cr3, gva, PAGE_PRESENT, &gpa))
+			return false;
+
+		if (!gpa_to_hpa(vcpu, gpa, &hpa))
+			return false;
+
+		tmp = mm_remap(hpa, PAGE_SIZE);
+		if (!tmp)
+			return false;
+
+		/* Write up to remaining data in the page, not in len.  */
+		off = addr_offset(gva);
+		copy = min(len, PAGE_SIZE - off);
+		memcpy(tmp + addr_offset(gva), data, copy);
+		mm_unmap(tmp, PAGE_SIZE);
+
+		len -= copy;
+		data += copy;
+		gva += copy;
+	}
+
+	return true;
+}
+
+bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len)
+{
+	u64 gpa;
+	u64 hpa;
+	size_t off;
+	size_t copy;
+	uintptr_t cr3;
+	u8 *tmp;
+	u8 *d;
+
+	d = data;
+	off = 0;
+	cr3 = vmcs_read(GUEST_CR3);
+	while (len) {
+		if (!gva_to_gpa(vcpu, cr3, gva, PAGE_PRESENT, &gpa))
+			return false;
+
+		if (!gpa_to_hpa(vcpu, gpa, &hpa))
+			return false;
+
+		tmp = mm_remap(hpa, PAGE_SIZE);
+		if (!tmp)
+			return false;
+
+		/* Read up to remaining data in the page, not in len.  */
+		off = addr_offset(gva);
+		copy = min(len, PAGE_SIZE - off);
+		memcpy(d, tmp + addr_offset(gva), copy);
+		mm_unmap(tmp, PAGE_SIZE);
+
+		len -= copy;
+		d += copy;
+		gva += copy;
+	}
+
+	return true;
 }

@@ -1,6 +1,6 @@
 /*
  * ksm - a really simple and fast x64 hypervisor
- * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
+ * Copyright (C) 2016 Ahmed Samy <asamy@protonmail.com>
  *
  * Assembly stuff for GCC (AT&T aka GAS) only.  See vmx.asm for MASM.
  *

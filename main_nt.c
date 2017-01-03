@@ -1,6 +1,6 @@
 /*
  * ksm - a really simple and fast x64 hypervisor
- * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
+ * Copyright (C) 2016 Ahmed Samy <asamy@protonmail.com>
  *
  * Main windows kernel driver entry point.
  *
@@ -162,10 +162,10 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 #ifdef EPAGE_HOOK
 	/* Just a simple example...  */
 	if (ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace) == 0) {
-		void *p = kmap_iomem(__pa(g_driver_base), PAGE_SIZE);
+		void *p = mm_remap(__pa(g_driver_base), PAGE_SIZE);
 		if (p) {
 			VCPU_DEBUG("map at %p\n", p);
-			kunmap_iomem(p, PAGE_SIZE);
+			mm_unmap(p, PAGE_SIZE);
 		}
 
 		ksm_unhook_page(MmMapIoSpace);

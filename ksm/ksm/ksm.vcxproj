@@ -67,7 +67,7 @@
       <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
     </DriverSign>
     <ClCompile>
-      <PreprocessorDefinitions>ENABLE_DBGPRINT;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ENABLE_DBGPRINT;NESTED_VMX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
     <Link>
@@ -96,7 +96,8 @@
     <ClCompile Include="..\..\hotplug.c" />
     <ClCompile Include="..\..\htable.c" />
     <ClCompile Include="..\..\ksm.c" />
-    <ClCompile Include="..\..\main_windows.c" />
+    <ClCompile Include="..\..\main_nt.c" />
+    <ClCompile Include="..\..\mm.c" />
     <ClCompile Include="..\..\page.c" />
     <ClCompile Include="..\..\print.c" />
     <ClCompile Include="..\..\resubv.c" />

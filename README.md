@@ -270,7 +270,7 @@ time it's delivering an external interrupt (e.g. Mouse, keyboard, etc.  Things
 	Note: Those are the "main" controls, there are also other fields that
 	can conditionally cause vm-exits.
 
-Since there is no bits that controls cr0/cr4 stores/loads4 in those "main"
+Since there is no bits that controls cr0/cr4 stores/loads in those "main"
 controls, the processor offers 4 fields that control access to those:
 
 1. `CR0_READ_SHADOW` (If a bit is not set in this variable, then the guest kernel
@@ -376,9 +376,9 @@ in the former case, it can happen when for example an access bit is not there
 (e.g. trying to execute but there is no execute access given.)
 
 The traditional EPT violation handling is via the VM exit path, but modern
-processors (starting off from Intel Broadwell) supports a new IDT exception
+processors (starting off Intel Broadwell) supports a new IDT exception
 called "Virtualization Exceptions" and that is defined at vector 20 in the IDT.
-When set and also the relevant bits in VMCS are also set, the processor will
+When set and the relevant bits in VMCS are also set, the processor will
 throw exceptions to that vector instead of causing a VM exit, but under certain
 conditions it will take the vm-exit path instead, see notes below.
 
@@ -415,7 +415,7 @@ Some notes on Guest:
 
 - VMFUNC does **not** have CPL checks, that means a user-space program can
 execute it.
-- The virtual processor ID (VPID) cannot be 0 since VMX root mode already uses that
+- The virtual processor ID (VPID) cannot be 0 since the Host already uses that
 one, so we use the current processor number is + 1.  VPIDs are used to control
 processor cache.
 
@@ -681,9 +681,12 @@ Then `make`.
 
 #### Compiling under MinGW
 
+**Warning**: The MinGW build is known to be unstable under Windows 10, so it's
+not recommended, rather use the VS project to compile for Windows.
+
 ##### Makefile variables:
 
-You can pass one or more of the following variables to the `make` command:
+You can pass one or more of the following variables to your `make` command:
 
 - `WINVER=0x0602` - Explicility specify windows version to build for.
 - `C=1` - Prepare for cross-compiling.
@@ -711,10 +714,9 @@ You can pass one or more of the following variables to the `make` command:
 - `LEXTRA=arg` - Print something out after linking
 
 You may need to adjust the windows version you're compiling for, in that case
-adjust `_WIN32_WINNT` inside the Makefile manually or pass it through
-commandline:
+adjust `WINVER` inside the Makefile manually or pass it through commandline:
 
-	`make -f Makefile.windows C=1 WINVER=0x0602`.
+	make -f Makefile.windows C=1 WINVER=0x0602
 
 ##### Cross under Linux
 
@@ -786,26 +788,8 @@ C:\windows\system32\drivers\Dbgv.sys to something else, then start it again.
 
 ## Reporting bugs (or similar)
 
-You can report bugs using Github issues, please provide the following:
-
-- System information (version including build number, CPU information perhaps codename too)
-- The git tree hash
-- KSM output if available
-- Kernel Du Jour
-- Anything else you feel is relevant
-
-If it's a crash, please provide the following:
-
-### For Windows
-
-- A minidump (C:\windows\minidump) or a memory dump (C:\windows\memory.dmp).  Former prefered.
-- The compiled .sys and the .pdb/.dbg file
-- The Kernel executable if possible, e.g. ntoskrnl.exe from C:\Windows\System32
-
-### For Linux
-
-- `ksmlinux.ko` and `ksmlinux.o`
-- Stack dump from dmesg or kernel panic
+You can report bugs using Github issues, there is an Issue Template to help you
+fill things as needed.
 
 ## References
 

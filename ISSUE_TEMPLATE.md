@@ -25,7 +25,7 @@
 
 ### System information
 
-1. CPU: WRITE_HERE
+1. CPU: WRITE_HERE (Codename: AND_HERE)
 2. Kernel: WRITE_HERE
 3. Kernel version: WRITE_HERE Build number: AND_HERE
 
@@ -47,25 +47,39 @@ any, otherwise completely remove this section.
 Please refer to each file uploaded in this section in the Issue description
 part, by using [x] where x is the number of the file here.
 
-REMOVE IF NOTHING PROVIDED.
+If it's a crash you'll need to upload:
+
+#### For Windows
+
+- A minidump (C:\windows\minidump) or a memory dump (C:\windows\memory.dmp).  Former prefered.
+- The compiled .sys and the .pdb/.dbg file
+- The Kernel executable if possible, e.g. ntoskrnl.exe from C:\Windows\System32
+
+#### For Linux
+
+- `ksmlinux.ko` and `ksmlinux.o`
+- Stack dump from dmesg or kernel panic
+
+**REMOVE IF NOTHING PROVIDED.**
 
 ### Stack Trace
 
-Paste stack trace here if any.  REMOVE IF NOTHING PROVIDED.
+Paste stack trace text here if any.  **REMOVE IF NOTHING PROVIDED.**
 
 ### Current Behavior
 
-Replace this body with your own, provide what the current behavior is.  REMOVE
-IF UNRELATED.
+Replace this body with your own, provide what the current behavior is.  **REMOVE
+IF UNRELATED.**
 
 ### Expected Behavior
 
-Replace this body with your own, provide what you're expecting.  REMOVE IF
-UNRELATED.
+Replace this body with your own, provide what you're expecting.  **REMOVE IF
+UNRELATED.**
 
 ### Inline code / patches to be used when reproducing
 
 Please only use this if the code really is inline, i.e. up to 40 lines of code
-here, otherwise upload a patch via the Uploaded files.  REMOVE IF NOTHING
-PROVIDED.
+here, otherwise upload a patch via the Uploaded files
+
+**REMOVE IF NOTHING PROVIDED.**
 

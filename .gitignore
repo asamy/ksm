@@ -44,8 +44,6 @@ dlldata.c
 project.lock.json
 artifacts/
 
-*.symvers
-*.ko
 *.o
 *_i.c
 *_p.c
@@ -186,7 +184,7 @@ BundleArtifacts/
 ClientBin/
 [Ss]tyle[Cc]op.*
 ~$*
-*~
+*~*
 *.dbmdl
 *.dbproj.schemaview
 *.pfx
@@ -246,3 +244,12 @@ ModelManifest.xml
 
 # FAKE - F# Make
 .fake/
+
+# Linux
+*.symvers
+*.ko
+*.cmd
+.tmp_versions/
+*.mod.c
+*.order
+

@@ -1,6 +1,6 @@
 /*
  * ksm - a really simple and fast x64 hypervisor
- * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
+ * Copyright (C) 2016 Ahmed Samy <asamy@protonmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -130,21 +130,7 @@
 #define VCPU_TRACER_END()
 #endif
 
- /*
- * FIXME: This needs to be removed and instead `kmap_iomem()` can be used, this
- * is very unsafe...
- *
- * Used only in GDT/IDT/LDT/TR VM-exit handlers.
- */
-#define VCPU_ENTER_GUEST()				\
-	uintptr_t __g_cr3 = vmcs_read(GUEST_CR3);	\
-	uintptr_t __save_cr3 = __readcr3();		\
-	__writecr3(__g_cr3)
-
-#define VCPU_EXIT_GUEST()	\
-	__writecr3(__save_cr3)
-
-/* EPT Memory type  */
+ /* EPT Memory type  */
 #define EPT_MT_UNCACHABLE		0
 #define EPT_MT_WRITECOMBINING		1
 #define EPT_MT_WRITETHROUGH		4
@@ -320,7 +306,7 @@ static inline bool nested_has_vmcs(const struct nested_vcpu *nested)
 static inline void nested_free_vmcs(struct nested_vcpu *nested)
 {
 	if (nested->vmcs != 0) {
-		kunmap_iomem((void *)nested->vmcs, PAGE_SIZE);
+		mm_unmap((void *)nested->vmcs, PAGE_SIZE);
 		nested->vmcs = 0;
 	}
 }
@@ -515,28 +501,13 @@ extern int __ksm_init_cpu(struct ksm *k);
 extern int __ksm_exit_cpu(struct ksm *k);
 extern int ksm_hook_idt(unsigned n, void *h);
 extern int ksm_free_idt(unsigned n);
+extern bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const void *data, size_t len);
+extern bool ksm_read_virt(struct vcpu *vcpu, u64 gva, void *data, size_t len);
 
 static inline struct vcpu *ksm_current_cpu(void)
 {
 	return ksm.vcpu_list[cpu_nr()];
 }
-
-#ifdef EPAGE_HOOK
-/* page.c  */
-extern int ksm_hook_epage(void *original, void *redirect);
-extern int ksm_unhook_page(void *original);
-extern int __ksm_unhook_page(struct page_hook_info *phi);
-extern struct page_hook_info *ksm_find_page(void *va);
-extern struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn);
-#endif
-
-/* vcpu.c  */
-extern struct vcpu *vcpu_create(void);
-extern void vcpu_free(struct vcpu *vcpu);
-extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
-extern u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa);
-extern u64 *ept_pte(u64 *pml4, u64 gpa);
-extern bool ept_handle_violation(struct vcpu *vcpu);
 
 struct h_vmfunc {
 	u32 eptp;
@@ -564,36 +535,29 @@ static inline u8 vcpu_vmfunc(u32 eptp, u32 func)
 	});
 }
 
-#ifndef __linux__
-/* Execute function on a CPU.  */
-typedef u64 (*oncpu_fn_t) (void *);
-static inline int exec_on_cpu(int cpu, oncpu_fn_t oncpu, void *param, u64 *ret)
-{
-	PROCESSOR_NUMBER nr;
-	GROUP_AFFINITY affinity;
-	GROUP_AFFINITY prev;
-	int status;
-
-	status = KeGetProcessorNumberFromIndex(cpu, &nr);
-	if (!NT_SUCCESS(status))
-		return status;
-
-	affinity.Group = nr.Group;
-	affinity.Mask = 1ULL << nr.Number;
-	KeSetSystemGroupAffinityThread(&affinity, &prev);
-
-	*ret = oncpu(param);
-	KeRevertToUserGroupAffinityThread(&prev);
-	return STATUS_SUCCESS;
-}
-#endif
-
 static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)
 {
 	struct kidt_entry64 *e = idt_entry(vcpu->idt.base, n);
 	memcpy(&vcpu->shadow_idt[n], e, sizeof(*e));
 	set_intr_gate(n, cs, vcpu->idt.base, (uintptr_t)h);
 }
+
+#ifdef EPAGE_HOOK
+/* page.c  */
+extern int ksm_hook_epage(void *original, void *redirect);
+extern int ksm_unhook_page(void *original);
+extern int __ksm_unhook_page(struct page_hook_info *phi);
+extern struct page_hook_info *ksm_find_page(void *va);
+extern struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn);
+#endif
+
+/* vcpu.c  */
+extern struct vcpu *vcpu_create(void);
+extern void vcpu_free(struct vcpu *vcpu);
+extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
+extern u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa);
+extern u64 *ept_pte(u64 *pml4, u64 gpa);
+extern bool ept_handle_violation(struct vcpu *vcpu);
 
 static inline void __set_epte_pfn(u64 *epte, u64 pfn)
 {
@@ -616,6 +580,46 @@ static inline void __set_epte_ar_pfn(u64 *epte, int ar, u64 pfn)
 {
 	__set_epte_pfn(epte, pfn);
 	__set_epte_ar(epte, ar);
+}
+
+static inline void ept_set_hpa(struct ept *ept, int eptp, u64 gpa, u64 hpa)
+{
+	u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
+	if (epte)
+		__set_epte_pfn(epte, hpa >> PAGE_SHIFT);
+}
+
+static inline void ept_set_ar(struct ept *ept, int eptp, u64 gpa, int ar)
+{
+	u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
+	if (epte)
+		__set_epte_ar(epte, ar);
+}
+
+static inline bool ept_gpa_to_hpa(struct ept *ept, int eptp, u64 gpa, u64 *hpa)
+{
+	u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
+	if (!(*epte & EPT_AR_MASK))
+		return false;
+
+	*hpa = PAGE_PA(*epte);
+	return true;
+}
+
+static inline bool gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3,
+			      uintptr_t gva, u32 ac, u64 *gpa)
+{
+	pte_t *pte = __cr3_resolve_va(cr3, gva);
+	if (!pte || (pte->pte & ac) != ac)
+		return false;
+
+	*gpa = PAGE_PA(pte->pte);
+	return true;
+}
+
+static inline bool gpa_to_hpa(struct vcpu *vcpu, u64 gpa, u64 *hpa)
+{
+	return ept_gpa_to_hpa(&vcpu->ept, vcpu_eptp_idx(vcpu), gpa, hpa);
 }
 
 static inline void ar_get_bits(u8 ar, char *p)
@@ -642,4 +646,6 @@ static inline void get_epte_ar(u64 *pml4, u64 gpa, char *p)
 {
 	return __get_epte_ar(ept_pte(pml4, gpa), p);
 }
+
 #endif
+

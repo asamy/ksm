@@ -1,6 +1,6 @@
 /*
  * ksm - a really simple and fast x64 hypervisor
- * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
+ * Copyright (C) 2016 Ahmed Samy <asamy@protonmail.com>
  *
  * Executable page hooking, see comments down below for more
  * information.
@@ -191,7 +191,7 @@ int ksm_hook_epage(void *original, void *redirect)
 	struct page_hook_info *phi;
 	u8 *code_page;
 	void *aligned = (void *)page_align(original);
-	uintptr_t offset = (uintptr_t)original - (uintptr_t)aligned;	/* code start  */
+	uintptr_t code_start = (uintptr_t)original - (uintptr_t)aligned;
 
 	struct trampoline trampo;
 	epage_init_trampoline(&trampo, (uintptr_t)redirect);
@@ -202,10 +202,10 @@ int ksm_hook_epage(void *original, void *redirect)
 		 * Hooking another function in same page.
 		 *
 		 * Simply just overwrite the start of the
-		 * function to a trampoline...
+		 * function to the trampoline...
 		 */
 		code_page = phi->c_va;
-		memcpy(code_page + offset, &trampo, sizeof(trampo));
+		memcpy(code_page + code_start, &trampo, sizeof(trampo));
 		__wbinvd();	/* necessary?  */
 		return 0;
 	}
@@ -221,7 +221,7 @@ int ksm_hook_epage(void *original, void *redirect)
 	}
 
 	memcpy(code_page, aligned, PAGE_SIZE);
-	memcpy(code_page + offset, &trampo, sizeof(trampo));
+	memcpy(code_page + code_start, &trampo, sizeof(trampo));
 
 	phi->c_va = code_page;
 	phi->cpa = __pa(code_page);

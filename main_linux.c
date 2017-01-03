@@ -1,6 +1,6 @@
 /*
  * ksm - a really simple and fast x64 hypervisor
- * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
+ * Copyright (C) 2016 Ahmed Samy <asamy@protonmail.com>
  *
  * Main entrypoint for the Linux kernel module.
  *
@@ -28,8 +28,14 @@ static struct workqueue_struct *wq;
 
 static void ksm_worker(struct work_struct *w)
 {
+	struct gdtr idt;
+	struct gdtr *tmp = &ksm_current_cpu()->g_idt;
+
 	int r = ksm_subvert();
 	VCPU_DEBUG("ret: %d (%d active)\n", r, ksm.active_vcpus);
+
+	__sidt(&idt);
+	VCPU_DEBUG("IDT: %p %p: %d\n", idt.base, tmp->base, memcmp(&idt, tmp, sizeof(*tmp)));
 }
 static DECLARE_DELAYED_WORK(work, ksm_worker);
 

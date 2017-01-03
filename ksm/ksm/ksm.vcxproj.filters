@@ -42,13 +42,16 @@
     <ClCompile Include="..\..\print.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\main_windows.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\resubv.c">
       <Filter>Source Files</Filter>
     </ClCompile>
     <ClCompile Include="..\..\hotplug.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\mm.c">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="..\..\main_nt.c">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

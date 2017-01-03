@@ -1,6 +1,6 @@
 #
 # ksm - a really simple and fast x64 hypervisor
-# Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
+# Copyright (C) 2016 Ahmed Samy <asamy@protonmail.com>
 #
 # Makefile for MinGW and others.
 # 	To cross-compile, pass C=1:
@@ -60,7 +60,7 @@ LDFLAGS = -shared -Wl,--subsystem,native -Wl,--dynamicbase -Wl,--stack=0x6000 \
 	  -Wl,--enable-stdcall-fixup -nostartfiles -nostdlib
 LIBS = -L$(CROSS_LIB) -lntoskrnl -lhal -lmingwex
 
-SRC = exit.c htable.c hotplug.c ksm.c main_windows.c page.c print.c resubv.c vcpu.c
+SRC = exit.c htable.c hotplug.c ksm.c mm.c main_nt.c page.c print.c resubv.c vcpu.c
 ASM = vmx.S
 
 BIN_DIR ?= bin

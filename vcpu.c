@@ -1,6 +1,6 @@
 /*
  * ksm - a really simple and fast x64 hypervisor
- * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
+ * Copyright (C) 2016 Ahmed Samy <asamy@protonmail.com>
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -510,6 +510,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 
 	__sgdt(&gdtr);
 	__sidt(idtr);
+	VCPU_DEBUG("IDT mapped at %p\n", idtr->base);
 	memcpy((void *)vcpu->idt.base, (void *)idtr->base, idtr->limit);
 
 	vmxon = vcpu->vmxon;

@@ -1,6 +1,10 @@
 /*
  * ksm - a really simple and fast x64 hypervisor
- * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
+ * Copyright (C) 2016 Ahmed Samy <asamy@protonmail.com>
+ *
+ * kmap_virt() from KSplice:
+ *	Copyright (C) 2007-2009  Ksplice, Inc.
+ *	Authors: Jeff Arnold, Anders Kaseorg, Tim Abbott
  *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
@@ -325,7 +329,7 @@ static inline pte_t *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
 static inline pte_t *__cr3_resolve_va(u64 cr3, u64 va)
 {
 	/* NB: You can also use va_to_pte / va_to_pmd, etc.  */
-	pte_t *pml4 = __va(cr3 & PAGE_PA_MASK);
+	pte_t *pml4 = (pte_t *)__va(cr3 & PAGE_PA_MASK);
 	pgd_t *pdpt = page_addr(&pml4[__pxe_idx(va)]);
 	if (!pdpt)
 		return 0;
@@ -412,99 +416,19 @@ static inline void mm_free_pool(void *v, size_t size)
 }
 
 #ifndef __linux__
-static inline void *kmap_iomem(u64 addr, size_t size)
+static inline void *mm_remap(u64 phys, size_t size)
 {
-	return MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = addr }, size, MmNonCached);
+	return MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = phys }, size, MmNonCached);
 }
 
-static inline void kunmap_iomem(void *addr, size_t size)
+static inline void mm_unmap(void *addr, size_t size)
 {
 	return MmUnmapIoSpace(addr, size);
 }
 #else
-static inline void *kmap_iomem(unsigned long addr, unsigned long size)
-{
-	struct page *page = pfn_to_page(addr >> PAGE_SHIFT);
-	if (!page)
-		return NULL;
-
-	/* should we use kmap() and kunmap() down below?  */
-	return page_address(page);
-}
-
-static inline void kunmap_iomem(void *addr, unsigned long size)
-{
-	/* Do nothing  */
-}
-
-/*
- * From KSplice:
- *
- *  Original:
- *	 * map_writable creates a shadow page mapping of the range
- *	 [addr, addr + len) so that we can write to code mapped read-only.
- *
- *	 It is similar to a generalized version of x86's text_poke.  But
- *	 because one cannot use vmalloc/vfree() inside stop_machine, we use
- *	 map_writable to map the pages before stop_machine, then use the
- *	 mapping inside stop_machine, and unmap the pages afterwards.
- *
- *	https://github.com/jirislaby/ksplice/tree/master
- *	kmodsrc/ksplice.c
- *
- *  Copyright (C) 2007-2009  Ksplice, Inc.
- *  Authors: Jeff Arnold, Anders Kaseorg, Tim Abbott
- *
- *  This program is free software; you can redistribute it and/or modify
- *  it under the terms of the GNU General Public License, version 2.
- *
- *  This program is distributed in the hope that it will be useful,
- *  but WITHOUT ANY WARRANTY; without even the implied warranty of
- *  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
- *  GNU General Public License for more details.
- *
- *  You should have received a copy of the GNU General Public License
- *  along with this program; if not, write to the Free Software
- *  Foundation, Inc., 51 Franklin Street - Fifth Floor, Boston, MA
- *  02110-1301, USA.
- */
-static void *kmap_virt(void *addr, size_t len, pgprot_t prot)
-{
-	int i;
-	void *vaddr;
-	int nr_pages = DIV_ROUND_UP(offset_in_page(addr) + len, PAGE_SIZE);
-	struct page **pages = kmalloc(nr_pages * sizeof(*pages), GFP_KERNEL);
-	void *page_addr = (void *)((unsigned long)addr & PAGE_MASK);
-
-	if (!pages)
-		return NULL;
-
-	for (i = 0; i < nr_pages; ++i) {
-		if (!__module_address((unsigned long)page_addr)) {
-			pages[i] = virt_to_page(page_addr);
-			WARN_ON(!PageReserved(pages[i]));
-		} else {
-			/* Modules are allocated via vmalloc() which is
-			 * non-contiguous.  */
-			pages[i] = vmalloc_to_page(page_addr);
-		}
-
-		if (!pages[i]) {
-			kfree(pages);
-			return NULL;
-		}
-
-		page_addr += PAGE_SIZE;
-	}
-
-	vaddr = vmap(pages, nr_pages, VM_MAP, prot);
-	kfree(pages);
-	if (!vaddr)
-		return NULL;
-
-	return vaddr + offset_in_page(addr);
-}
-
+extern void *mm_remap(u64 phys, size_t size);
+extern void mm_unmap(void *addr, size_t size);
+extern void *kmap_virt(void *addr, size_t len, pgprot_t prot);
 static inline void *kmap_exec(void *addr, size_t len)
 {
 	return kmap_virt(addr, len, PAGE_KERNEL_EXEC);

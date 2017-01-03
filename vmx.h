@@ -17,7 +17,7 @@
  *	the COPYING file in the top-level directory.
  *
  * Along with modification from:
- *	Ahmed Samy, 2016 <f.fallen45@gmail.com>
+ *	Ahmed Samy, 2016 <asamy@protonmail.com>
  * Windows fixes, inline assembler intrinsics definitions
  * and updates from the Intel manual tables.
  *

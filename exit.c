@@ -1,6 +1,6 @@
 /*
  * ksm - a really simple and fast x64 hypervisor
- * Copyright (C) 2016 Ahmed Samy <f.fallen45@gmail.com>
+ * Copyright (C) 2016 Ahmed Samy <asamy@protonmail.com>
  *
  * This file handles a VM-exit from guest, if any error occurs,
  * it either:
@@ -274,33 +274,6 @@ static inline void vcpu_advance_rip(struct vcpu *vcpu)
 		   interruptibility & ~(GUEST_INTR_STATE_MOV_SS | GUEST_INTR_STATE_STI));
 }
 
-static inline u64 gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3, uintptr_t gva, u32 ac)
-{
-	pte_t *pte;
-	u32 pgf = PGF_PRESENT;
-	if (ac & PAGE_WRITE)
-		pgf |= PGF_WRITE;
-
-	pte = __cr3_resolve_va(cr3, gva);
-	if (!pte || (pte->pte & ac) != ac) {
-		vcpu_inject_pf(vcpu, gva, pgf);
-		return 0;
-	}
-
-	return PAGE_PA(pte->pte);
-}
-
-static inline bool gpa_to_hpa(struct vcpu *vcpu, u64 gpa, u64 *hpa)
-{
-	struct ept *ept = &vcpu->ept;
-	u64 *epte = ept_pte(EPT4(ept, vcpu_eptp_idx(vcpu)), gpa);
-	if (!(*epte & EPT_ACCESS_RW))
-		return false;
-
-	*hpa = PAGE_PA(*epte);
-	return true;
-}
-
 #ifdef NESTED_VMX
 static inline bool nested_inject_ve(struct vcpu *vcpu)
 {
@@ -324,13 +297,13 @@ static inline bool nested_inject_ve(struct vcpu *vcpu)
 	if (!gpa_to_hpa(vcpu, ve_info_addr, &hpa))
 		return false;
 
-	struct ve_except_info *info = kmap_iomem(hpa, PAGE_SIZE);
+	struct ve_except_info *info = mm_remap(hpa, PAGE_SIZE);
 	if (!info)
 		return false;
 
 	if (info->except_mask == 0) {
 		VCPU_DEBUG("Trying to inject #VE but guest opted-out.\n");
-		kunmap_iomem(info, PAGE_SIZE);
+		mm_unmap(info, PAGE_SIZE);
 		return false;
 	}
 
@@ -341,7 +314,7 @@ static inline bool nested_inject_ve(struct vcpu *vcpu)
 	info->gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
 	info->gla = vmcs_read(GUEST_LINEAR_ADDRESS);
 	info->exit = vmcs_read(EXIT_QUALIFICATION);
-	kunmap_iomem(info, PAGE_SIZE);
+	mm_unmap(info, PAGE_SIZE);
 	vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_VE);
 	return true;
 }
@@ -1217,28 +1190,6 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 	return prepare_nested_guest(vcpu, vmcs);
 }
 
-static inline bool nested_translate_gva(struct vcpu *vcpu, u64 gva, u64 mask, u64 *gpa, u64 *hpa)
-{
-	pte_t *pte;
-	u32 ec = PGF_PRESENT;
-	if (mask & PAGE_WRITE)
-		ec |= PGF_WRITE;
-
-	pte = __cr3_resolve_va(vmcs_read(GUEST_CR3), gva);
-	if (!pte)
-		goto fault;
-
-	if ((*pte & mask) == mask) {
-		*gpa = PAGE_PA(*pte);
-		if (gpa_to_hpa(vcpu, *gpa, hpa))
-			return true;
-	}
-
-fault:
-	vcpu_inject_pf(vcpu, gva, ec);
-	return false;
-}
-
 static inline bool vcpu_parse_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst, u64 *out)
 {
 	/*
@@ -1303,52 +1254,14 @@ static inline bool vcpu_parse_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst, u6
 	return true;
 }
 
-/*
- * This function and the later function (vcpu_write_vmx_addr) need 
- * to be more robust and need to handle out-of-boundary pages, e.g.
- *
- *	If GVA is:
- *		0xFFC
- *	Then we will not get the same page to write to an 8-byte to, thus
- *	we need to do 2 writes, first 4 bytes into this page, next 4 bytes
- *	in other page the vaddr would translate to.
- *
- * In fact, this should be moved somewhere else, maybe vcpu.c.
- */
 static inline bool vcpu_read_vmx_addr(struct vcpu *vcpu, u64 gva, u64 *value)
 {
-	u64 gpa, hpa;
-	if (!nested_translate_gva(vcpu, gva, PAGE_PRESENT, &gpa, &hpa))
-		return false;
-
-	if (!same_page(gva, gva + sizeof(value)))
-		return false;
-
-	char *v = kmap_iomem(hpa, PAGE_SIZE);
-	if (!v)
-		return false;
-
-	*value = *(u64 *)(v + addr_offset(gva));
-	kunmap_iomem(v, PAGE_SIZE);
-	return true;
+	return ksm_read_virt(vcpu, gva, value, 8);
 }
 
 static inline bool vcpu_write_vmx_addr(struct vcpu *vcpu, u64 gva, u64 value)
 {
-	u64 gpa, hpa;
-	if (!nested_translate_gva(vcpu, gva, PAGE_PRESENT | PAGE_WRITE, &gpa, &hpa))
-		return false;
-
-	if (!same_page(gva, gva + sizeof(value)))
-		return false;
-
-	char *v = kmap_iomem(hpa, PAGE_SIZE);
-	if (!v)
-		return false;
-
-	*(u64 *)(v + addr_offset(gva)) = value;
-	kunmap_iomem(v, PAGE_SIZE);
-	return true;
+	return ksm_write_virt(vcpu, gva, &value, 8);
 }
 
 static bool vcpu_handle_vmclear(struct vcpu *vcpu)
@@ -1433,7 +1346,7 @@ static bool vcpu_handle_vmptrld(struct vcpu *vcpu)
 	if (nested_has_vmcs(nested))
 		nested_free_vmcs(nested);
 
-	nested->vmcs = (uintptr_t)kmap_iomem(hpa, PAGE_SIZE);
+	nested->vmcs = (uintptr_t)mm_remap(hpa, PAGE_SIZE);
 	if (!nested->vmcs) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMPTRLD_INVALID_ADDRESS);
 		goto out;
@@ -1643,14 +1556,14 @@ static bool vcpu_handle_vmon(struct vcpu *vcpu)
 	    !gpa_to_hpa(vcpu, gpa, &hpa))
 		goto out;
 
-	char *tmp = kmap_iomem(hpa, PAGE_SIZE);
+	char *tmp = mm_remap(hpa, PAGE_SIZE);
 	if (!tmp) {
 		vcpu_vm_fail_invalid(vcpu);
 		goto out;
 	}
 
 	bool match = *(u32 *)tmp == (u32)__readmsr(MSR_IA32_VMX_BASIC);
-	kunmap_iomem(tmp, PAGE_SIZE);
+	mm_unmap(tmp, PAGE_SIZE);
 	if (!match) {
 		vcpu_vm_fail_invalid(vcpu);
 		goto out;
@@ -1925,9 +1838,6 @@ static bool vcpu_handle_io_port(struct vcpu *vcpu)
 	if (exit & 32)
 		count = ksm_read_reg32(vcpu, REG_CX);
 
-	/* Should really just run the fucking instruction...  */
-	VCPU_ENTER_GUEST();
-
 	const char *type = "in";
 	if (exit & 8) {
 		if (exit & 16) {
@@ -1980,7 +1890,6 @@ static bool vcpu_handle_io_port(struct vcpu *vcpu)
 
 	VCPU_DEBUG("%s: port: 0x%X, addr: %p [0x%X] (str: %d, count: %d, size: %d)\n",
 		   type, port, addr, *addr, exit & 16, count, size);
-	VCPU_EXIT_GUEST();
 
 	vcpu_advance_rip(vcpu);
 	return true;
@@ -2176,40 +2085,48 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 {
 	uintptr_t info = vmcs_read(VMX_INSTRUCTION_INFO);
 	uintptr_t disp = vmcs_read(EXIT_QUALIFICATION);
-	uintptr_t base = 0;
+	uintptr_t addr = disp;
+	struct gdtr dt;
+
 	if (!((info >> 27) & 1))
-		base = ksm_read_reg(vcpu, (info >> 23) & 15);
+		addr += ksm_read_reg(vcpu, (info >> 23) & 15);
 
-	uintptr_t index = 0;
 	if (!((info >> 22) & 1))
-		index = ksm_read_reg(vcpu, (info >> 18) & 15) << (info & 3);
+		addr += ksm_read_reg(vcpu, (info >> 18) & 15) << (info & 3);
 
-	uintptr_t addr = base + index + disp;
 	if (((info >> 7) & 7) == 1)
 		addr &= 0xFFFFFFFF;
 
-	VCPU_DEBUG("GDT/IDT access, addr [%p] (%p, %d, %d)\n", addr, base, index, disp);
-	VCPU_ENTER_GUEST();
-
-	struct gdtr *dt = (struct gdtr *)addr;
+	VCPU_DEBUG("GDT/IDT access, addr %p\n", addr);
 	switch ((info >> 28) & 3) {
 	case 0:		/* sgdt  */
-		dt->limit = vmcs_read32(GUEST_GDTR_LIMIT);
-		dt->base = vmcs_read(GUEST_GDTR_BASE);
+		dt.limit = vmcs_read32(GUEST_GDTR_LIMIT);
+		dt.base = vmcs_read(GUEST_GDTR_BASE);
+		if (!ksm_write_virt(vcpu, addr, &dt, sizeof(dt)))
+			vcpu_inject_pf(vcpu, addr, PGF_PRESENT | PGF_WRITE);
 		break;
 	case 1:		/* sidt */
-		*dt = vcpu->g_idt;
+		dt = vcpu->g_idt;
+		if (!ksm_write_virt(vcpu, addr, &dt, sizeof(dt)))
+			vcpu_inject_pf(vcpu, addr, PGF_PRESENT | PGF_WRITE);
 		break;
 	case 2:		/* lgdt  */
-		vmcs_write32(GUEST_GDTR_LIMIT, dt->limit);
-		vmcs_write(GUEST_GDTR_BASE, dt->base);
+		if (ksm_read_virt(vcpu, addr, &dt, sizeof(dt))) {
+			vcpu_inject_pf(vcpu, addr, PGF_PRESENT);
+			break;
+		}
+
+		vmcs_write32(GUEST_GDTR_LIMIT, dt.limit);
+		vmcs_write(GUEST_GDTR_BASE, dt.base);
 		break;
 	case 3:		/* lidt  */
-		vcpu_sync_idt(vcpu, dt);
+		if (!ksm_read_virt(vcpu, addr, &dt, sizeof(dt)))
+			vcpu_inject_pf(vcpu, addr, PGF_PRESENT);
+		else
+			vcpu_sync_idt(vcpu, &dt);
 		break;
 	}
 
-	VCPU_EXIT_GUEST();
 	vcpu_advance_rip(vcpu);
 	return true;
 }
@@ -2218,45 +2135,64 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 {
 	uintptr_t info = vmcs_read(VMX_INSTRUCTION_INFO);
 	uintptr_t disp = vmcs_read(EXIT_QUALIFICATION);
-	uintptr_t addr;
+	uintptr_t addr = disp;
+	u16 sel;
+	int sel_idx = (info >> 28) & 3;
+	int reg_idx = (info >> 3) & 15;
+
 	if ((info >> 10) & 1) {
-		// register
-		addr = (uintptr_t)ksm_reg(vcpu, (info >> 3) & 15);
-		VCPU_DEBUG("LDT/TR access, register %p (%d)\n", addr, (info >> 3) & 15);
+		VCPU_DEBUG("LDT/TR access, register %d\n", reg_idx);
+		switch ((info >> 28) & 3) {
+		case 0:		/* sldt  */
+			ksm_write_reg16(vcpu, reg_idx, vmcs_read16(GUEST_LDTR_SELECTOR));
+			break;
+		case 1:		/* str  */
+			ksm_write_reg16(vcpu, reg_idx, vmcs_read16(GUEST_TR_SELECTOR));
+			break;
+		case 2:		/* lldt  */
+			vmcs_write16(GUEST_LDTR_SELECTOR, ksm_read_reg16(vcpu, reg_idx));
+			break;
+		case 3:		/* ltr  */
+			vmcs_write16(GUEST_TR_SELECTOR, ksm_read_reg16(vcpu, reg_idx));
+			break;
+		}
 	} else {
-		// base
-		uintptr_t base = 0;
 		if (!((info >> 27) & 1))
-			base = ksm_read_reg(vcpu, (info >> 23) & 15);
+			addr += ksm_read_reg(vcpu, (info >> 23) & 15);
 
-		uintptr_t index = 0;
 		if (!((info >> 22) & 1))
-			index = ksm_read_reg(vcpu, (info >> 18) & 15) << (info & 3);
+			addr += ksm_read_reg(vcpu, (info >> 18) & 15) << (info & 3);
 
-		addr = base + index + disp;
 		if (((info >> 7) & 7) == 1)
 			addr &= 0xFFFFFFFF;
 
-		VCPU_DEBUG("LDT/TR access, addr [%p] (%p, %d, %d)\n", addr, base, index, disp);
+		VCPU_DEBUG("LDT/TR access, addr %p\n", addr);
+		switch ((info >> 28) & 3) {
+		case 0:
+			sel = vmcs_read16(GUEST_LDTR_SELECTOR);
+			if (!ksm_write_virt(vcpu, addr, &sel, 2))
+				vcpu_inject_pf(vcpu, addr, PGF_PRESENT | PGF_WRITE);
+			break;
+		case 1:
+			sel = vmcs_read16(GUEST_TR_SELECTOR);
+			if (!ksm_write_virt(vcpu, addr, &sel, 2))
+				vcpu_inject_pf(vcpu, addr, PGF_PRESENT | PGF_WRITE);
+			break;
+		case 2:
+			if (!ksm_read_virt(vcpu, addr, &sel, 2))
+				vcpu_inject_pf(vcpu, addr, PGF_PRESENT);
+			else
+				vmcs_write16(GUEST_LDTR_SELECTOR, sel);
+			break;
+		case 3:
+			if (!ksm_read_virt(vcpu, addr, &sel, 2))
+				vcpu_inject_pf(vcpu, addr, PGF_PRESENT);
+			else
+				vmcs_write16(GUEST_TR_SELECTOR, sel);
+			break;
+		}
 	}
 
-	VCPU_ENTER_GUEST();
-	u16 *selector = (u16 *)addr;
-	switch ((info >> 28) & 3) {
-	case 0:		/* sldt  */
-		*selector = vmcs_read16(GUEST_LDTR_SELECTOR);
-		break;
-	case 1:		/* str  */
-		*selector = vmcs_read16(GUEST_TR_SELECTOR);
-		break;
-	case 2:		/* lldt  */
-		vmcs_write16(GUEST_LDTR_SELECTOR, *selector);
-		break;
-	case 3:		/* ltr  */
-		vmcs_write16(GUEST_TR_SELECTOR, *selector);
-		break;
-	}
-	VCPU_EXIT_GUEST();
 	vcpu_advance_rip(vcpu);
 	return true;
 }
@@ -2445,12 +2381,12 @@ static inline bool nested_can_handle_io(const struct nested_vcpu *nested)
 			if (!gpa_to_hpa(vcpu, bitmap, &hpa))
 				return false;
 
-			char *v = kmap_iomem(hpa, PAGE_SIZE);
+			char *v = mm_remap(hpa, PAGE_SIZE);
 			if (!v)
 				return false;
 
 			byte = *(u8 *)(v + addr_offset(bitmap));
-			kunmap_iomem(v, PAGE_SIZE);
+			mm_unmap(v, PAGE_SIZE);
 		}
 
 		if ((byte >> (port & 7)) & 1)
@@ -2473,7 +2409,7 @@ static inline bool nested_can_handle_msr(const struct nested_vcpu *nested, bool 
 	if (!gpa_to_hpa(vcpu, gpa, &hpa))
 		return false;
 
-	char *bitmap = kmap_iomem(hpa, PAGE_SIZE);
+	char *bitmap = mm_remap(hpa, PAGE_SIZE);
 	if (!bitmap)
 		return false;
 
@@ -2486,7 +2422,7 @@ static inline bool nested_can_handle_msr(const struct nested_vcpu *nested, bool 
 	}
 
 	bool ret = ((*(u8 *)(bitmap + msr / 8)) >> (msr % 8)) & 1;
-	kunmap_iomem(bitmap, PAGE_SIZE);
+	mm_unmap(bitmap, PAGE_SIZE);
 	return ret;
 }
 

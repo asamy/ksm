@@ -1362,7 +1362,7 @@ static uintptr_t __segmentbase(uintptr_t gdt, u16 sel)
  * Ingo Molnar <mingo@redhat.com>, 1999, 2000
  *
  * Some modifications for reading/writing into LAPIC/IOAPIC:
- *	Ahmed Samy <f.fallen45@gmail.com>
+ *	Ahmed Samy <asamy@protonmail.com>
  */
 #define IO_APIC_DEFAULT_PHYS_BASE	0xfec00000
 #define	APIC_DEFAULT_PHYS_BASE		0xfee00000
@@ -1596,23 +1596,23 @@ static inline u64 __lapic_read64(u64 base, u32 reg)
 
 static inline bool lapic_write(u32 reg, u32 val)
 {
-	void *base = kmap_iomem(lapic_base_phys(), PAGE_SIZE);
+	void *base = mm_remap(lapic_base_phys(), PAGE_SIZE);
 	if (!base)
 		return false;
 
 	__lapic_write((u64)base, reg, val);
-	kunmap_iomem(base, PAGE_SIZE);
+	mm_unmap(base, PAGE_SIZE);
 	return true;
 }
 
 static inline u32 lapic_read(u32 reg)
 {
-	void *base = kmap_iomem(lapic_base_phys(), PAGE_SIZE);
+	void *base = mm_remap(lapic_base_phys(), PAGE_SIZE);
 	if (!base)
 		return false;
 
 	u32 val = __lapic_read((u64)base, reg);
-	kunmap_iomem(base, PAGE_SIZE);
+	mm_unmap(base, PAGE_SIZE);
 	return val;
 }
 
