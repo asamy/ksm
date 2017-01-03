@@ -477,7 +477,7 @@ struct ksm {
 	uintptr_t orig_pgd;
 	uintptr_t host_pgd;
 #ifdef EPAGE_HOOK
-	struct htable ht;
+	struct htable *ht;
 #endif
 	void *msr_bitmap;
 	void *io_bitmap_a;

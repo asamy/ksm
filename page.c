@@ -230,7 +230,7 @@ int ksm_hook_epage(void *original, void *redirect)
 	phi->ops = &epage_ops;
 
 	CALL_DPC(__do_hook_page, phi);
-	htable_add(&ksm.ht, page_hash(phi->origin), phi);
+	htable_add(ksm.ht, page_hash(phi->origin), phi);
 	return 0;
 }
 
@@ -246,7 +246,7 @@ int ksm_unhook_page(void *va)
 int __ksm_unhook_page(struct page_hook_info *phi)
 {
 	CALL_DPC(__do_unhook_page, (void *)phi->dpa);
-	htable_del(&ksm.ht, page_hash(phi->origin), phi);
+	htable_del(ksm.ht, page_hash(phi->origin), phi);
 	mm_free_page(phi->c_va);
 	mm_free_pool(phi, sizeof(*phi));
 	return DPC_RET();
@@ -255,13 +255,15 @@ int __ksm_unhook_page(struct page_hook_info *phi)
 struct page_hook_info *ksm_find_page(void *va)
 {
 	const void *align = (const void *)page_align(va);
-	return htable_get(&ksm.ht, page_hash((u64)align), ht_cmp, align);
+	return htable_get(ksm.ht, page_hash((u64)align), ht_cmp, align);
 }
 
 struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn)
 {
 	struct htable_iter i;
-	for (struct page_hook_info *phi = htable_first(&ksm.ht, &i); phi; phi = htable_next(&ksm.ht, &i))
+	struct page_hook_info *phi;
+
+	for (phi = htable_first(ksm.ht, &i); phi; phi = htable_next(ksm.ht, &i))
 		if (phi->dpa >> PAGE_SHIFT == pfn)
 			return phi;
 	return NULL;

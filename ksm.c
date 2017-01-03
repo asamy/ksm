@@ -225,11 +225,15 @@ int ksm_init(void)
 		return ERR_FEAT;
 
 #ifdef EPAGE_HOOK
-	htable_init(&ksm.ht, rehash, NULL);
+	ksm.ht = mm_alloc_pool(sizeof(struct htable));
+	if (!ksm.ht)
+		return ERR_NOMEM;
+
+	htable_init(ksm.ht, rehash, NULL);
 #endif
 
 	if (!init_msr_bitmap(&ksm))
-		return ERR_NOMEM;
+		goto out_ht;
 
 	if (!init_io_bitmaps(&ksm))
 		goto out_msr;
@@ -247,6 +251,10 @@ out_io:
 	free_io_bitmaps(&ksm);
 out_msr:
 	free_msr_bitmap(&ksm);
+out_ht:
+#ifdef EPAGE_HOOK
+	mm_free_pool(ksm.ht, sizeof(struct htable));
+#endif
 	return ret;
 }
 
@@ -300,7 +308,8 @@ int ksm_exit(void)
 		free_msr_bitmap(&ksm);
 		free_io_bitmaps(&ksm);
 #ifdef EPAGE_HOOK
-		htable_clear(&ksm.ht);
+		htable_clear(ksm.ht);
+		mm_free_pool(ksm.ht, sizeof(struct htable));
 #endif
 		unregister_cpu_callback();
 		unregister_power_callback();
