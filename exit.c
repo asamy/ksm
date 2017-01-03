@@ -2142,7 +2142,7 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 
 	if ((info >> 10) & 1) {
 		VCPU_DEBUG("LDT/TR access, register %d\n", reg_idx);
-		switch ((info >> 28) & 3) {
+		switch (sel_idx) {
 		case 0:		/* sldt  */
 			ksm_write_reg16(vcpu, reg_idx, vmcs_read16(GUEST_LDTR_SELECTOR));
 			break;
@@ -2167,7 +2167,7 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 			addr &= 0xFFFFFFFF;
 
 		VCPU_DEBUG("LDT/TR access, addr %p\n", addr);
-		switch ((info >> 28) & 3) {
+		switch (sel_idx) {
 		case 0:
 			sel = vmcs_read16(GUEST_LDTR_SELECTOR);
 			if (!ksm_write_virt(vcpu, addr, (const u8 *)&sel, 2))

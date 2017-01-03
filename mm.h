@@ -123,10 +123,11 @@ extern uintptr_t pte_base;
 	(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (uintptr_t)(pa) })
 
 #define pte_present(p)	((((pte_t *)(&(p)))->pte) & (PAGE_PRESENT | PAGE_GLOBAL))
-#define pte_large(p)	((((pte_t *)(&(p)))->pte) & PAGE_LARGE)
 #endif
 
+#define pte_large(p)	((((pte_t *)(&(p)))->pte) & PAGE_LARGE)
 #define page_align(addr)	((uintptr_t)(addr) & ~(PAGE_SIZE - 1))
+
 static inline bool page_aligned(uintptr_t addr)
 {
 	return (addr & (PAGE_SIZE - 1)) == 0;
