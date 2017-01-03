@@ -326,7 +326,7 @@ static inline pte_t *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
 	return pte;
 }
 #else
-static inline pte_t *__cr3_resolve_va(u64 cr3, u64 va)
+static inline pte_t *__cr3_resolve_va(uintptr_t cr3, uintptr_t va)
 {
 	/* NB: You can also use va_to_pte / va_to_pmd, etc.  */
 	pte_t *pml4 = (pte_t *)__va(cr3 & PAGE_PA_MASK);
