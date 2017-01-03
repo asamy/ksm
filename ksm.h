@@ -501,8 +501,8 @@ extern int __ksm_init_cpu(struct ksm *k);
 extern int __ksm_exit_cpu(struct ksm *k);
 extern int ksm_hook_idt(unsigned n, void *h);
 extern int ksm_free_idt(unsigned n);
-extern bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const void *data, size_t len);
-extern bool ksm_read_virt(struct vcpu *vcpu, u64 gva, void *data, size_t len);
+extern bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len);
+extern bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len);
 
 static inline struct vcpu *ksm_current_cpu(void)
 {

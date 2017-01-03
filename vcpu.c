@@ -510,7 +510,6 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 
 	__sgdt(&gdtr);
 	__sidt(idtr);
-	VCPU_DEBUG("IDT mapped at %p\n", idtr->base);
 	memcpy((void *)vcpu->idt.base, (void *)idtr->base, idtr->limit);
 
 	vmxon = vcpu->vmxon;
