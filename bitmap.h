@@ -1,6 +1,6 @@
 /*
  * ksm - a really simple and fast x64 hypervisor
- * Copyright (C) 2016 Ahmed Samy <asamy@protonmail.com>
+ * Copyright (C) 2016, 2017 Ahmed Samy <asamy@protonmail.com>
  *
  * A simple bitmap to easily manage large bitmaps.  Bitmaps can be
  * 32-bit or 64-bit, 64-bit if on GCC or so, because unsigned long is

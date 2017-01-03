@@ -499,7 +499,7 @@ with your changes.  Something like:
 ```c
 /*
    ...
-   Copyright (C) 2016 Your Name <your_email@domain.com>
+   Copyright (C) 2016, 2017 Your Name <your_email@domain.com>
 	- Added support for XXX
 	- Fixed bug with YYY
    ...

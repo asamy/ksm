@@ -1,6 +1,6 @@
 /*
  * ksm - a really simple and fast x64 hypervisor
- * Copyright (C) 2016 Ahmed Samy <asamy@protonmail.com>
+ * Copyright (C) 2016, 2017 Ahmed Samy <asamy@protonmail.com>
  *
  * Executable page hooking, see comments down below for more
  * information.
