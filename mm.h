@@ -210,6 +210,48 @@ static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
 
 	return pte_offset_kernel(pmd, va);
 }
+
+static inline void *mm_alloc_page(void)
+{
+	return (void *)get_zeroed_page(GFP_KERNEL);
+}
+
+static inline void __mm_free_page(void *v)
+{
+	free_page((unsigned long)v);
+}
+
+static inline void mm_free_page(void *v)
+{
+	__stosq(v, 0, PAGE_SIZE >> 3);
+	__mm_free_page(v);
+}
+
+static inline void *mm_alloc_pool(size_t size)
+{
+	return kmalloc(size, GFP_KERNEL | __GFP_ZERO);
+}
+
+static inline void mm_free_pool(void *v, size_t size)
+{
+	if (size)
+		__stosq(v, 0, size >> 3);
+
+	kfree(v);
+}
+
+extern void *mm_remap(u64 phys, size_t size);
+extern void mm_unmap(void *addr, size_t size);
+extern void *kmap_virt(void *addr, size_t len, pgprot_t prot);
+static inline void *kmap_exec(void *addr, size_t len)
+{
+	return kmap_virt(addr, len, PAGE_KERNEL_EXEC);
+}
+
+static inline void *kmap_write(void *addr, size_t len)
+{
+	return kmap_virt(addr, len, PAGE_KERNEL);
+}
 #else
 static inline pgd_t *va_to_pgd(uintptr_t va)
 {
@@ -280,6 +322,52 @@ static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
 
 	return pte_offset(pmd, va);
 }
+static inline void *mm_remap(u64 phys, size_t size)
+{
+	return MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = phys }, size, MmNonCached);
+}
+
+static inline void mm_unmap(void *addr, size_t size)
+{
+	return MmUnmapIoSpace(addr, size);
+}
+
+static inline void *mm_alloc_page(void)
+{
+	void *v = ExAllocatePool(NonPagedPool, PAGE_SIZE);
+	if (v)
+		__stosq(v, 0, PAGE_SIZE >> 3);
+
+	return v;
+}
+
+static inline void __mm_free_page(void *v)
+{
+	ExFreePool(v);
+}
+
+static inline void mm_free_page(void *v)
+{
+	__stosq(v, 0, PAGE_SIZE >> 3);
+	__mm_free_page(v);
+}
+
+static inline void *mm_alloc_pool(size_t size)
+{
+	void *v = ExAllocatePool(NonPagedPool, size);
+	if (v)
+		__stosq(v, 0, size >> 3);
+
+	return v;
+}
+
+static inline void mm_free_pool(void *v, size_t size)
+{
+	if (size)
+		__stosq(v, 0, size >> 3);
+
+	ExFreePool(v);
+}
 #endif
 
 static inline void *pte_to_va(pte_t pte)
@@ -299,81 +387,4 @@ static inline u64 va_to_pa(uintptr_t va)
 	return PAGE_PPA(pte) | addr_offset(va);
 }
 
-static inline void *mm_alloc_page(void)
-{
-#ifndef __linux__
-	void *v = ExAllocatePool(NonPagedPool, PAGE_SIZE);
-	if (v)
-		__stosq(v, 0, PAGE_SIZE >> 3);
-
-	return v;
-#else
-	return (void *)get_zeroed_page(GFP_KERNEL);
-#endif
-}
-
-static inline void __mm_free_page(void *v)
-{
-#ifndef __linux__
-	ExFreePool(v);
-#else
-	free_page((unsigned long)v);
-#endif
-}
-
-static inline void mm_free_page(void *v)
-{
-	__stosq(v, 0, PAGE_SIZE >> 3);
-	__mm_free_page(v);
-}
-
-static inline void *mm_alloc_pool(size_t size)
-{
-#ifndef __linux__
-	void *v = ExAllocatePool(NonPagedPool, size);
-	if (v)
-		__stosq(v, 0, size >> 3);
-
-	return v;
-#else
-	return kmalloc(size, GFP_KERNEL | __GFP_ZERO);
-#endif
-}
-
-static inline void mm_free_pool(void *v, size_t size)
-{
-	if (size)
-		__stosq(v, 0, size >> 3);
-
-#ifdef __linux__
-	kfree(v);
-#else
-	ExFreePool(v);
-#endif
-}
-
-#ifndef __linux__
-static inline void *mm_remap(u64 phys, size_t size)
-{
-	return MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = phys }, size, MmNonCached);
-}
-
-static inline void mm_unmap(void *addr, size_t size)
-{
-	return MmUnmapIoSpace(addr, size);
-}
-#else
-extern void *mm_remap(u64 phys, size_t size);
-extern void mm_unmap(void *addr, size_t size);
-extern void *kmap_virt(void *addr, size_t len, pgprot_t prot);
-static inline void *kmap_exec(void *addr, size_t len)
-{
-	return kmap_virt(addr, len, PAGE_KERNEL_EXEC);
-}
-
-static inline void *kmap_write(void *addr, size_t len)
-{
-	return kmap_virt(addr, len, PAGE_KERNEL);
-}
-#endif
 #endif
