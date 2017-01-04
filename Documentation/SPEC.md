@@ -33,44 +33,52 @@ This is the flow:
 
 ```
 	driver entry (any process context) -> ksm_init()
-	(later on or in another context):
-		ksm_subvert() ->
-			for each cpu call __ksm_init_cpu:
-		__ksm_init_cpu:
-			set feature control MSR appropriately
-			set CR4.VMXE bit
 
-			vcpu_create(vcpu) -> __vmx_vminit(vcpu) ->
+	(later on or in another context):
+
+	ksm_subvert() ->
+		for each cpu:
+			call __ksm_init_cpu
+
+	__ksm_init_cpu:
+		set feature control MSR appropriately
+		set CR4.VMXE bit
+
+		vcpu_create(vcpu) ->
+			__vmx_vminit(vcpu) ->
 				save guest state
-				vcpu_run()
+				call vcpu_run
 
 				vcpu_run(vcpu, stack_ptr, guest_start_point) ->
 					...
 					/* write important fields to VM Control
-					   structure:  */
-					vmcs_write()
-					vmcs_write()
-					....
+						structure:  */
+						vmcs_write()
+						vmcs_write()
+						....
 					if not vmlaunch():
 						print error
 					else
 						/* CPU already jumped to start
-						   point  */
+						point  */
 					endif
-			guest_start_point:
-				restore guest state (registers incl rflags, etc.)
-				return to __ksm_init_cpu
 
-		__ksm_init_cpu (contd.):
-			if __vmx_vminit failed:
-				throw error
-				remove CR4.VMXE bit
-				return error
-			else
-				return 0 /* succeeded  */
-			endif
-		ksm_subvert() (contd.):
-			return whatever___ksm_init_cpu_returned
+			__vmx_vminit(vcpu) (contd.)
+				guest_start_point:
+					restore guest state (registers incl rflags, etc.)
+					return to __ksm_init_cpu
+
+	__ksm_init_cpu (contd.):
+		if __vmx_vminit failed:
+			throw error
+			remove CR4.VMXE bit
+			return error
+		else
+			return 0 /* succeeded  */
+		endif
+
+	ksm_subvert() (contd.):
+		return whatever___ksm_init_cpu_returned
 	...
 ```
 
