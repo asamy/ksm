@@ -1035,7 +1035,8 @@ static inline void __cpuidex(int *ret, int func, int subf)
 	u32 eax, ebx, ecx, edx;
 	__asm __volatile("cpuid"
 			 : "=a" (eax), "=D" (ebx), "=c" (ecx), "=d" (edx)
-			 : "a" (func), "c" (subf));
+			 : "a" (func), "c" (subf)
+			 : "%rbx");
 	ret[0] = eax;
 	ret[1] = ebx;
 	ret[2] = ecx;
