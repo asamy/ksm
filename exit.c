@@ -2666,14 +2666,14 @@ static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *r
 		   __readdr(3), __readdr(6), vmcs_read(GUEST_DR7));
 }
 
-bool vcpu_handle_exit(uintptr_t *regs)
+bool vcpu_handle_exit(uintptr_t *stack)
 {
 	/* Only called from assembly (__vmx_entrypoint)  */
-	struct vcpu *vcpu = (struct vcpu *)regs[REG_MAX];
+	struct vcpu *vcpu = (struct vcpu *)stack[REG_MAX];
 	struct pending_irq *irq = &vcpu->irq;
 	bool ret = true;
 
-	vcpu->gp = regs;
+	vcpu->gp = stack;
 	vcpu->gp[REG_SP] = vmcs_read(GUEST_RSP);
 	vcpu->eflags = vmcs_read(GUEST_RFLAGS);
 	vcpu->ip = vmcs_read(GUEST_RIP);

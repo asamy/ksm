@@ -258,6 +258,33 @@ __vmx_entrypoint:
 	 *
 	 * Save all guest general purpose registers, then let the C handler do
 	 * the rest.
+	 *
+	 *	This is how the stack looks like after PUSH_REGS:
+	 *		+0   = %rax
+	 *		+8   = %rcx
+	 *		+16  = %rdx
+	 *		+24  = %rbx
+	 *		+32  = %rsp	(garbage, overwritten with real value in
+	 *				 vcpu_handle_exit())
+	 *		+40  = %rbp
+	 *		+48  = %rsi
+	 *		+56  = %rdi
+	 *		+64  = %r8
+	 *		+72  = %r9
+	 *		+80  = %r10
+	 *		+88  = %r11
+	 *		+96  = %r12
+	 *		+104 = %r13
+	 *		+112 = %r14
+	 *		+120 = %r15
+	 *		+128 = vcpu (set in vcpu_create())
+	 *
+	 * Note: we pass vcpu->stack -8 to HOST_RSP, this is because
+	 * at this specific area, it's set to the vcpu pointer.  So basically,
+	 * a pop here (before PUSH_REGS) will pop vcpu pointer, but the
+	 * registers in this specific context are guest registers, we need
+	 * their values as-is untouched, we may also modify them later on
+	 * depending on the event (e.g. cpuid, etc.)
 	 */
 	PUSH_REGS
 	movq	%rsp, REG_A1

@@ -53,6 +53,9 @@
  *	pointer, do not change!!!  These are supposed
  *	to match ones defined by Intel in Exit Qualification.
  *	Those are also matched with the assembly code, see PUSH_REGS.
+ *
+ *	For a brief look on how the stack looks like when passed over to
+ *	vcpu_handle_exit(), see vmx.S
  */
 #define REG_AX			0
 #define REG_CX			1
