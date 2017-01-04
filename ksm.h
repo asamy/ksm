@@ -460,17 +460,6 @@ static inline size_t rehash(const void *e, void *unused)
 }
 #endif
 
-#ifdef ENABLE_RESUBV
-extern int register_power_callback(void);
-extern void unregister_power_callback(void);
-#else
-static int register_power_callback(void) { return 0; }
-static void unregister_power_callback(void) { }
-#endif
-
-extern int register_cpu_callback(void);
-extern void unregister_cpu_callback(void);
-
 struct ksm {
 	int active_vcpus;
 	struct vcpu *vcpu_list[KSM_MAX_VCPUS];
@@ -647,5 +636,17 @@ static inline void get_epte_ar(u64 *pml4, u64 gpa, char *p)
 	return __get_epte_ar(ept_pte(pml4, gpa), p);
 }
 
+/* resubv.c  */
+#ifdef ENABLE_RESUBV
+extern int register_power_callback(void);
+extern void unregister_power_callback(void);
+#else
+static int register_power_callback(void) { return 0; }
+static void unregister_power_callback(void) { }
 #endif
 
+/* hotplug.c  */
+extern int register_cpu_callback(void);
+extern void unregister_cpu_callback(void);
+
+#endif

@@ -2668,7 +2668,7 @@ static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *r
 bool vcpu_handle_exit(uintptr_t *regs)
 {
 	/* Only called from assembly (__vmx_entrypoint)  */
-	struct vcpu *vcpu = ksm_current_cpu();
+	struct vcpu *vcpu = (struct vcpu *)regs[REG_MAX];
 	struct pending_irq *irq = &vcpu->irq;
 	bool ret = true;
 
