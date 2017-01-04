@@ -16,7 +16,7 @@
 # You should have received a copy of the GNU General Public License along with
 # this program; If not, see <http://www.gnu.org/licenses/>.
 obj-m += ksmlinux.o
-ksmlinux-objs := exit.o htable.o hotplug.o ksm.o page.o vcpu.o mm.o main_linux.o vmx.o
+ksmlinux-objs := exit.o htable.o hotplug.o ksm.o page.o resubv.o vcpu.o mm.o main_linux.o vmx.o
 ccflags-y := -Wno-format -Wno-declaration-after-statement -Wno-unused-function -DDBG -DENABLE_PRINT -std=gnu99
 
 BIN := ksmlinux.ko
