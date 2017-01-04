@@ -36,11 +36,11 @@ struct ksm *ksm;
  *
  * For the macro magic (aka DEFINE_DPC, etc.) see percpu.h.
  */
-static inline bool init_msr_bitmap(struct ksm *k)
+static inline int init_msr_bitmap(struct ksm *k)
 {
 	k->msr_bitmap = mm_alloc_page();
 	if (!k->msr_bitmap)
-		return false;
+		return ERR_NOMEM;
 
 	/*
 	 * Setup the MSR bitmap, opt-in for VM-exit for some MSRs
@@ -77,21 +77,21 @@ static inline bool init_msr_bitmap(struct ksm *k)
 		set_bit(msr, write_lo);
 #endif
 
-	return true;
+	return 0;
 }
 
-static inline bool init_io_bitmaps(struct ksm *k)
+static inline int init_io_bitmaps(struct ksm *k)
 {
 	/* IO bitmap A: ports 0000H through 7FFFH  */
 	k->io_bitmap_a = mm_alloc_page();
 	if (!k->io_bitmap_a)
-		return false;
+		return ERR_NOMEM;
 
 	/* IO bitmap B: ports 8000H through FFFFh  */
 	k->io_bitmap_b = mm_alloc_page();
 	if (!k->io_bitmap_b) {
 		mm_free_page(k->io_bitmap_a);
-		return false;
+		return ERR_NOMEM;
 	}
 
 #if 0	/* This can be anonying  */
@@ -99,7 +99,7 @@ static inline bool init_io_bitmaps(struct ksm *k)
 	set_bit(0x60, bitmap_a);	/* PS/2 Mice  */
 	set_bit(0x64, bitmap_a);	/* PS/2 Mice and keyboard  */
 #endif
-	return true;
+	return 0;
 }
 
 static inline void free_msr_bitmap(struct ksm *k)
@@ -236,10 +236,12 @@ int ksm_init(struct ksm **kp)
 	htable_init(&k->ht, rehash, NULL);
 #endif
 
-	if (!init_msr_bitmap(k))
+	ret = init_msr_bitmap(k);
+	if (ret < 0)
 		goto out_ksm;
 
-	if (!init_io_bitmaps(k))
+	ret = init_io_bitmaps(k);
+	if (ret < 0)
 		goto out_msr;
 
 	ret = register_power_callback();
