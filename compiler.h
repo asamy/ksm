@@ -26,6 +26,10 @@
 } while (0)
 
 #ifndef __linux__
+#define BUG_ON(cond)	do {	\
+	if (!!(cond))		\
+		__ud2();	\
+} while (0)
 #ifdef _MSC_VER
 /* Disable annoying warnings  */
 #pragma warning(disable:4115)		/* 'type' : named type definition in parentheses  */
@@ -52,10 +56,6 @@
 
 #define __align(alignment)	__declspec(align(alignment))
 #define __packed
-#define BUG_ON(cond)	do {	\
-	if (!!(cond))		\
-		__ud2();	\
-} while (0)
 #else
 #define _In_
 #define _In_opt_
@@ -64,6 +64,13 @@
 #define __forceinline		__attribute__((always_inline)) inline
 #endif
 #define __packed		__attribute__((__packed__))
+#include <ntstatus.h>
+
+#define STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR	0xC035003C
+#define STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE	0xC0350071
+#define STATUS_HV_FEATURE_UNAVAILABLE			0xC035001E
+#define STATUS_HV_ACCESS_DENIED				0xC0350006
+#define STATUS_HV_NOT_PRESENT				0xC0351000
 #endif
 
 #if defined(ENABLE_DBGPRINT) || defined(ENABLE_FILEPRINT)
@@ -111,15 +118,6 @@ typedef signed long long intptr_t;
 #endif
 #endif
 
-#ifndef _MSC_VER
-#include <ntstatus.h>
-
-#define STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR	0xC035003C
-#define STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE	0xC0350071
-#define STATUS_HV_FEATURE_UNAVAILABLE			0xC035001E
-#define STATUS_HV_ACCESS_DENIED				0xC0350006
-#define STATUS_HV_NOT_PRESENT				0xC0351000
-#endif
 #define ERR_NOTH 		STATUS_HV_NOT_PRESENT
 #define ERR_CPUID		STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR
 #define ERR_BUSY		STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE
@@ -128,6 +126,7 @@ typedef signed long long intptr_t;
 #define ERR_DENIED		STATUS_HV_ACCESS_DENIED
 #define ERR_NOMEM		STATUS_NO_MEMORY
 #define ERR_EXCEPT		GetExceptionCode()
+
 #else
 #ifndef __ASSEMBLY__
 #include <stdbool.h>
@@ -153,4 +152,3 @@ typedef signed long long intptr_t;
 #endif
 
 #endif
-
