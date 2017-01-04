@@ -2122,7 +2122,7 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 			vcpu_inject_pf(vcpu, addr, PGF_PRESENT | PGF_WRITE);
 		break;
 	case 2:		/* lgdt  */
-		if (ksm_read_virt(vcpu, addr, (u8 *)&dt, sizeof(dt))) {
+		if (!ksm_read_virt(vcpu, addr, (u8 *)&dt, sizeof(dt))) {
 			vcpu_inject_pf(vcpu, addr, PGF_PRESENT);
 			break;
 		}
