@@ -370,6 +370,9 @@ struct vcpu {
 	uintptr_t cr4_guest_host_mask;
 	/* Pending IRQ  */
 	struct pending_irq irq;
+	/* The global KSM structure.  */
+	struct ksm *ksm;
+	/* EPT for this CPU  */
 	struct ept ept;
 	/* Guest IDT (emulated)  */
 	struct gdtr g_idt;
@@ -466,13 +469,18 @@ struct ksm {
 	uintptr_t orig_pgd;
 	uintptr_t host_pgd;
 #ifdef EPAGE_HOOK
-	struct htable *ht;
+	struct htable ht;
 #endif
 	void *msr_bitmap;
 	void *io_bitmap_a;
 	void *io_bitmap_b;
 };
-extern struct ksm ksm;
+
+/*
+ * Do NOT use inside VMX root mode, use vcpu->k instead...
+ * Use this and I'll come after you.
+ */
+extern struct ksm *ksm;
 
 #if !defined(__linux__) && defined(ENABLE_PRINT)
 /* print.c  */
@@ -482,10 +490,10 @@ extern void do_print(const char *fmt, ...);
 #endif
 
 /* ksm.c  */
-extern int ksm_init(void);
-extern int ksm_exit(void);
-extern int ksm_subvert(void);
-extern int ksm_unsubvert(void);
+extern int ksm_init(struct ksm **kp);
+extern int ksm_free(struct ksm *k);
+extern int ksm_subvert(struct ksm *k);
+extern int ksm_unsubvert(struct ksm *k);
 extern int __ksm_init_cpu(struct ksm *k);
 extern int __ksm_exit_cpu(struct ksm *k);
 extern int ksm_hook_idt(unsigned n, void *h);
@@ -495,7 +503,8 @@ extern bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len);
 
 static inline struct vcpu *ksm_current_cpu(void)
 {
-	return ksm.vcpu_list[cpu_nr()];
+	BUG_ON(!ksm);
+	return ksm->vcpu_list[cpu_nr()];
 }
 
 struct h_vmfunc {
@@ -536,8 +545,8 @@ static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)
 extern int ksm_hook_epage(void *original, void *redirect);
 extern int ksm_unhook_page(void *original);
 extern int __ksm_unhook_page(struct page_hook_info *phi);
-extern struct page_hook_info *ksm_find_page(void *va);
-extern struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn);
+extern struct page_hook_info *ksm_find_page(struct ksm *k, void *va);
+extern struct page_hook_info *ksm_find_page_pfn(struct ksm *k, uintptr_t pfn);
 #endif
 
 /* vcpu.c  */

@@ -351,7 +351,7 @@ static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa,
 			return EPT_MAX_EPTP_LIST;
 	} else {
 #ifdef EPAGE_HOOK
-		struct page_hook_info *phi = ksm_find_page((void *)gva);
+		struct page_hook_info *phi = ksm_find_page(vcpu->ksm, (void *)gva);
 		if (phi) {
 			u16 eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
 			VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
@@ -492,6 +492,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	struct gdtr gdtr;
 	struct gdtr *idtr = &vcpu->g_idt;
 	struct ept *ept = &vcpu->ept;
+	struct ksm *k = vcpu->ksm;
 
 	u64 vmx = __readmsr(MSR_IA32_VMX_BASIC);
 	u16 es = __reades();
@@ -647,9 +648,9 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write32(PAGE_FAULT_ERROR_CODE_MASK, 0);
 	err |= vmcs_write32(PAGE_FAULT_ERROR_CODE_MATCH, 0);
 	err |= vmcs_write32(CR3_TARGET_COUNT, 0);
-	err |= vmcs_write64(IO_BITMAP_A, __pa(ksm.io_bitmap_a));
-	err |= vmcs_write64(IO_BITMAP_B, __pa(ksm.io_bitmap_b));
-	err |= vmcs_write64(MSR_BITMAP, __pa(ksm.msr_bitmap));
+	err |= vmcs_write64(IO_BITMAP_A, __pa(k->io_bitmap_a));
+	err |= vmcs_write64(IO_BITMAP_B, __pa(k->io_bitmap_b));
+	err |= vmcs_write64(MSR_BITMAP, __pa(k->msr_bitmap));
 	err |= vmcs_write64(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
 	err |= vmcs_write64(VMCS_LINK_POINTER, -1ULL);
 
@@ -756,7 +757,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write64(GUEST_IA32_DEBUGCTL, __readmsr(MSR_IA32_DEBUGCTLMSR));
 	err |= vmcs_write(GUEST_PENDING_DBG_EXCEPTIONS, 0);
 	err |= vmcs_write(GUEST_CR0, cr0);
-	err |= vmcs_write(GUEST_CR3, ksm.orig_pgd);
+	err |= vmcs_write(GUEST_CR3, k->orig_pgd);
 	err |= vmcs_write(GUEST_CR4, cr4);
 	err |= vmcs_write(GUEST_ES_BASE, 0);
 	err |= vmcs_write(GUEST_CS_BASE, 0);
@@ -785,7 +786,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write16(HOST_GS_SELECTOR, gs & 0xf8);
 	err |= vmcs_write16(HOST_TR_SELECTOR, tr & 0xf8);
 	err |= vmcs_write(HOST_CR0, cr0);
-	err |= vmcs_write(HOST_CR3, ksm.host_pgd);
+	err |= vmcs_write(HOST_CR3, k->host_pgd);
 	err |= vmcs_write(HOST_CR4, cr4);
 	err |= vmcs_write(HOST_FS_BASE, __readmsr(MSR_IA32_FS_BASE));
 	err |= vmcs_write(HOST_GS_BASE, __readmsr(MSR_IA32_GS_BASE));

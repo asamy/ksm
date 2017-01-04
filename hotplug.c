@@ -17,7 +17,7 @@
 static inline void do_cpu(void *v)
 {
 	int(*f) (struct ksm *) = v;
-	int ret = f(&ksm);
+	int ret = f(ksm);
 
 	VCPU_DEBUG("On CPU calling %d\n", ret);
 }
@@ -71,7 +71,7 @@ static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT chang
 		KeSetSystemGroupAffinityThread(&affinity, &prev);
 
 		VCPU_DEBUG_RAW("New processor\n");
-		status = __ksm_init_cpu(&ksm);
+		status = __ksm_init_cpu(ksm);
 		if (!NT_SUCCESS(status))
 			*op_status = status;
 

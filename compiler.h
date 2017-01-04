@@ -19,8 +19,9 @@
 #else
 #define dbgbreak()	(void)0
 #endif
+
 #define break_if(cond)	do {	\
-	if (!!(cond))	\
+	if (!!(cond))		\
 		dbgbreak();	\
 } while (0)
 
@@ -51,6 +52,10 @@
 
 #define __align(alignment)	__declspec(align(alignment))
 #define __packed
+#define BUG_ON(cond)	do {	\
+	if (!!(cond))		\
+		__ud2();	\
+} while (0)
 #else
 #define _In_
 #define _In_opt_

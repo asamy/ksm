@@ -99,14 +99,14 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 	int ret;
 	UNREFERENCED_PARAMETER(driverObject);
 
-	ret = ksm_exit();
+	ret = ksm_free(ksm);
 	VCPU_DEBUG("ret: 0x%08X\n", ret);
 #ifdef ENABLE_PRINT
 	print_exit();
 #endif
 }
 
-#if 0
+#if 1
 #ifdef EPAGE_HOOK
 static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
 			    _In_ SIZE_T              NumberOfBytes,
@@ -146,19 +146,13 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	g_driver_base = (uintptr_t)entry->DllBase;
 	g_driver_size = entry->SizeOfImage;
 
-	/*
-	 * Zero out everything (this is allocated by the kernel device driver
-	 * loader)
-	 */
-	__stosq((u64 *)&ksm, 0, sizeof(ksm) >> 3);
-
-	if (!NT_SUCCESS(status = ksm_init()))
+	if (!NT_SUCCESS(status = ksm_init(&ksm)))
 		goto err;
 
-	if (!NT_SUCCESS(status = ksm_subvert()))
+	if (!NT_SUCCESS(status = ksm_subvert(ksm)))
 		goto exit;
 
-#if 0
+#if 1
 #ifdef EPAGE_HOOK
 	/* Just a simple example...  */
 	if (ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace) == 0) {
@@ -178,7 +172,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	goto out;
 
 exit:
-	ksm_exit();
+	ksm_free(ksm);
 err:
 #ifdef ENABLE_PRINT
 	print_exit();

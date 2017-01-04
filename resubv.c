@@ -17,12 +17,12 @@
 #ifdef __linux__
 static void ksm_resume(void)
 {
-	VCPU_DEBUG("in resume: %d\n", ksm_subvert());
+	VCPU_DEBUG("in resume: %d\n", ksm_subvert(ksm));
 }
 
 static int ksm_suspend(void)
 {
-	VCPU_DEBUG("in suspend: %d\n", ksm_unsubvert());
+	VCPU_DEBUG("in suspend: %d\n", ksm_unsubvert(ksm));
 	return 0;
 }
 
@@ -54,9 +54,9 @@ static void power_callback(PDEV_EXT ctx, void *arg0, void *arg1)
 		return;
 
 	if (arg1 == (void *)0)
-		ksm_unsubvert();
+		ksm_unsubvert(ksm);
 	else if (arg0 == (void *)1)
-		ksm_subvert();
+		ksm_subvert(ksm);
 }
 
 int register_power_callback(void)

@@ -771,6 +771,7 @@ static inline void nested_save_guest_state(struct nested_vcpu *nested)
 
 static inline bool nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 {
+	struct ksm *k = vcpu->ksm;
 	u8 err = 0;
 
 	err |= vmcs_write(GUEST_RIP, __nested_vmcs_read(vmcs, HOST_RIP));
@@ -844,9 +845,9 @@ static inline bool nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 	err |= vmcs_write32(PIN_BASED_VM_EXEC_CONTROL, vcpu->pin_ctl);
 	err |= vmcs_write32(CPU_BASED_VM_EXEC_CONTROL, vcpu->cpu_ctl);
 	err |= vmcs_write32(SECONDARY_VM_EXEC_CONTROL, vcpu->secondary_ctl);
-	err |= vmcs_write64(MSR_BITMAP, __pa(ksm.msr_bitmap));
-	err |= vmcs_write64(IO_BITMAP_A, __pa(ksm.io_bitmap_a));
-	err |= vmcs_write64(IO_BITMAP_B, __pa(ksm.io_bitmap_b));
+	err |= vmcs_write64(MSR_BITMAP, __pa(k->msr_bitmap));
+	err |= vmcs_write64(IO_BITMAP_A, __pa(k->io_bitmap_a));
+	err |= vmcs_write64(IO_BITMAP_B, __pa(k->io_bitmap_b));
 	err |= vmcs_write16(VIRTUAL_PROCESSOR_ID, vpid_nr());
 
 	vcpu_switch_root_eptp(vcpu, vcpu_eptp_idx(vcpu));
@@ -2088,7 +2089,7 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 		if (!idte_present(&vcpu->shadow_idt[n]))
 			memcpy(&shadow[n], &current_idt[n], sizeof(*shadow));
 	vcpu_flush_idt(vcpu);
-	mm_free_pool(current_idt, PAGE_SIZE);
+	mm_free_page(current_idt);
 }
 
 static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
@@ -2707,7 +2708,7 @@ bool vcpu_handle_exit(uintptr_t *regs)
 	    curr_handler != EXIT_REASON_INVALID_STATE) {
 		/*
 		 * Mostly comes via invalid guest state, and is due to a cruical
-		 * error that happened past VM-exit, let the handler see itt
+		 * error that happened past VM-exit.
 		 */
 		dbgbreak();
 		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, vcpu->ip,

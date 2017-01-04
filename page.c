@@ -192,11 +192,12 @@ int ksm_hook_epage(void *original, void *redirect)
 	u8 *code_page;
 	void *aligned = (void *)page_align(original);
 	uintptr_t code_start = (uintptr_t)original - (uintptr_t)aligned;
-
 	struct trampoline trampo;
+
+	BUG_ON(!ksm);
 	epage_init_trampoline(&trampo, (uintptr_t)redirect);
 	
-	phi = ksm_find_page(original);
+	phi = ksm_find_page(ksm, original);
 	if (phi) {
 		/*
 		 * Hooking another function in same page.
@@ -230,13 +231,13 @@ int ksm_hook_epage(void *original, void *redirect)
 	phi->ops = &epage_ops;
 
 	CALL_DPC(__do_hook_page, phi);
-	htable_add(ksm.ht, page_hash(phi->origin), phi);
+	htable_add(&ksm->ht, page_hash(phi->origin), phi);
 	return 0;
 }
 
 int ksm_unhook_page(void *va)
 {
-	struct page_hook_info *phi = ksm_find_page(va);
+	struct page_hook_info *phi = ksm_find_page(ksm, va);
 	if (!phi)
 		return ERR_NOTH;
 
@@ -246,24 +247,24 @@ int ksm_unhook_page(void *va)
 int __ksm_unhook_page(struct page_hook_info *phi)
 {
 	CALL_DPC(__do_unhook_page, (void *)phi->dpa);
-	htable_del(ksm.ht, page_hash(phi->origin), phi);
+	htable_del(&ksm->ht, page_hash(phi->origin), phi);
 	mm_free_page(phi->c_va);
 	mm_free_pool(phi, sizeof(*phi));
 	return DPC_RET();
 }
 
-struct page_hook_info *ksm_find_page(void *va)
+struct page_hook_info *ksm_find_page(struct ksm *k, void *va)
 {
 	const void *align = (const void *)page_align(va);
-	return htable_get(ksm.ht, page_hash((u64)align), ht_cmp, align);
+	return htable_get(&k->ht, page_hash((u64)align), ht_cmp, align);
 }
 
-struct page_hook_info *ksm_find_page_pfn(uintptr_t pfn)
+struct page_hook_info *ksm_find_page_pfn(struct ksm *k, uintptr_t pfn)
 {
 	struct htable_iter i;
 	struct page_hook_info *phi;
 
-	for (phi = htable_first(ksm.ht, &i); phi; phi = htable_next(ksm.ht, &i))
+	for (phi = htable_first(&k->ht, &i); phi; phi = htable_next(&k->ht, &i))
 		if (phi->dpa >> PAGE_SHIFT == pfn)
 			return phi;
 	return NULL;

@@ -27,9 +27,8 @@
 #include "percpu.h"
 #include "bitmap.h"
 
-struct ksm ksm = {
-	.active_vcpus = 0,
-};
+/* Externed everywhere.  */
+struct ksm *ksm;
 
 /*
  * This file manages CPUs initialization, for per-cpu initializaiton
@@ -164,13 +163,17 @@ int __ksm_init_cpu(struct ksm *k)
 	k->host_pgd = __readcr3();
 #endif
 
+	/* Used inside vcpu_run()  */
+	vcpu->ksm = k;
+
+	/* Saves state and calls vcpu_run()  */
 	ret = __vmx_vminit(vcpu);
 	VCPU_DEBUG("Started: %d\n", !ret);
 
 	if (ret == 0) {
-		k->active_vcpus++;
 		vcpu->subverted = true;
-		ksm.vcpu_list[cpu_nr()] = vcpu;
+		k->active_vcpus++;
+		k->vcpu_list[cpu_nr()] = vcpu;
 	} else {
 		vcpu_free(vcpu);
 		__writecr4(__readcr4() & ~X86_CR4_VMXE);
@@ -184,14 +187,14 @@ int __ksm_init_cpu(struct ksm *k)
  * called on initialization or to re-virtualize.
  */
 static DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
-int ksm_subvert(void)
+int ksm_subvert(struct ksm *k)
 {
 #ifndef __linux__
 	/* See comments in __ksm_init_cpu...  */
-	ksm.orig_pgd = __readcr3();
+	k->orig_pgd = __readcr3();
 #endif
 
-	CALL_DPC(__call_init, &ksm);
+	CALL_DPC(__call_init, k);
 	return DPC_RET();
 }
 
@@ -199,8 +202,9 @@ int ksm_subvert(void)
  * Only called once, initializes all shared stuff, MSR bitmap,
  * and IO bitmaps.
  */
-int ksm_init(void)
+int ksm_init(struct ksm **kp)
 {
+	struct ksm *k;
 	int info[4];
 	int ret = ERR_NOMEM;
 	u64 vpid;
@@ -224,18 +228,18 @@ int ksm_init(void)
 	if ((vpid & req) != req)
 		return ERR_FEAT;
 
-#ifdef EPAGE_HOOK
-	ksm.ht = mm_alloc_pool(sizeof(struct htable));
-	if (!ksm.ht)
-		return ERR_NOMEM;
+	k = mm_alloc_pool(sizeof(*k));
+	if (!k)
+		return ret;
 
-	htable_init(ksm.ht, rehash, NULL);
+#ifdef EPAGE_HOOK
+	htable_init(&k->ht, rehash, NULL);
 #endif
 
-	if (!init_msr_bitmap(&ksm))
-		goto out_ht;
+	if (!init_msr_bitmap(k))
+		goto out_ksm;
 
-	if (!init_io_bitmaps(&ksm))
+	if (!init_io_bitmaps(k))
 		goto out_msr;
 
 	ret = register_power_callback();
@@ -243,18 +247,18 @@ int ksm_init(void)
 		goto out_io;
 
 	ret = register_cpu_callback();
-	if (ret == 0)
+	if (ret == 0) {
+		*kp = k;
 		return ret;
+	}
 
 	unregister_power_callback();
 out_io:
-	free_io_bitmaps(&ksm);
+	free_io_bitmaps(k);
 out_msr:
-	free_msr_bitmap(&ksm);
-out_ht:
-#ifdef EPAGE_HOOK
-	mm_free_pool(ksm.ht, sizeof(struct htable));
-#endif
+	free_msr_bitmap(k);
+out_ksm:
+	mm_free_pool(k, sizeof(*k));
 	return ret;
 }
 
@@ -286,12 +290,12 @@ int __ksm_exit_cpu(struct ksm *k)
  * more aren't virtualized...
  */
 DEFINE_DPC(__call_exit, __ksm_exit_cpu, ctx);
-int ksm_unsubvert(void)
+int ksm_unsubvert(struct ksm *k)
 {
-	if (ksm.active_vcpus == 0)
+	if (k->active_vcpus == 0)
 		return ERR_NOTH;
 
-	CALL_DPC(__call_exit, &ksm);
+	CALL_DPC(__call_exit, k);
 	return DPC_RET();
 }
 
@@ -299,17 +303,16 @@ int ksm_unsubvert(void)
  * Frees resources and devirtualizes all processors,
  * Only called on driver unload...
  */
-int ksm_exit(void)
+int ksm_free(struct ksm *k)
 {
 	int ret;
 
-	ret = ksm_unsubvert();
+	ret = ksm_unsubvert(k);
 	if (ret == 0) {
-		free_msr_bitmap(&ksm);
-		free_io_bitmaps(&ksm);
+		free_msr_bitmap(k);
+		free_io_bitmaps(k);
 #ifdef EPAGE_HOOK
-		htable_clear(ksm.ht);
-		mm_free_pool(ksm.ht, sizeof(struct htable));
+		htable_clear(&k->ht);
 #endif
 		unregister_cpu_callback();
 		unregister_power_callback();

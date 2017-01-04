@@ -28,8 +28,8 @@ static struct workqueue_struct *wq;
 
 static void ksm_worker(struct work_struct *w)
 {
-	int r = ksm_subvert();
-	VCPU_DEBUG("ret: %d (%d active)\n", r, ksm.active_vcpus);
+	int r = ksm_subvert(ksm);
+	VCPU_DEBUG("ret: %d (%d active)\n", r, ksm->active_vcpus);
 }
 static DECLARE_DELAYED_WORK(work, ksm_worker);
 
@@ -37,13 +37,7 @@ static int __init ksm_start(void)
 {
 	int ret = -ENOMEM;
 
-	/*
-	 * Zero out everything (this is allocated by the kernel device driver
-	 * loader)
-	 */
-	__stosq((u64 *)&ksm, 0, sizeof(ksm) >> 3);
-
-	ret = ksm_init();
+	ret = ksm_init(&ksm);
 	if (ret < 0)
 		return ret;
 
@@ -56,13 +50,13 @@ static int __init ksm_start(void)
 
 	mm = current->active_mm;
 	atomic_inc(&mm->mm_count);
-	ksm.host_pgd = __pa(mm->pgd);
+	ksm->host_pgd = __pa(mm->pgd);
 	return ret;
 
 out_wq:
 	destroy_workqueue(wq);
 out_exit:
-	ksm_exit();
+	ksm_free(ksm);
 	return ret;
 }
 
@@ -70,9 +64,9 @@ static void __exit ksm_cleanup(void)
 {
 	int ret, active;	
 
-	active = ksm.active_vcpus;
+	active = ksm->active_vcpus;
 	destroy_workqueue(wq);
-	ret = ksm_exit();
+	ret = ksm_free(ksm);
 	VCPU_DEBUG("%d were active: ret: %d\n", active, ret);
 	mmdrop(mm);
 }

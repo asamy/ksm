@@ -1118,6 +1118,7 @@ static inline void __writemsr(u32 msr, u64 val)
 #define __outdword(port, value)			outl(value, port)
 #endif
 
+#define __ud2()		__asm __volatile("ud2")
 #define __wbinvd()	__asm __volatile("wbinvd")
 #define __invd() 	__asm __volatile("invd")
 #define __halt() 	__asm __volatile("hlt")
