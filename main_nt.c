@@ -106,7 +106,7 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 #endif
 }
 
-#if 1
+#if 0
 #ifdef EPAGE_HOOK
 static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
 			    _In_ SIZE_T              NumberOfBytes,
@@ -152,7 +152,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (!NT_SUCCESS(status = ksm_subvert(ksm)))
 		goto exit;
 
-#if 1
+#if 0
 #ifdef EPAGE_HOOK
 	/* Just a simple example...  */
 	if (ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace) == 0) {
