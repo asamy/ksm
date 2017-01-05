@@ -6,6 +6,7 @@ Contributions are really appreciated and can be submitted by one of the followin
 - Github pull requests
 - git request-pull
 
+
 	The github issues is a great place to start, although implementing new features
 	is perfectly fine and very welcome, feel free to do whatever your little heart
 	wants.
@@ -14,8 +15,8 @@ Contributions are really appreciated and can be submitted by one of the followin
 
 The following is _not_ required, but **prefered**:
 
-1. Put your copyright on top of the file(s) you edit along with a tiny description
-with your changes.  Something like:
+   Put your copyright on top of the file(s) you edit along with a tiny description
+   with your changes.  Something like:
 
 ```c
 /*
@@ -27,20 +28,68 @@ with your changes.  Something like:
  */
 ```
 
-2. Format your git commit messages properly (A signed-off-by is good but
+   Format your git commit messages properly (A signed-off-by is good but
    **not** required, note: you can use `git commit --signoff` instead of writing
    manually.  See also Linux kernel contribution guidelines for more perks):
 ```
-vmx: fix issue with arg
+vmx: fix issue with whatever
 
 Write as much as you would like as needed or point to some issue, although
 writing is prefered, or even comments in the code itself is much better.
 
-Optional:
+Optional (legal reasons, etc.):
 Signed-off-by: Your Name <your_email@domain.com>
 ```
 
-## Setting up your git tree
+## Code Style
+
+KSM uses the Linux kernel coding style, if you're unfamiliar with that, there
+are multiple editor configurations that adhere to this available on the
+internet, for vim you can use my configuration, here:
+
+	https://github.com/asamy/vimfiles
+
+To make this short, these are the rules:
+
+- Use 8 tabs (Not spaces!)
+- Preprocessor macros: leftmost column
+- Labels: leftmost column
+- Lines should be aligned relative to opening parenthesis, e.g.:
+	```
+		static void func(int a, int b,
+				 int c, int d)
+		{
+			int a = 1 + 2 +
+				4 +
+				5 +
+				6;
+			...
+		}
+	```
+- Case contents are not intended, but relative to the switch statement
+- Opening braces for structures is on the same line (i.e. `struct my_struct {
+						     };`)
+- Opening braces for functions/control-blocks is on the _next_ line
+- Opening braces for scopes is on the _next_ line
+- Closing braces for empty or inlined structures should be on the same line as the structure definition (i.e. `struct my_struct { int i; }`)
+- If-else if-else braces should be on the same line as the paranethesis, e.g.:
+
+	```
+		if (tmp) {
+		} else if (other) {
+		} else {
+		}
+	```
+- Do not use braces for one-lined if/elseif/else, e.g.:
+
+	```
+		if (tmp)
+			tmp();
+		else if (other)
+			other();
+	```
+
+## Setting up your git tree (If you're unfamiliar with Git)
 
 For the sake of simplicity, we're going to use some names placeholders (which
 									in
@@ -135,37 +184,35 @@ You have 2 options (if using 1st, then skip the rest):
    interface.
 2. If you're going to use git request-pull follow.
 
+Note: You should always push your changes before making a pull request
+(regardless of the option used), like this:
+
+	git push origin REMOTE_BRANCH
+
 #### Using git-request-pull
 
 (Skip this if you're using Github pull requests.)
 
 Usage:
 
-`git request-pull START_COMMIT REPOSITORY_URL END_COMMIT`
-
-First publish your changes:
-
-`git push origin REMOTE_BRANCH`
+	git request-pull START_COMMIT REPOSITORY_URL END_COMMIT
 
 To summarize a branch changes:
 
-`git request-pull abcd https://github.com/USER_NAME/ksm HEAD`
+	git request-pull abcd https://github.com/USER_NAME/ksm HEAD
 
 Which will summarize changes from commit `abcd` to `HEAD` of which you can then
 e-mail me that summary.
 
 You can also use:
 
-`git request-pull master https://github.com/USER_NAME/ksm
-LOCAL_BRANCH:REMOTE_BRANCH`
+	git request-pull master https://github.com/USER_NAME/ksm LOCAL_BRANCH:REMOTE_BRANCH
 
 Which will summarize changes from the local master branch (Which should contain
 							   my changes, i.e. my
-							   tree) to your
-changes.
+							   tree) to your changes.
 
 `REMOTE_BRANCH` can be omitted if same as `LOCAL_BRANCH`.
 You can also specify a tag of your choice, in that case, use tag names instead
 of commit hashes/branch names.
-
 
