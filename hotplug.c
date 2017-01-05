@@ -29,9 +29,15 @@ static int ksm_hotplug_cpu(struct notifier_block *nfb, unsigned long action, voi
 	VCPU_DEBUG("CPU %d action: %d\n", cpu, action);
 	switch (action) {
 	case CPU_ONLINE:
-		smp_call_function_single(cpu, do_cpu, __ksm_init_cpu, 1);
+	case CPU_ONLINE_FROZEN:
+		get_online_cpus();
+		if (cpu_online(cpu))
+			smp_call_function_single(cpu, do_cpu, __ksm_init_cpu, 1);
+		put_online_cpus();
 		break;
 	case CPU_DOWN_PREPARE:
+	case CPU_DYING:
+	case CPU_DYING_FROZEN:
 		smp_call_function_single(cpu, do_cpu, __ksm_exit_cpu, 1);
 		break;
 	}
