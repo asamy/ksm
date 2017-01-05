@@ -40,7 +40,7 @@ static inline void init_epte(u64 *entry, int access, u64 hpa)
 
 static inline u64 *ept_page_addr(u64 *pte)
 {
-	if (!pte || !(*pte & 1))
+	if (!pte || !(*pte & EPT_ACCESS_RWX))
 		return 0;
 
 	return __va(PAGE_PA(*pte));
@@ -204,9 +204,9 @@ static bool setup_pml4(struct ept *ept)
 
 		uintptr_t nr_pages = round_to_pages(size);
 		for (uintptr_t page = 0; page < nr_pages; ++page) {
-			uintptr_t ept_page_addr = addr + page * PAGE_SIZE;
+			uintptr_t ppa = addr + page * PAGE_SIZE;
 			for_each_eptp(i)
-				if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, ept_page_addr, ept_page_addr))
+				if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, ppa, ppa))
 					goto out;
 		}
 	}
@@ -328,15 +328,16 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
  *	- __ept_handle_violation()
  *
  * Returns the EPTP index to be switched to if needed, or the current one
- * (eptp) if no switching is required, invalidation is up to this function not
- * to the caller if it decides to return the current eptp index.
+ * (eptp) if no switching is required,  If invalidation is required, @invd is
+ * going to be true, do note that invalidation can only occur inside VMX root
+ * mode, and it's not required in non-root (#VE).
  *
  * If an error occurs, it returns EPT_MAX_EPTP_LIST which is 512.
  * Note that we don't need to invalidate non existent entries, aka entries that
  * mostly have EPT_ACCESS_NONE which is usually not even allocated...
  */
 static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa,
-			    u64 gva, u16 eptp, u8 ar, u8 ac)
+			    u64 gva, u16 eptp, u8 ar, u8 ac, bool *invd)
 {
 	struct ept *ept = &vcpu->ept;
 	if (ar == EPT_ACCESS_NONE) {
@@ -365,6 +366,7 @@ static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa,
 		u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
 		if (epte) {
 			__set_epte_ar_inplace(epte, ac);
+			*invd = true;
 			return eptp;
 		}
 #endif
@@ -386,6 +388,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	u16 eptp, eptp_switch;
 	u8 ar, ac;
 	char sar[4], sac[4];
+	bool invd = false;
 
 	eptp = vcpu_eptp_idx(vcpu);
 	gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
@@ -401,12 +404,14 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	VCPU_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   eptp, gpa, gva, ar, sar, ac, sac);
 
-	eptp_switch = do_ept_violation(vcpu, vcpu->ip, gpa, gva, eptp, ar, ac);
+	eptp_switch = do_ept_violation(vcpu, vcpu->ip, gpa, gva, eptp, ar, ac, &invd);
 	if (eptp_switch == EPT_MAX_EPTP_LIST)
 		return false;
 
 	if (eptp_switch != eptp)
 		vcpu_switch_root_eptp(vcpu, eptp_switch);
+	else if (invd)
+		__invept_all();
 
 	return true;
 }
@@ -423,6 +428,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 	u16 eptp, eptp_switch;
 	u8 ar, ac;
 	char sar[4], sac[4];
+	bool invd = false;
 
 	vcpu = ksm_current_cpu();
 	info = vcpu->ve;
@@ -441,7 +447,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 		   cs, rip, eptp, gpa, gva, ar, sar, ac, sac);
 	info->except_mask = 0;
 
-	eptp_switch = do_ept_violation(vcpu, rip, gpa, gva, eptp, ar, ac);
+	eptp_switch = do_ept_violation(vcpu, rip, gpa, gva, eptp, ar, ac, &invd);
 	if (eptp_switch == EPT_MAX_EPTP_LIST)
 		VCPU_BUGCHECK(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, rip, gpa);
 
