@@ -373,8 +373,6 @@ struct vcpu {
 	uintptr_t cr4_guest_host_mask;
 	/* Pending IRQ  */
 	struct pending_irq irq;
-	/* The global KSM structure.  */
-	struct ksm *ksm;
 	/* EPT for this CPU  */
 	struct ept ept;
 	/* Guest IDT (emulated)  */
@@ -468,7 +466,7 @@ static inline size_t rehash(const void *e, void *unused)
 
 struct ksm {
 	int active_vcpus;
-	struct vcpu *vcpu_list[KSM_MAX_VCPUS];
+	struct vcpu vcpu_list[KSM_MAX_VCPUS];
 	uintptr_t orig_pgd;
 	uintptr_t host_pgd;
 #ifdef EPAGE_HOOK
@@ -507,7 +505,13 @@ extern bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len);
 static inline struct vcpu *ksm_current_cpu(void)
 {
 	BUG_ON(!ksm);
-	return ksm->vcpu_list[cpu_nr()];
+	return &ksm->vcpu_list[cpu_nr()];
+}
+
+static inline struct ksm *vcpu_to_ksm(struct vcpu *vcpu)
+{
+	uintptr_t k = (uintptr_t)container_of(vcpu, struct ksm, vcpu_list);
+	return (struct ksm *)(k - cpu_nr() * sizeof(*vcpu));
 }
 
 struct h_vmfunc {
@@ -553,7 +557,7 @@ extern struct page_hook_info *ksm_find_page_pfn(struct ksm *k, uintptr_t pfn);
 #endif
 
 /* vcpu.c  */
-extern struct vcpu *vcpu_create(void);
+extern int vcpu_create(struct vcpu *vcpu);
 extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
 extern u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa);

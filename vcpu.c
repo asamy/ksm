@@ -498,7 +498,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	struct gdtr gdtr;
 	struct gdtr *idtr = &vcpu->g_idt;
 	struct ept *ept = &vcpu->ept;
-	struct ksm *k = vcpu->ksm;
+	struct ksm *k = vcpu_to_ksm(vcpu);
 
 	u64 vmx = __readmsr(MSR_IA32_VMX_BASIC);
 	u16 es = __reades();
@@ -833,12 +833,8 @@ off:
 	VCPU_DEBUG("%d: something went wrong: %d\n", err, verr);
 }
 
-struct vcpu *vcpu_create(void)
+int vcpu_create(struct vcpu *vcpu)
 {
-	struct vcpu *vcpu = mm_alloc_pool(sizeof(*vcpu));
-	if (!vcpu)
-		return NULL;
-
 #ifdef NESTED_VMX
 	vcpu->nested_vcpu.feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
 #endif
@@ -858,7 +854,7 @@ struct vcpu *vcpu_create(void)
 	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;
 
 	if (!init_ept(&vcpu->ept))
-		goto out;
+		return ERR_NOMEM;
 
 	vcpu->idt.limit = PAGE_SIZE - 1;
 	vcpu->idt.base = (uintptr_t)mm_alloc_page();
@@ -890,7 +886,7 @@ struct vcpu *vcpu_create(void)
 	vcpu->stack = mm_alloc_pool(KERNEL_STACK_SIZE);
 	if (vcpu->stack) {
 		*(struct vcpu **)((uintptr_t)vcpu->stack + KERNEL_STACK_SIZE - 8) = vcpu;
-		return vcpu;
+		return 0;
 	}
 
 out_pml:
@@ -907,9 +903,7 @@ out_idt:
 	mm_free_page((void *)vcpu->idt.base);
 out_ept:
 	free_ept(&vcpu->ept);
-out:
-	mm_free_pool(vcpu, sizeof(*vcpu));
-	return NULL;
+	return ERR_NOMEM;
 }
 
 void vcpu_free(struct vcpu *vcpu)
@@ -924,7 +918,6 @@ void vcpu_free(struct vcpu *vcpu)
 	mm_free_page(vcpu->vapic_page);
 	mm_free_pool(vcpu->stack, KERNEL_STACK_SIZE);
 	free_ept(&vcpu->ept);
-	mm_free_pool(vcpu, sizeof(*vcpu));
 }
 
 void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)

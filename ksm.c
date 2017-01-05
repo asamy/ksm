@@ -141,10 +141,11 @@ int __ksm_init_cpu(struct ksm *k)
 			return ERR_DENIED;
 	}
 
-	vcpu = vcpu_create();
-	if (!vcpu) {
+	vcpu = &k->vcpu_list[cpu_nr()];
+	ret = vcpu_create(vcpu);
+	if (ret < 0) {
 		VCPU_DEBUG_RAW("failed to create vcpu, oom?\n");
-		return ERR_NOMEM;
+		return ret;
 	}
 
 	/*
@@ -163,9 +164,6 @@ int __ksm_init_cpu(struct ksm *k)
 	k->host_pgd = __readcr3();
 #endif
 
-	/* Used inside vcpu_run()  */
-	vcpu->ksm = k;
-
 	/* Saves state and calls vcpu_run()  */
 	ret = __vmx_vminit(vcpu);
 	VCPU_DEBUG("Started: %d\n", !ret);
@@ -173,7 +171,6 @@ int __ksm_init_cpu(struct ksm *k)
 	if (ret == 0) {
 		vcpu->subverted = true;
 		k->active_vcpus++;
-		k->vcpu_list[cpu_nr()] = vcpu;
 	} else {
 		vcpu_free(vcpu);
 		__writecr4(__readcr4() & ~X86_CR4_VMXE);

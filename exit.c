@@ -771,7 +771,7 @@ static inline void nested_save_guest_state(struct nested_vcpu *nested)
 
 static inline bool nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 {
-	struct ksm *k = vcpu->ksm;
+	struct ksm *k = vcpu_to_ksm(vcpu);
 	u8 err = 0;
 
 	err |= vmcs_write(GUEST_RIP, __nested_vmcs_read(vmcs, HOST_RIP));
