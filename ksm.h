@@ -510,8 +510,15 @@ static inline struct vcpu *ksm_current_cpu(void)
 
 static inline struct ksm *vcpu_to_ksm(struct vcpu *vcpu)
 {
+#ifdef __GNUC__
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
+#endif
 	uintptr_t k = (uintptr_t)container_of(vcpu, struct ksm, vcpu_list);
 	return (struct ksm *)(k - cpu_nr() * sizeof(*vcpu));
+#ifdef __GNUC__
+#pragma GCC diagnostic pop
+#endif
 }
 
 struct h_vmfunc {
