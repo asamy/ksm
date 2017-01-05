@@ -55,6 +55,7 @@ To make this short, these are the rules:
 - Preprocessor macros: leftmost column
 - Labels: leftmost column
 - Lines should be aligned relative to opening parenthesis, e.g.:
+
 	```
 		static void func(int a, int b,
 				 int c, int d)
