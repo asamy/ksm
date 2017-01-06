@@ -2,10 +2,6 @@
  * ksm - a really simple and fast x64 hypervisor
  * Copyright (C) 2016, 2017 Ahmed Samy <asamy@protonmail.com>
  *
- * kmap_virt() from KSplice:
- *	Copyright (C) 2007-2009  Ksplice, Inc.
- *	Authors: Jeff Arnold, Anders Kaseorg, Tim Abbott
- *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms and conditions of the GNU General Public License,
  * version 2, as published by the Free Software Foundation.
@@ -70,6 +66,18 @@
 #define PTI_MASK		0xFFFFFFFFF
 #endif
 
+/*
+ * The traditional page table management carries on, but 
+ * the naming convention is different per-platform, so not
+ * to be confused, here are the names:
+ *
+ *	Regular (AMD tables): PML4, PDPT, PDT, PT
+ *	Linux tables:	 PML4, PGD, PUD, PMD
+ *	Windows tables:	 PML4, PXE, PPE, PDE
+ *
+ * To sync this, we just use linux convention because it's more
+ * convenient.
+ */
 #define PAGE_PRESENT		0x1
 #define PAGE_WRITE		0x2
 #define PAGE_USER		0x4
@@ -175,9 +183,9 @@ static inline pte_t *va_to_pte(uintptr_t va)
 	return pte_offset_kernel(va_to_pmd(va), va);
 }
 
-static inline uintptr_t __pte_to_va(pte_t pte)
+static inline uintptr_t __pte_to_va(pte_t *pte)
 {
-	struct page *page = pfn_to_page(PAGE_FN(pte.pte));
+	struct page *page = pfn_to_page(PAGE_FN(pte->pte));
 	if (!page)
 		return 0;
 
@@ -198,15 +206,15 @@ static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
 
 	pgd = pgd_offset(current->mm, va);
 	if (pgd_none(*pgd) || pgd_bad(*pgd))
-		return 0;
+		return NULL;
 
 	pud = pud_offset(pgd, va);
 	if (pud_none(*pud) || pud_bad(*pud))
-		return 0;
+		return NULL;
 
 	pmd = pmd_offset(pud, va);
 	if (pmd_none(*pmd) || pmd_bad(*pmd))
-		return 0;
+		return NULL;
 
 	return pte_offset_kernel(pmd, va);
 }
@@ -232,11 +240,8 @@ static inline void *mm_alloc_pool(size_t size)
 	return kmalloc(size, GFP_KERNEL | __GFP_ZERO);
 }
 
-static inline void mm_free_pool(void *v, size_t size)
+static inline void __mm_free_pool(void *v)
 {
-	if (size)
-		__stosq(v, 0, size >> 3);
-
 	kfree(v);
 }
 
@@ -253,6 +258,12 @@ static inline void *kmap_write(void *addr, size_t len)
 	return kmap_virt(addr, len, PAGE_KERNEL);
 }
 #else
+/*
+ * You can use the following functions for address translation in general
+ * but if you're translating a userspace address, then either make sure
+ * the cr3 is set to that userspace process, or use pgd_offset(), etc 
+ * functions instead.
+ */
 static inline pgd_t *va_to_pgd(uintptr_t va)
 {
 	uintptr_t off = (va >> PXI_SHIFT) & PTX_MASK;
@@ -277,9 +288,9 @@ static inline pte_t *va_to_pte(uintptr_t va)
 	return (pte_t *)pte_base + off;
 }
 
-static inline uintptr_t __pte_to_va(pte_t pte)
+static inline uintptr_t __pte_to_va(pte_t *pte)
 {
-	return (((pte.pte - pte_base) << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
+	return ((((uintptr_t)pte - pte_base) << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
 }
 
 static inline pgd_t *pgd_offset(uintptr_t cr3, uintptr_t va)
@@ -310,18 +321,19 @@ static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
 
 	pgd = pgd_offset(cr3, va);
 	if (!pte_present(*pgd))
-		return 0;
+		return NULL;
 
 	pud = pud_offset(pgd, va);
 	if (!pte_present(*pud))
-		return 0;
+		return NULL;
 
 	pmd = pmd_offset(pud, va);
 	if (!pte_present(*pmd))
-		return 0;
+		return NULL;
 
 	return pte_offset(pmd, va);
 }
+
 static inline void *mm_remap(u64 phys, size_t size)
 {
 	return MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = phys }, size, MmNonCached);
@@ -361,16 +373,21 @@ static inline void *mm_alloc_pool(size_t size)
 	return v;
 }
 
+static inline void __mm_free_pool(void *v)
+{
+	ExFreePool(v);
+}
+#endif
+
 static inline void mm_free_pool(void *v, size_t size)
 {
 	if (size)
 		__stosq(v, 0, size >> 3);
 
-	ExFreePool(v);
+	__mm_free_pool(v);
 }
-#endif
 
-static inline void *pte_to_va(pte_t pte)
+static inline void *pte_to_va(pte_t *pte)
 {
 	return (void *)__pte_to_va(pte);
 }
@@ -386,5 +403,13 @@ static inline u64 va_to_pa(uintptr_t va)
 
 	return PAGE_PPA(pte) | addr_offset(va);
 }
+
+struct pmem_range {
+	u64 start;
+	u64 end;
+};
+
+#define MAX_RANGES	6
+extern int mm_cache_ram_ranges(struct pmem_range *ranges, int *count);
 
 #endif

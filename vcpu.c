@@ -16,11 +16,6 @@
 */
 #ifdef __linux__
 #include <linux/kernel.h>
-#include <linux/ioport.h>
-#include <linux/slab.h>
-#include <linux/highmem.h>
-
-extern struct resource iomem_resource;
 #else
 #include <ntddk.h>
 #include <intrin.h>
@@ -57,7 +52,7 @@ static inline u64 *ept_page_addr(u64 *pte)
  *				PDTE (aka PT or Page Table) ->
  *					PTE (aka Page)
  *
- * Note: Each table contains 512 entries, which makes it each table occupy 4096
+ * Note: Each table contains 512 entries, which makes each table occupy 4096
  * bytes (8 * 512 or PAGE_SIZE), which is a page.
  *
  * Assuming:
@@ -147,85 +142,26 @@ static void free_entries(u64 *table, int lvl)
 	mm_free_page(table);
 }
 
-static void free_pml4_list(struct ept *ept)
+static bool setup_pml4(struct ept *ept, int access, u16 eptp)
 {
-	for (int i = 0; i < EPTP_USED; ++i)
-		if (EPT4(ept, i))
-			free_entries(EPT4(ept, i), 4);
-}
+	int i;
+	u64 addr;
+	u64 apic;
+	struct pmem_range *range;
 
-#ifdef __linux__
-/* FIXME: This is stupid...  */
-static inline bool alloc_resource_pages(struct ept *ept, struct resource *r)
-{
-	VCPU_DEBUG("Allocating for %s (%p -> %p)\n",
-		   r->name, r->start, r->end);
-
-	for (unsigned long x = r->start; x < r->end; x += PAGE_SIZE)
-		for_each_eptp(i)
-			if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, x, x))
+	for (i = 0; i < ksm->range_count; ++i) {
+		range = &ksm->ranges[i];
+		for (addr = range->start; addr < range->end; addr += PAGE_SIZE)
+			if (!ept_alloc_page(EPT4(ept, eptp), access, addr, addr))
 				return false;
-	return true;
-}
-
-static bool iter_resource(struct ept *ept,
-			  struct resource *resource,
-			  const char *match)
-{
-	struct resource *tmp;
-
-	for (tmp = resource; tmp; tmp = tmp->child) {
-		if (strcmp(tmp->name, match) == 0 &&
-		    !alloc_resource_pages(ept, tmp))
-			return false;
-
-		if (tmp->sibling && !iter_resource(ept, tmp->sibling, match))
-			return false;
 	}
-
-	return true;
-}
-#endif
-
-static bool setup_pml4(struct ept *ept)
-{
-	bool ret = false;
-
-#ifndef __linux__
-	PPHYSICAL_MEMORY_RANGE pm_ranges = MmGetPhysicalMemoryRanges();
-	if (!pm_ranges)
-		return false;
-
-	for (int run = 0;; ++run) {
-		uintptr_t addr = pm_ranges[run].BaseAddress.QuadPart;
-		uintptr_t size = pm_ranges[run].NumberOfBytes.QuadPart;
-		if (!addr && !size)
-			break;
-
-		uintptr_t nr_pages = round_to_pages(size);
-		for (uintptr_t page = 0; page < nr_pages; ++page) {
-			uintptr_t ppa = addr + page * PAGE_SIZE;
-			for_each_eptp(i)
-				if (!ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, ppa, ppa))
-					goto out;
-		}
-	}
-#else
-	if (!iter_resource(ept, &iomem_resource, "System RAM"))
-		return false;
-#endif
 
 	/* Allocate APIC page  */
-	u64 apic = __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE;
-	for_each_eptp(i)
-		if (!(ret = ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, apic, apic)))
-			break;
+	apic = __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE;
+	if (!ept_alloc_page(EPT4(ept, eptp), EPT_ACCESS_ALL, apic, apic))
+		return false;
 
-#ifndef __linux__
-out:
-	ExFreePool(pm_ranges);
-#endif
-	return ret;
+	return true;
 }
 
 static inline void setup_eptp(u64 *ptr, u64 pml4)
@@ -239,26 +175,61 @@ static inline void setup_eptp(u64 *ptr, u64 pml4)
 	*ptr |= (pml4 >> PAGE_SHIFT) << PAGE_SHIFT;
 }
 
+bool ept_create_ptr(struct ept *ept, int access, u16 *out)
+{
+	u64 **pml4;
+	u16 eptp;
+
+	eptp = find_first_zero_bit(ept->ptr_bitmap, sizeof(ept->ptr_bitmap));
+	if (eptp == sizeof(ept->ptr_bitmap))
+		return false;
+
+	pml4 = &EPT4(ept, eptp);
+	if (!(*pml4 = mm_alloc_page()))
+		return false;
+
+	if (!setup_pml4(ept, access, eptp)) {
+		__mm_free_page(*pml4);
+		return false;
+	}
+
+	setup_eptp(&EPTP(ept, eptp), __pa(*pml4));
+	set_bit(eptp, ept->ptr_bitmap);
+	*out = eptp;
+	return true;
+}
+
+void ept_free_ptr(struct ept *ept, u16 eptp)
+{
+	free_entries(EPT4(ept, eptp), 4);
+	clear_bit(eptp, ept->ptr_bitmap);
+}
+
+static void free_pml4_list(struct ept *ept)
+{
+	for_each_eptp(ept, i)
+		if (EPT4(ept, i))
+			ept_free_ptr(ept, i);
+}
+
 static inline bool init_ept(struct ept *ept)
 {
+	int i;
+	u16 dontcare;
+
 	ept->ptr_list = (u64 *)mm_alloc_page();
 	if (!ept->ptr_list)
 		return false;
 
-	for_each_eptp(i) {
-		u64 **pml4 = &EPT4(ept, i);
-		if (!(*pml4 = mm_alloc_page()))
+	memset(ept->ptr_bitmap, 0, sizeof(ept->ptr_bitmap));
+	for (i = 0; i < EPTP_INIT_USED; ++i)
+		if (!ept_create_ptr(ept, EPT_ACCESS_ALL, &dontcare))
 			goto err_pml4_list;
 
-		setup_eptp(&EPTP(ept, i), __pa(*pml4));
-	}
-
-	if (setup_pml4(ept))
-		return true;
+	return true;
 
 err_pml4_list:
 	free_pml4_list(ept);
-
 	if (ept->ptr_list) {
 		mm_free_page(ept->ptr_list);
 		ept->ptr_list = NULL;
@@ -336,46 +307,45 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
  * Note that we don't need to invalidate non existent entries, aka entries that
  * mostly have EPT_ACCESS_NONE which is usually not even allocated...
  */
-static u16 do_ept_violation(struct vcpu *vcpu, u64 rip, u64 gpa,
-			    u64 gva, u16 eptp, u8 ar, u8 ac, bool *invd)
+static bool do_ept_violation(struct vcpu *vcpu, u64 rip, int dpl, u64 gpa,
+			     u64 gva, u16 eptp, u8 ar, u8 ac,
+			     bool *invd, u16 *eptp_switch)
 {
 	struct ept *ept = &vcpu->ept;
 	if (ar == EPT_ACCESS_NONE) {
-		/* Most likely device memory  */
 #ifdef NESTED_VMX
 		u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
 		if (epte && *epte & ac)
-			return EPT_MAX_EPTP_LIST;
+			return false;
 #endif
 
 		if (!ept_alloc_page(EPT4(ept, eptp), EPT_ACCESS_ALL, gpa, gpa))
-			return EPT_MAX_EPTP_LIST;
-	} else {
-#ifdef EPAGE_HOOK
-		struct page_hook_info *phi = ksm_find_page(vcpu->ksm, (void *)gva);
-		if (phi) {
-			u16 eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
-			VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, eptp_switch);
-			return eptp_switch;
-		}
-#endif
+			return false;
 
-#ifndef NESTED_VMX
-		/* Fix manually...   This will never happen unless someone
-		 * screwed up intentionally.  */
-		u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
-		if (epte) {
-			__set_epte_ar_inplace(epte, ac);
-			*invd = true;
-			return eptp;
-		}
-#endif
-
-		/* Unhandled violation  */
-		return EPT_MAX_EPTP_LIST;
+		return true;
 	}
 
-	return eptp;
+#ifdef EPAGE_HOOK
+	struct page_hook_info *phi = ksm_find_page(vcpu->ksm, (void *)gva);
+	if (phi) {
+		*eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
+		VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, *eptp_switch);
+		return true;
+	}
+#endif
+
+#ifdef PMEM_SANDBOX
+	if (ksm_sandbox_handle_ept(&vcpu->ept, dpl, gpa,
+				   gva, eptp, ar, ac,
+				   invd, eptp_switch)) {
+		if (*eptp_switch != eptp)
+			VCPU_DEBUG("sandbox switch from %d  to %d\n", eptp, *eptp_switch);
+
+		return true;
+	}
+#endif
+
+	return false;
 }
 
 /*
@@ -388,10 +358,12 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	u16 eptp, eptp_switch;
 	u8 ar, ac;
 	char sar[4], sac[4];
+	int dpl;
 	bool invd = false;
 
 	eptp = vcpu_eptp_idx(vcpu);
 	gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
+	dpl = VMX_AR_DPL(vmcs_read32(GUEST_SS_AR_BYTES));
 	gva = 0;
 	exit = vmcs_read(EXIT_QUALIFICATION);
 	ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
@@ -404,8 +376,10 @@ bool ept_handle_violation(struct vcpu *vcpu)
 	VCPU_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   eptp, gpa, gva, ar, sar, ac, sac);
 
-	eptp_switch = do_ept_violation(vcpu, vcpu->ip, gpa, gva, eptp, ar, ac, &invd);
-	if (eptp_switch == EPT_MAX_EPTP_LIST)
+	eptp_switch = eptp;
+	if (!do_ept_violation(vcpu, vcpu->ip, dpl, gpa,
+			      gva, eptp, ar, ac,
+			      &invd, &eptp_switch))
 		return false;
 
 	if (eptp_switch != eptp)
@@ -447,8 +421,10 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 		   cs, rip, eptp, gpa, gva, ar, sar, ac, sac);
 	info->except_mask = 0;
 
-	eptp_switch = do_ept_violation(vcpu, rip, gpa, gva, eptp, ar, ac, &invd);
-	if (eptp_switch == EPT_MAX_EPTP_LIST)
+	eptp_switch = eptp;
+	if (!do_ept_violation(vcpu, vcpu->ip, cs & 3, gpa,
+			      gva, eptp, ar, ac,
+			      &invd, &eptp_switch))
 		VCPU_BUGCHECK(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, rip, gpa);
 
 	if (eptp_switch != eptp)
@@ -587,7 +563,11 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	vcpu->pin_ctl = vm_pinctl;
 
 	const u32 req_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
-		CPU_BASED_USE_IO_BITMAPS;
+		CPU_BASED_USE_IO_BITMAPS
+#ifdef PMEM_SANDBOX
+		| CPU_BASED_CR3_LOAD_EXITING
+#endif
+		;
 	u32 vm_cpuctl = req_cpuctl
 #if 0
 		| CPU_BASED_TPR_SHADOW
@@ -815,8 +795,6 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 
 		/* If all good, this goes to do_resume label in assembly.  */
 		err = __vmx_vmlaunch();
-		if (err == 0)
-			return;
 	}
 
 	/*
@@ -922,12 +900,22 @@ void vcpu_free(struct vcpu *vcpu)
 
 void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 {
+	u16 curr = index;
+	BUG_ON(!test_bit(index, (const volatile bitmap_t *)vcpu->ept.ptr_bitmap));
+
 	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VE) {
 		/* Native  */
+		curr = vmcs_read16(EPTP_INDEX);
+		if (curr == index)
+			return;
+
 		vmcs_write16(EPTP_INDEX, index);
 	} else {
 		/* Emulated  */
 		struct ve_except_info *ve = vcpu->ve;
+		if (ve->eptp == curr)
+			return;
+
 		ve->eptp = index;
 	}
 

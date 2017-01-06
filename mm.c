@@ -23,8 +23,17 @@
 #include <linux/mm.h>
 #include <linux/vmalloc.h>
 #include <linux/io.h>
+#include <linux/ioport.h>
+#else
+#include <ntddk.h>
+#endif
 
+#include "ksm.h"
 #include "mm.h"
+#include "compiler.h"
+
+#ifdef __linux__
+extern struct resource iomem_resource;
 
 struct remap_region {
 	struct vm_struct *area;
@@ -66,7 +75,7 @@ void *mm_remap(u64 phys, size_t size)
 	if (!region)
 		return NULL;
 
-	area = __get_vm_area(size, VM_IOREMAP, VMALLOC_START, VMALLOC_END);
+	area = __get_vm_area(size, VM_IOREMAP | VM_LOCKED, VMALLOC_START, VMALLOC_END);
 	if (!area)
 		goto err_region;
 
@@ -162,5 +171,58 @@ void *kmap_virt(void *addr, size_t len, pgprot_t prot)
 	return vaddr + offset_in_page(addr);
 }
 
+static void iter_resource(struct pmem_range *ranges,
+			  struct resource *resource,
+			  const char *match,
+			  int *curr)
+{
+	struct resource *tmp;
+	if (*curr >= MAX_RANGES)
+		return;
+
+	for (tmp = resource; tmp && *curr < MAX_RANGES; tmp = tmp->child) {
+		if (strcmp(tmp->name, match) == 0) {
+			ranges[*curr].start = tmp->start;
+			ranges[*curr].end = tmp->end;
+			++*curr;
+		}
+
+		if (tmp->sibling)
+			iter_resource(ranges, tmp->sibling, match, curr);
+	}
+}
+
+int mm_cache_ram_ranges(struct pmem_range *ranges, int *range_count)
+{
+	iter_resource(ranges, &iomem_resource, "System RAM", range_count);
+	return 0;
+}
+#else
+
+int mm_cache_ram_ranges(struct pmem_range *ranges, int *range_count)
+{
+	int run;
+	uintptr_t addr;
+	uintptr_t size;
+	PPHYSICAL_MEMORY_RANGE pm_ranges;
+
+	pm_ranges = MmGetPhysicalMemoryRanges();
+	if (!pm_ranges)
+		return ERR_NOMEM;
+
+	for (run = 0; run < MAX_RANGES; ++run) {
+		addr = pm_ranges[run].BaseAddress.QuadPart;
+		size = pm_ranges[run].NumberOfBytes.QuadPart;
+		if (!addr && !size)
+			break;
+
+		ranges[run].start = addr;
+		ranges[run].end = addr + size;
+	}
+
+	*range_count = run;
+	ExFreePool(pm_ranges);
+	return 0;
+}
 #endif
 

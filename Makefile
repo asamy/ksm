@@ -16,9 +16,11 @@
 # You should have received a copy of the GNU General Public License along with
 # this program; If not, see <http://www.gnu.org/licenses/>.
 obj-m += ksmlinux.o
-ksmlinux-objs := exit.o htable.o hotplug.o ksm.o page.o resubv.o vcpu.o mm.o main_linux.o vmx.o
-ccflags-y := -Wno-format -Wno-declaration-after-statement -Wno-unused-function -DDBG -DENABLE_PRINT -std=gnu99
+ksmlinux-objs := exit.o htable.o hotplug.o ksm.o sandbox.o page.o resubv.o vcpu.o mm.o main_linux.o vmx.o
+ccflags-y := -Wno-format -Wno-declaration-after-statement -Wno-unused-function \
+	-DDBG -DENABLE_PRINT -std=gnu99
 
+UM_SRC := um/um.c
 BIN := ksmlinux.ko
 KVERSION := $(shell uname -r)
 KDIR := /lib/modules/$(KVERSION)
@@ -31,6 +33,9 @@ all:
 
 clean:
 	@make -C $(KBUILD) M=$(PWD) clean
+
+um:
+	gcc $(UM_SRC)
 
 install: $(BIN)
 	@cp $(BIN) $(KDIR)

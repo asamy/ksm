@@ -28,7 +28,7 @@
 #include "bitmap.h"
 
 /* Externed everywhere.  */
-struct ksm *ksm;
+struct ksm *ksm = NULL;
 
 /*
  * This file manages CPUs initialization, for per-cpu initializaiton
@@ -148,25 +148,12 @@ int __ksm_init_cpu(struct ksm *k)
 		return ret;
 	}
 
-	/*
-	 * On windows, driver entry is not reliable to get kernel cr3, but the
-	 * DPC callback (this one) is guaranteed to run inside kernel context.
-	 *
-	 * On Linux, the situation is different, this will run in whatever
-	 * process-context this CPU had...
-	 *
-	 * This is really trivial, I am not even sure if this is right, but it
-	 * works...
-	 */
-#ifdef __linux__
+	/* Current cr3:  */
 	k->orig_pgd = __readcr3();
-#else
-	k->host_pgd = __readcr3();
-#endif
 
 	/* Saves state and calls vcpu_run()  */
 	ret = __vmx_vminit(vcpu);
-	VCPU_DEBUG("Started: %d\n", !ret);
+	VCPU_DEBUG("%s: Started: %d\n", proc_name(), !ret);
 
 	if (ret == 0) {
 		vcpu->subverted = true;
@@ -186,11 +173,6 @@ int __ksm_init_cpu(struct ksm *k)
 static DEFINE_DPC(__call_init, __ksm_init_cpu, ctx);
 int ksm_subvert(struct ksm *k)
 {
-#ifndef __linux__
-	/* See comments in __ksm_init_cpu...  */
-	k->orig_pgd = __readcr3();
-#endif
-
 	CALL_DPC(__call_init, k);
 	return DPC_RET();
 }
@@ -233,9 +215,20 @@ int ksm_init(struct ksm **kp)
 	htable_init(&k->ht, rehash, NULL);
 #endif
 
-	ret = init_msr_bitmap(k);
+	ret = mm_cache_ram_ranges(&k->ranges[0], &k->range_count);
 	if (ret < 0)
 		goto out_ksm;
+	VCPU_DEBUG("%d physical memory ranges\n", k->range_count);
+
+#ifdef PMEM_SANDBOX
+	ret = ksm_sandbox_init(k);
+	if (ret < 0)
+		goto out_ksm;
+#endif
+
+	ret = init_msr_bitmap(k);
+	if (ret < 0)
+		goto out_sbox;
 
 	ret = init_io_bitmaps(k);
 	if (ret < 0)
@@ -247,6 +240,7 @@ int ksm_init(struct ksm **kp)
 
 	ret = register_cpu_callback();
 	if (ret == 0) {
+		k->host_pgd = __readcr3();
 		*kp = k;
 		return ret;
 	}
@@ -256,6 +250,10 @@ out_io:
 	free_io_bitmaps(k);
 out_msr:
 	free_msr_bitmap(k);
+out_sbox:
+#ifdef PMEM_SANDBOX
+	ksm_sandbox_exit(k);
+#endif
 out_ksm:
 	mm_free_pool(k, sizeof(*k));
 	return ret;
@@ -268,8 +266,7 @@ out_ksm:
 int __ksm_exit_cpu(struct ksm *k)
 {
 	int ret = ERR_NOTH;
-	struct vcpu *vcpu = ksm_current_cpu();
-
+	struct vcpu *vcpu = &k->vcpu_list[cpu_nr()];
 	if (!vcpu->subverted)
 		return ret;
 
@@ -307,16 +304,16 @@ int ksm_free(struct ksm *k)
 	int ret;
 
 	ret = ksm_unsubvert(k);
-	if (ret == 0) {
-		free_msr_bitmap(k);
-		free_io_bitmaps(k);
+	free_msr_bitmap(k);
+	free_io_bitmaps(k);
 #ifdef EPAGE_HOOK
-		htable_clear(&k->ht);
+	htable_clear(&k->ht);
 #endif
-		unregister_cpu_callback();
-		unregister_power_callback();
-	}
-
+#ifdef PMEM_SANDBOX
+	ksm_sandbox_exit(k);
+#endif
+	unregister_cpu_callback();
+	unregister_power_callback();
 	return ret;
 }
 
@@ -354,6 +351,10 @@ int ksm_free_idt(unsigned n)
 	return DPC_RET();
 }
 
+/*
+ * Write @data of length @len into @gva.
+ * If it returns false, a fault should be injected.
+ */
 bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len)
 {
 	u64 gpa;
@@ -366,7 +367,9 @@ bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len)
 	off = 0;
 	cr3 = vmcs_read(GUEST_CR3);
 	while (len) {
-		if (!gva_to_gpa(vcpu, cr3, gva, PAGE_PRESENT, &gpa))
+		if (!gva_to_gpa(vcpu, cr3, gva,
+				PAGE_PRESENT | PAGE_WRITE,
+				&gpa))
 			return false;
 
 		if (!gpa_to_hpa(vcpu, gpa, &hpa))
@@ -390,6 +393,10 @@ bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len)
 	return true;
 }
 
+/*
+ * Read from @gpa into @data of length @len
+ * If it returns false, a fault should be injected.
+ */
 bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len)
 {
 	u64 gpa;

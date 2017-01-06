@@ -19,56 +19,133 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/init.h>
-#include <linux/workqueue.h>
+#include <linux/device.h>
 
 #include "ksm.h"
+#include "um/um.h"
 
-static struct mm_struct *mm;
-static struct workqueue_struct *wq;
-
-static void ksm_worker(struct work_struct *w)
+static struct mm_struct *mm = NULL;
+static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 {
-	int r = ksm_subvert(ksm);
-	VCPU_DEBUG("ret: %d (%d active)\n", r, ksm->active_vcpus);
+	int ret = -EINVAL;
+	int __maybe_unused pid = 0;
+	VCPU_DEBUG("ioctl from %s: cmd(0x%08X) args(%p)\n",
+		   current->comm, cmd, args);
+
+	if (mm && current->mm != mm) {
+		VCPU_DEBUG("not processing ioctl from %s\n", current->comm);
+		goto out;
+	}
+
+	switch (cmd) {
+#ifdef PMEM_SANDBOX
+	case KSM_IOCTL_SANDBOX:
+		ret = copy_from_user(&pid, (const void __force *)args, sizeof(pid));
+		if (ret < 0)
+			break;
+
+		VCPU_DEBUG("sandboxing %d\n", args);
+		ret = ksm_sandbox(ksm, pid);
+		break;
+#endif
+	case KSM_IOCTL_SUBVERT:
+		if (!mm) {
+			/* Steal their mm...  */
+			mm = current->active_mm;
+			atomic_inc(&mm->mm_count);
+			ksm->host_pgd = __pa(mm->pgd);
+		}
+
+		ret = ksm_subvert(ksm);
+		break;
+	case KSM_IOCTL_UNSUBVERT:
+		ret = ksm_unsubvert(ksm);
+		if (ret == 0 && mm) {
+			VCPU_DEBUG("derefering stolen mm\n");
+			mmdrop(mm);
+			mm = NULL;
+		}
+
+		break;
+	default:
+		VCPU_DEBUG("unknown ioctl code %X\n", cmd);
+		ret = -EINVAL;
+		break;
+	}
+
+out:
+	VCPU_DEBUG("ioctl ret: %d\n", ret);
+	return ret;
 }
-static DECLARE_DELAYED_WORK(work, ksm_worker);
+
+static int ksm_open(struct inode *node, struct file *filp)
+{
+	VCPU_DEBUG("open() from %s\n", current->comm);
+	return 0;
+}
+
+static int ksm_release(struct inode *inode, struct file *filp)
+{
+	VCPU_DEBUG("release() from %s\n", current->comm);
+	return 0;
+}
+
+static struct file_operations ksm_fops = {
+	.open = ksm_open,
+	.release = ksm_release,
+	.unlocked_ioctl = ksm_ioctl,
+};
+static int major_no = 0;
+static struct class *class;
 
 static int __init ksm_start(void)
 {
 	int ret = -ENOMEM;
+	struct device *dev;
 
 	ret = ksm_init(&ksm);
 	if (ret < 0)
 		return ret;
 
-	wq = create_singlethread_workqueue("worker_ksm");
-	if (!wq)
+	major_no = register_chrdev(0, UM_DEVICE_NAME, &ksm_fops);
+	VCPU_DEBUG("Major: %d\n", major_no);
+
+	class = class_create(THIS_MODULE, UM_DEVICE_NAME);
+	if (!class)
 		goto out_exit;
 
-	if (!queue_delayed_work(wq, &work, 100))
-		goto out_wq;
+	dev = device_create(class, NULL, MKDEV(major_no, 0), NULL, UM_DEVICE_NAME);
+	if (dev) {
+		VCPU_DEBUG_RAW("ready\n");
+		return ret;
+	}
 
-	mm = current->active_mm;
-	atomic_inc(&mm->mm_count);
-	ksm->host_pgd = __pa(mm->pgd);
-	return ret;
+	ret = -EINVAL;
+	VCPU_DEBUG_RAW("failed to create device\n");
+	class_unregister(class);
+	class_destroy(class);
 
-out_wq:
-	destroy_workqueue(wq);
 out_exit:
+	unregister_chrdev(major_no, UM_DEVICE_NAME);
 	ksm_free(ksm);
 	return ret;
 }
 
 static void __exit ksm_cleanup(void)
 {
-	int ret, active;	
+	int ret, active;
+
+	device_destroy(class, MKDEV(major_no, 0));
+	class_unregister(class);
+	class_destroy(class);
+	unregister_chrdev(major_no, UM_DEVICE_NAME);
 
 	active = ksm->active_vcpus;
-	destroy_workqueue(wq);
 	ret = ksm_free(ksm);
 	VCPU_DEBUG("%d were active: ret: %d\n", active, ret);
-	mmdrop(mm);
+
+	if (mm)
+		mmdrop(mm);
 }
 
 module_init(ksm_start);

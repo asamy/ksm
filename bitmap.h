@@ -11,8 +11,24 @@
  * Those initialize the MSR/IO bitmaps required for the VMM to run (e.g.
  * nested VMMs, etc.)
  * 
- * Public domain.
-*/
+ * Some functions from the Linux kernel bitmap implementation:
+ *	lib/find_bit.c
+ *
+ *	Copyright (C) 2004 Red Hat, Inc. All Rights Reserved.
+ *	Written by David Howells (dhowells@redhat.com)
+ *
+ *	Copyright (C) 2008 IBM Corporation
+ *	'find_last_bit' is written by Rusty Russell <rusty@rustcorp.com.au>
+ *	(Inspired by David Howell's find_next_bit implementation)
+ *
+ *	Rewritten by Yury Norov <yury.norov@gmail.com> to decrease
+ *	size and improve performance, 2015.
+ *
+ * This program is free software; you can redistribute it and/or
+ * modify it under the terms of the GNU General Public License
+ * as published by the Free Software Foundation; either version
+ * 2 of the License, or (at your option) any later version.
+ */
 #ifndef __BITMAP_H
 #define __BITMAP_H
 
@@ -22,7 +38,10 @@ typedef unsigned long bitmap_t;
 #ifndef CHAR_BIT
 #define CHAR_BIT	8
 #endif
+
 #define BITMAP_BITS			(sizeof(bitmap_t) * CHAR_BIT)
+#define DECLARE_BITMAP(name, bits)	\
+	unsigned long name[BITMAP_BITS * bits]
 
 static inline unsigned long pos_bit(unsigned long pos)
 {
@@ -44,7 +63,7 @@ static inline void clear_bit(unsigned long pos, bitmap_t *bmp)
 	bmp[bit_at(pos)] &= ~pos_bit(pos);
 }
 
-static inline bool test_bit(unsigned long pos, bitmap_t *bmp)
+static inline bool test_bit(unsigned long pos, volatile const bitmap_t *bmp)
 {
 	return !!(bmp[bit_at(pos)] & pos_bit(pos));
 }
@@ -64,6 +83,49 @@ static inline void fill_bits(bitmap_t *bmp, unsigned long count, unsigned char b
 	memset(bmp, bits, count_bits(count));
 }
 
+static inline unsigned long __ffs(unsigned long x)
+{
+#ifdef _MSC_VER
+	unsigned long i;
+	_BitScanForward64(&i, x);
+	return i;
+#else
+	return __builtin_ffs(x);
 #endif
-#endif
+}
 
+static inline unsigned long __ffz(unsigned long x)
+{
+#ifdef _MSC_VER
+	unsigned long i;
+	_BitScanForward64(&i, ~x);
+	return i;
+#else
+	return __builtin_ffs(~x);
+#endif
+}
+
+static inline unsigned long find_first_bit(bitmap_t *bmp, unsigned long size)
+{
+	unsigned long i;
+
+	for (i = 0; i *  BITMAP_BITS < size; ++i)
+		if (bmp[i])
+			return min(i * BITMAP_BITS + __ffs(bmp[i]), size);
+
+	return size;
+}
+
+static inline unsigned long find_first_zero_bit(bitmap_t *bmp, unsigned long size)
+{
+	unsigned long i;
+
+	for (i = 0; i *  BITMAP_BITS < size; ++i)
+		if (bmp[i] != ~0UL)
+			return min(i * BITMAP_BITS + __ffz(bmp[i]), size);
+
+	return size;
+}
+
+#endif
+#endif

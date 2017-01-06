@@ -26,9 +26,7 @@
 #include "vmx.h"
 #include "mm.h"
 #include "bitmap.h"
-#ifdef EPAGE_HOOK
 #include "htable.h"
-#endif
 
 #ifndef __linux__
 /* Avoid NT retardism  */
@@ -84,9 +82,9 @@
 #define VCPU_BUGCHECK_UNEXPECTED	0xEEEEEEE9
 #ifdef DBG
 #ifndef __linux__
-#define VCPU_BUGCHECK(a, b, c, d)	KeBugCheckEx(MANUALLY_INITIATED_CRASH, a, b, c, d)
+#define VCPU_BUGCHECK(a, b, c, d)	dbgbreak(); KeBugCheckEx(MANUALLY_INITIATED_CRASH, a, b, c, d)
 #else
-#define VCPU_BUGCHECK(a, b, c, d)	panic("bugcheck 0x%016X 0x%016X 0x%016X 0x%016X\n", a, b, c, d)
+#define VCPU_BUGCHECK(a, b, c, d)	dbgbreak(); panic("bugcheck 0x%016X 0x%016X 0x%016X 0x%016X\n", a, b, c, d)
 #endif
 #else
 #define VCPU_BUGCHECK(a, b, c, d)	(void)0
@@ -101,6 +99,14 @@
 
 /* VPID 0 is used by VMX root.  */
 #define vpid_nr()			(cpu_nr() + 1)
+#ifdef __linux__
+#define proc_name()			current->comm
+#define proc_pid()			current->pid
+#else
+#define current				PsGetCurrentProcess()
+#define proc_name()			PsGetProcessImageFileName(current)
+#define proc_pid()			PsGetProcessId(current)
+#endif
 
 #ifdef ENABLE_PRINT
 #ifdef __linux__
@@ -147,6 +153,7 @@
 #define EPT_ACCESS_WRITE		0x2
 #define EPT_ACCESS_RW			(EPT_ACCESS_READ | EPT_ACCESS_WRITE)
 #define EPT_ACCESS_EXEC			0x4
+#define EPT_ACCESS_RX			(EPT_ACCESS_READ | EPT_ACCESS_EXEC)
 #define EPT_ACCESS_RWX			(EPT_ACCESS_RW | EPT_ACCESS_EXEC)
 #define EPT_ACCESS_ALL			EPT_ACCESS_RWX
 
@@ -171,10 +178,12 @@
 #define EPTP_RWHOOK			1			/* hook eptp index, readwrite hooks, no exec  */
 #define EPTP_NORMAL			2			/* sane eptp index, no hooks  */
 #define EPTP_DEFAULT			EPTP_EXHOOK
-#define EPTP_USED			3			/* number of unique ptrs currently in use and should be freed  */
+#define EPTP_INIT_USED			3			/* number of unique ptrs currently in use and should be freed  */
 #define EPTP(e, i)			(e)->ptr_list[(i)]
 #define EPT4(e, i)			(e)->pml4_list[(i)]
-#define for_each_eptp(i)		for (int i = 0; i < EPTP_USED; ++i)
+#define for_each_eptp(ept, i)		\
+	for (int i = 0; i < EPT_MAX_EPTP_LIST; ++i)	\
+		if (test_bit(i, ept->ptr_bitmap))
 
 #define EPT_BUGCHECK_CODE		0x3EDFAAAA
 #define EPT_BUGCHECK_TOOMANY		0xFFFFFFFE
@@ -345,7 +354,9 @@ struct ve_except_info {
 
 struct ept {
 	u64 *ptr_list;
-	u64 *pml4_list[EPTP_USED];
+	u64 *pml4_list[EPT_MAX_EPTP_LIST];
+	unsigned long
+		ptr_bitmap[EPT_MAX_EPTP_LIST / sizeof(unsigned long)];
 };
 
 struct vcpu {
@@ -467,10 +478,16 @@ static inline size_t rehash(const void *e, void *unused)
 struct ksm {
 	int active_vcpus;
 	struct vcpu vcpu_list[KSM_MAX_VCPUS];
+	struct pmem_range ranges[MAX_RANGES];
+	int range_count;
 	uintptr_t orig_pgd;
 	uintptr_t host_pgd;
 #ifdef EPAGE_HOOK
 	struct htable ht;
+#endif
+#ifdef PMEM_SANDBOX
+	struct list_head task_list;
+	spinlock_t task_lock;
 #endif
 	void *msr_bitmap;
 	void *io_bitmap_a;
@@ -478,7 +495,7 @@ struct ksm {
 };
 
 /*
- * Do NOT use inside VMX root mode, use vcpu->k instead...
+ * Do NOT use inside VMX root mode, use vcpu_to_ksm() instead...
  * Use this and I'll come after you.
  */
 extern struct ksm *ksm;
@@ -502,10 +519,15 @@ extern int ksm_free_idt(unsigned n);
 extern bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len);
 extern bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len);
 
+static inline struct vcpu *ksm_cpu(struct ksm *k)
+{
+	return &k->vcpu_list[cpu_nr()];
+}
+
 static inline struct vcpu *ksm_current_cpu(void)
 {
 	BUG_ON(!ksm);
-	return &ksm->vcpu_list[cpu_nr()];
+	return ksm_cpu(ksm);
 }
 
 static inline struct ksm *vcpu_to_ksm(struct vcpu *vcpu)
@@ -563,6 +585,20 @@ extern struct page_hook_info *ksm_find_page(struct ksm *k, void *va);
 extern struct page_hook_info *ksm_find_page_pfn(struct ksm *k, uintptr_t pfn);
 #endif
 
+#ifdef PMEM_SANDBOX
+#ifndef __linux__
+typedef HANDLE pid_t;
+#endif
+
+extern int ksm_sandbox_init(struct ksm *k);
+extern int ksm_sandbox_exit(struct ksm *k);
+extern bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
+				   u64 gva, u16 curr, u8 ar, u8 ac,
+				   bool *invd, u16 *eptp_switch);
+extern void ksm_sandbox_handle_cr3(struct vcpu *vcpu, u64 cr3);
+extern int ksm_sandbox(struct ksm *k, pid_t pid);
+#endif
+
 /* vcpu.c  */
 extern int vcpu_create(struct vcpu *vcpu);
 extern void vcpu_free(struct vcpu *vcpu);
@@ -570,6 +606,8 @@ extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
 extern u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa);
 extern u64 *ept_pte(u64 *pml4, u64 gpa);
 extern bool ept_handle_violation(struct vcpu *vcpu);
+extern bool ept_create_ptr(struct ept *ept, int access, u16 *out_eptp);
+extern void ept_free_ptr(struct ept *ept, u16 eptp);
 
 static inline void __set_epte_pfn(u64 *epte, u64 pfn)
 {

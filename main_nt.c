@@ -20,6 +20,7 @@
 #include <intrin.h>
 
 #include "ksm.h"
+#include "um/um.h"
 
 typedef struct _LDR_DATA_TABLE_ENTRY {
 	LIST_ENTRY InLoadOrderLinks;
@@ -97,34 +98,62 @@ static inline NTSTATUS check_dynamic_pgtables(void)
 static void DriverUnload(PDRIVER_OBJECT driverObject)
 {
 	int ret;
+	UNICODE_STRING deviceLink;
+
 	UNREFERENCED_PARAMETER(driverObject);
+	RtlInitUnicodeString(&deviceLink, KSM_DOS_NAME);
 
 	ret = ksm_free(ksm);
 	VCPU_DEBUG("ret: 0x%08X\n", ret);
 #ifdef ENABLE_PRINT
 	print_exit();
 #endif
+	IoDeleteSymbolicLink(&deviceLink);
+	IoDeleteDevice(driverObject->DeviceObject);
 }
 
-#if 0
-#ifdef EPAGE_HOOK
-static PVOID hkMmMapIoSpace(_In_ PHYSICAL_ADDRESS    PhysicalAddress,
-			    _In_ SIZE_T              NumberOfBytes,
-			    _In_ MEMORY_CACHING_TYPE CacheType)
+static NTSTATUS DriverDispatch(PDEVICE_OBJECT deviceObject, PIRP irp)
 {
-	void *ret;
-	VCPU_DEBUG("in here: %p\n", PhysicalAddress.QuadPart);
-	vcpu_vmfunc(EPTP_NORMAL, 0);
-	ret = MmMapIoSpace(PhysicalAddress, NumberOfBytes, CacheType);
-	vcpu_vmfunc(EPTP_EXHOOK, 0);
-	return ret;
+	NTSTATUS status = STATUS_SUCCESS;
+	PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(irp);
+	void *buf = irp->AssociatedIrp.SystemBuffer;
+	u32 inlen = stack->Parameters.DeviceIoControl.InputBufferLength;
+	u32 ioctl;
+
+	if (stack->MajorFunction == IRP_MJ_DEVICE_CONTROL) {
+		ioctl = stack->Parameters.DeviceIoControl.IoControlCode;
+		VCPU_DEBUG("%s: IOCTL: 0x%08X\n", proc_name(), ioctl);
+
+		switch (ioctl) {
+#ifdef PMEM_SANDBOX
+		case KSM_IOCTL_SANDBOX:
+			status = ksm_sandbox(ksm, (pid_t)(*(int *)buf));
+			break;
+#endif
+		case KSM_IOCTL_SUBVERT:
+			status = ksm_subvert(ksm);
+			break;
+		case KSM_IOCTL_UNSUBVERT:
+			status = ksm_unsubvert(ksm);
+			break;
+		default:
+			status = STATUS_NOT_SUPPORTED;
+			break;
+		}
+	}
+
+	irp->IoStatus.Status = status;
+	IoCompleteRequest(irp, IO_NO_INCREMENT);
+	return status;
 }
-#endif
-#endif
 
 NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 {
 	NTSTATUS status;
+	LDR_DATA_TABLE_ENTRY *entry;
+	UNICODE_STRING deviceName;
+	PDEVICE_OBJECT deviceObject;
+	UNICODE_STRING deviceLink;
 
 #ifdef ENABLE_PRINT
 	/* Stupid printing interface  */
@@ -137,7 +166,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (!NT_SUCCESS(status = check_dynamic_pgtables()))
 		goto err;
 
-	LDR_DATA_TABLE_ENTRY *entry = driverObject->DriverSection;
+	entry = driverObject->DriverSection;
 	PsLoadedModuleList = entry->InLoadOrderLinks.Flink;
 
 	VCPU_DEBUG("We're mapped at %p (size: %d bytes (%d KB), on %d pages)\n",
@@ -149,28 +178,23 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (!NT_SUCCESS(status = ksm_init(&ksm)))
 		goto err;
 
-	if (!NT_SUCCESS(status = ksm_subvert(ksm)))
+	RtlInitUnicodeString(&deviceName, KSM_DEVICE_NAME);
+	status = IoCreateDevice(driverObject, 0, &deviceName,
+				KSM_DEVICE_MAGIC, 0, FALSE, &deviceObject);
+	if (!NT_SUCCESS(status))
 		goto exit;
 
-#if 0
-#ifdef EPAGE_HOOK
-	/* Just a simple example...  */
-	if (ksm_hook_epage(MmMapIoSpace, hkMmMapIoSpace) == 0) {
-		void *p = mm_remap(__pa(g_driver_base), PAGE_SIZE);
-		if (p) {
-			VCPU_DEBUG("map at %p\n", p);
-			mm_unmap(p, PAGE_SIZE);
-		}
-
-		ksm_unhook_page(MmMapIoSpace);
-	}
-#endif
-#endif
-
-	/* Succeeded  */
 	driverObject->DriverUnload = DriverUnload;
-	goto out;
+	driverObject->MajorFunction[IRP_MJ_CREATE] =
+		driverObject->MajorFunction[IRP_MJ_CLOSE] =
+		driverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DriverDispatch;
 
+	RtlInitUnicodeString(&deviceLink, KSM_DOS_NAME);
+	if (NT_SUCCESS(status = IoCreateSymbolicLink(&deviceLink, &deviceName)))
+		goto out;
+
+	dbgbreak();
+	IoDeleteDevice(deviceObject);
 exit:
 	ksm_free(ksm);
 err:

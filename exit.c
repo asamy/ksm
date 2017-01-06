@@ -632,8 +632,10 @@ static inline bool vcpu_unhook_idte(struct vcpu *vcpu, struct shadow_idt_entry *
 static inline bool vcpu_emulate_vmfunc(struct vcpu *vcpu, struct h_vmfunc *vmfunc)
 {
 	/* Emulate a VMFUNC due it to not being supported natively.  */
+	struct ept *ept = &vcpu->ept;
 	if (vmfunc->func >= 64 || !(vcpu->vm_func_ctl & (1ULL << vmfunc->func)) ||
-	   (vmfunc->func == 0 && vmfunc->eptp >= EPTP_USED)) {
+	   (vmfunc->func == 0 && !test_bit(vmfunc->eptp,
+					   (volatile const unsigned long *)&ept->ptr_list[0]))) {
 		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 		return false;
 	}
@@ -1690,6 +1692,9 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 			}
 			break;
 		case 3:
+#ifdef PMEM_SANDBOX
+			ksm_sandbox_handle_cr3(vcpu, *val);
+#endif
 			__invvpid_no_global(vpid_nr());
 			vmcs_write(GUEST_CR3, *val);
 			break;
@@ -2152,7 +2157,6 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 	int reg_idx = (info >> 3) & 15;
 
 	if ((info >> 10) & 1) {
-		VCPU_DEBUG("LDT/TR access, register %d\n", reg_idx);
 		switch (sel_idx) {
 		case 0:		/* sldt  */
 			ksm_write_reg16(vcpu, reg_idx, vmcs_read16(GUEST_LDTR_SELECTOR));

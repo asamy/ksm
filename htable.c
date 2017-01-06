@@ -13,12 +13,11 @@
 #endif
 #endif
 
-#include "htable.h"
-
 #ifndef __linux__
 #include <ntddk.h>
 #endif
 
+#include "htable.h"
 #include "mm.h"
 
  /* We use 0x1 as deleted marker. */
@@ -336,3 +335,4 @@ void htable_delval(struct htable *ht, struct htable_iter *i)
 	ht->deleted++;
 }
 #endif
+

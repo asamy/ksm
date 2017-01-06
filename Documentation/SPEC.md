@@ -405,6 +405,7 @@ Since we use 3 EPT pointers, and since the page needs to be read and written to 
 - Port `mm.h` functions (`mm_alloc_page`, `__mm_free_page`, `mm_alloc_pool`,
 			 etc.)
 - Port `resubv.c` (not really needed) for re-virtualization on S1-3 or S4 state (commenting it out is OK).
+- Port `hotplug.c` for cpu hotplug callbacks
 - Write module for initialization
 - Port `print.c` for printing interface (Some kernels may not require it)
 - Port `vmx.S` for the assembly based stuff, please use macros for calling conventions, etc.
