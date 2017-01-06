@@ -90,8 +90,6 @@ typedef signed long long intptr_t;
 	KeReleaseInStackQueuedSpinLock(&(q))
 #define spin_lock_irqsave(s,f)		spin_lock((s));		(void)f
 #define spin_unlock_irqrestore(s,f)	spin_unlock((s));	(void)f
-
-NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(_In_ PEPROCESS process);
 #endif
 #endif
 
@@ -140,6 +138,7 @@ NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(_In_ PEPROCESS process);
 #define STATUS_HV_NOT_PRESENT				0xC0351000
 #endif
 
+NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(_In_ PEPROCESS process);
 #if defined(ENABLE_DBGPRINT) || defined(ENABLE_FILEPRINT)
 #define ENABLE_PRINT
 #endif
