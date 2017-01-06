@@ -138,7 +138,10 @@ typedef signed long long intptr_t;
 #define STATUS_HV_NOT_PRESENT				0xC0351000
 #endif
 
+#ifndef UM
 NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(_In_ PEPROCESS process);
+#endif
+
 #if defined(ENABLE_DBGPRINT) || defined(ENABLE_FILEPRINT)
 #define ENABLE_PRINT
 #endif

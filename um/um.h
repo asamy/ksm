@@ -16,8 +16,8 @@
 #define UM_DEVICE_NAME		L"ksm"
 #define UM_DEVICE_PATH		L"\\\\.\\" UM_DEVICE_NAME
 
-#define KSM_DEVICE_NAME		L"\\Device\\" ## UM_DEVICE_NAME
-#define KSM_DOS_NAME		L"\\DosDevices\\" ## UM_DEVICE_NAME
+#define KSM_DEVICE_NAME		L"\\Device\\" UM_DEVICE_NAME
+#define KSM_DOS_NAME		L"\\DosDevices\\" UM_DEVICE_NAME
 
 #define KSM_DEVICE_MAGIC	0x00008008
 #define KSM_IOCTL_SANDBOX	(ULONG)CTL_CODE(KSM_DEVICE_MAGIC, 0x800, \
