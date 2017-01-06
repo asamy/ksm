@@ -1,10 +1,9 @@
 # ksm v1.5-dev [![BountySource](https://www.bountysource.com/badge/team?team_id=189129&style=raised)](https://www.bountysource.com/teams/ksm?utm_source=ksm&utm_medium=shield&utm_campaign=raised) [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/project/asamy/ksm)
 
-A really simple and lightweight x64 hypervisor written in C for Intel processors.
-
-KSM aims to be fully feature fledged and as general purpose as possible,
-although there are absolutely no barriers, even extending it to be a
-multi-purpose thing is perfeclty fine, e.g. a sandbox, etc.
+A really simple and lightweight x64 hypervisor written in C for Intel processors.  
+KSM supports userspace physical memory virtualization which can be enabled at
+compiletime, it's quite a new feature but it'll be extended to be more of a
+generic sandboxer (fs, etc.) later on.
 
 Currently, KSM runs on Windows and Linux kernels natively, and aims to support
 macOS by 2017, if you want to port KSM see porting guidelines down below.  Note
@@ -22,10 +21,11 @@ is not recommended.
 ## Features
 
 - IDT Shadowing
-- EPT violation #VE (if not available natively, VM-exit path is taken)
+- EPT violation #VE (enabled only when support is present)
 - EPTP switching VMFUNC (if not available natively, it will be emulated using a VMCALL)
 - APIC virtualization (Experimental, do not use)
 - VMX Nesting (Experimental, do not use)
+- Userspace physical memory sandboxer (Experimental, do not use)
 
 ## Why not other hypervisors?
 
@@ -48,6 +48,9 @@ that I can relay on.
 
 - All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested under Windows 7/8/8.1/10.
 - Linux kernel (tested under 3.16, 4.8.13 and mainline)
+
+If you have tested it under another kernel version, please create an issue so
+it can be added here.
 
 ## TODO / In development
 
