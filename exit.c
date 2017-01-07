@@ -2537,7 +2537,7 @@ static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_
 			nested_has_secondary(nested, SECONDARY_EXEC_PAUSE_LOOP_EXITING);
 	case EXIT_REASON_EPT_VIOLATION:
 		/* TODO: This needs some serious fixes  */
-		return false;
+		return true;
 	case EXIT_REASON_EPT_MISCONFIG:
 		return true;
 	case EXIT_REASON_WBINVD:

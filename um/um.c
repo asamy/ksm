@@ -77,7 +77,6 @@ int main(int ac, char *av[])
 	int ret;
 	int pid;
 	u32 cmd;
-	char *prep = "";
 
 	dev = open_device();
 	if (dev < 0) {
@@ -98,15 +97,13 @@ int main(int ac, char *av[])
 		}
 
 		cmd = KSM_IOCTL_SANDBOX;
-		prep = "";
 		if (pid < 0) {
 			pid = -pid;
 			cmd = KSM_IOCTL_UNBOX;
-			prep = "un";
 		}
 
 		ret = do_ioctl(dev, cmd, &pid);
-		printf("%ssbox %d, ret: %d\n", prep, pid, ret);
+		printf("sbox %d, ret: %d\n", pid, ret);
 		printf("Pid> ");
 		fflush(stdout);
 	}

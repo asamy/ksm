@@ -316,12 +316,6 @@ static bool do_ept_violation(struct vcpu *vcpu, u64 rip, int dpl, u64 gpa,
 {
 	struct ept *ept = &vcpu->ept;
 	if (ar == EPT_ACCESS_NONE) {
-#ifdef NESTED_VMX
-		u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
-		if (epte && *epte & ac)
-			return false;
-#endif
-
 		if (!ept_alloc_page(EPT4(ept, eptp), EPT_ACCESS_ALL, gpa, gpa))
 			return false;
 

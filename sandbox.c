@@ -160,7 +160,7 @@ static inline struct cow_page *ksm_sandbox_copy_page(struct sa_task *task, u64 g
 	char *h;
 	struct cow_page *page;
 
-	h = mm_remap(gpa, PAGE_SIZE);
+	h = mm_remap(gpa & ~(PAGE_SIZE - 1), PAGE_SIZE);
 	if (!h)
 		return false;
 
@@ -173,6 +173,8 @@ static inline struct cow_page *ksm_sandbox_copy_page(struct sa_task *task, u64 g
 		goto err_cow;
 
 	memcpy(hva, h, PAGE_SIZE);
+	mm_unmap(h, PAGE_SIZE);
+
 	page->gpa = gpa;
 	page->hpa = __pa(hva);
 	page->hva = hva;
@@ -256,12 +258,14 @@ static struct sa_task *find_sa_task_pgd(struct ksm *k, u64 pgd)
 	struct sa_task *task = NULL;
 	struct sa_task *ret = NULL;
 
+	spin_lock(&k->task_lock);
 	list_for_each_entry(task, &k->task_list, link) {
 		if (task->pgd == pgd) {
 			ret = task;
 			break;
 		}
 	}
+	spin_unlock(&k->task_lock);
 	return ret;
 }
 
@@ -270,12 +274,14 @@ static struct sa_task *find_sa_task_pgd_pid(struct ksm *k, pid_t pid, u64 pgd)
 	struct sa_task *task = NULL;
 	struct sa_task *ret = NULL;
 
+	spin_lock(&k->task_lock);
 	list_for_each_entry(task, &k->task_list, link) {
 		if (task->pgd == pgd || task->pid == pid) {
 			ret = task;
 			break;
 		}
 	}
+	spin_unlock(&k->task_lock);
 	return ret;
 }
 
@@ -309,6 +315,7 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 	BUG_ON(eptp != curr);
 
 	if (dpl != 0 && ac & EPT_ACCESS_WRITE) {
+		VCPU_DEBUG("allocating cow page for %p\n", gpa);
 		page = ksm_sandbox_copy_page(task, gpa);
 		if (!page)
 			return false;
