@@ -20,6 +20,7 @@
 #include <linux/module.h>
 #include <linux/init.h>
 #include <linux/device.h>
+#include <linux/reboot.h>
 
 #include "ksm.h"
 #include "um/um.h"
@@ -110,7 +111,7 @@ static struct file_operations ksm_fops = {
 static int ksm_reboot(struct notifier_block *nb, unsigned long action,
 		      void *data)
 {
-	kms_exit(ksm);
+	ksm_exit(ksm);
 	return 0;
 }
 

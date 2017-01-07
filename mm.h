@@ -247,7 +247,7 @@ static inline void __mm_free_pool(void *v)
 
 static inline bool mm_is_kernel_addr(void *va)
 {
-	return va >= PAGE_OFFSET;
+	return (uintptr_t)va >= PAGE_OFFSET;
 }
 
 extern void *mm_remap(u64 phys, size_t size);
