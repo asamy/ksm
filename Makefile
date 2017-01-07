@@ -32,7 +32,8 @@ MAKEFLAGS += --no-print-directory
 
 all:
 	@make -C $(KBUILD) M=$(PWD) modules
-	$(CC) $(UM_SRC) -o $(UM_BIN)
+	@$(CC) $(UM_SRC) -o $(UM_BIN)
+	@echo "  CC 	  $(UM_SRC)"
 
 umk:
 	$(CC) $(UM_SRC) -o $(UM_BIN)
@@ -42,7 +43,8 @@ dri:
 
 clean:
 	@make -C $(KBUILD) M=$(PWD) clean
-	$(RM) $(UM_BIN)
+	@$(RM) $(UM_BIN)
+	@echo "  CLEAN   $(UM_BIN)"
 
 install: $(BIN)
 	@cp $(BIN) $(KDIR)
