@@ -151,9 +151,14 @@ static bool setup_pml4(struct ept *ept, int access, u16 eptp)
 
 	for (i = 0; i < ksm->range_count; ++i) {
 		range = &ksm->ranges[i];
-		for (addr = range->start; addr < range->end; addr += PAGE_SIZE)
-			if (!ept_alloc_page(EPT4(ept, eptp), access, addr, addr))
+		for (addr = range->start; addr < range->end; addr += PAGE_SIZE) {
+			int r = access;
+			if (mm_is_kernel_addr(__va(addr)))
+				r = EPT_ACCESS_ALL;
+
+			if (!ept_alloc_page(EPT4(ept, eptp), r, addr, addr))
 				return false;
+		}
 	}
 
 	/* Allocate APIC page  */

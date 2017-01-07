@@ -142,6 +142,11 @@ int __ksm_init_cpu(struct ksm *k)
 	}
 
 	vcpu = ksm_cpu(k);
+	if (vcpu->subverted) {
+		VCPU_DEBUG_RAW("CPU already subverted\n");
+		return 0;
+	}
+
 	ret = vcpu_create(vcpu);
 	if (ret < 0) {
 		VCPU_DEBUG_RAW("failed to create vcpu, oom?\n");

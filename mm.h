@@ -245,6 +245,11 @@ static inline void __mm_free_pool(void *v)
 	kfree(v);
 }
 
+static inline bool mm_is_kernel_addr(void *va)
+{
+	return va >= PAGE_OFFSET;
+}
+
 extern void *mm_remap(u64 phys, size_t size);
 extern void mm_unmap(void *addr, size_t size);
 extern void *kmap_virt(void *addr, size_t len, pgprot_t prot);
@@ -376,6 +381,11 @@ static inline void *mm_alloc_pool(size_t size)
 static inline void __mm_free_pool(void *v)
 {
 	ExFreePool(v);
+}
+
+static inline bool mm_is_kernel_addr(void *va)
+{
+	return va >= MmSystemRangeStart;
 }
 #endif
 

@@ -284,8 +284,8 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 	pid = proc_id();
 	task = find_sa_task_pgd_pid(k, pid, cr3 & PAGE_PA_MASK);
 	if (!task) {
-		dbgbreak();
-		return false;
+		*eptp_switch = EPTP_DEFAULT;
+		return true;
 	}
 
 	eptp = task_eptp(task);

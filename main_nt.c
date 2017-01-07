@@ -109,6 +109,7 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 	print_exit();
 #endif
 	IoDeleteSymbolicLink(&deviceLink);
+	IoUnregisterShutdownNotification(driverObject->DeviceObject);
 	IoDeleteDevice(driverObject->DeviceObject);
 }
 
@@ -120,7 +121,8 @@ static NTSTATUS DriverDispatch(PDEVICE_OBJECT deviceObject, PIRP irp)
 	u32 inlen = stack->Parameters.DeviceIoControl.InputBufferLength;
 	u32 ioctl;
 
-	if (stack->MajorFunction == IRP_MJ_DEVICE_CONTROL) {
+	switch (stack->MajorFunction) {
+	case IRP_MJ_DEVICE_CONTROL:	
 		ioctl = stack->Parameters.DeviceIoControl.IoControlCode;
 		VCPU_DEBUG("%s: IOCTL: 0x%08X\n", proc_name(), ioctl);
 
@@ -143,6 +145,11 @@ static NTSTATUS DriverDispatch(PDEVICE_OBJECT deviceObject, PIRP irp)
 			status = STATUS_NOT_SUPPORTED;
 			break;
 		}
+		break;
+	case IRP_MJ_SHUTDOWN:
+		/* Ignore return value  */
+		ksm_free(ksm);
+		break;
 	}
 
 	irp->IoStatus.Status = status;
@@ -187,6 +194,9 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	if (!NT_SUCCESS(status))
 		goto exit;
 
+	if (!NT_SUCCESS(IoRegisterShutdownNotification(deviceObject)))
+		goto err2;
+
 	driverObject->DriverUnload = DriverUnload;
 	driverObject->MajorFunction[IRP_MJ_CREATE] =
 		driverObject->MajorFunction[IRP_MJ_CLOSE] =
@@ -198,6 +208,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		goto out;
 	}
 
+	IoUnregisterShutdownNotification(deviceObject);
+err2:
 	IoDeleteDevice(deviceObject);
 exit:
 	ksm_free(ksm);

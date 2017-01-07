@@ -25,6 +25,9 @@
 #include "um/um.h"
 
 static struct mm_struct *mm = NULL;
+static int major_no = 0;
+static struct class *class;
+
 static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 {
 	int ret = -EINVAL;
@@ -103,8 +106,17 @@ static struct file_operations ksm_fops = {
 	.release = ksm_release,
 	.unlocked_ioctl = ksm_ioctl,
 };
-static int major_no = 0;
-static struct class *class;
+
+static int ksm_reboot(struct notifier_block *nb, unsigned long action,
+		      void *data)
+{
+	kms_exit(ksm);
+	return 0;
+}
+
+static struct notifier_block reboot_notify = {
+	.notifier_call = ksm_reboot,
+};
 
 static int __init ksm_start(void)
 {
@@ -126,6 +138,7 @@ static int __init ksm_start(void)
 
 	dev = device_create(class, NULL, MKDEV(major_no, 0), NULL, UM_DEVICE_NAME);
 	if (dev) {
+		register_reboot_notifier(&reboot_notify);
 		VCPU_DEBUG_RAW("ready\n");
 		return ret;
 	}
@@ -150,6 +163,7 @@ static void __exit ksm_cleanup(void)
 	class_unregister(class);
 	class_destroy(class);
 	unregister_chrdev(major_no, UM_DEVICE_NAME);
+	unregister_reboot_notifier(&reboot_notify);
 
 	active = ksm->active_vcpus;
 	ret = ksm_free(ksm);
