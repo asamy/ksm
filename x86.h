@@ -1021,26 +1021,6 @@ complete list. */
 	val;						\
 })
 
-static inline void __sidt(struct gdtr *idt)
-{
-	__asm __volatile("sidt %0" : "=m" (*idt));
-}
-
-static inline void __lidt(const struct gdtr *idt)
-{
-	__asm __volatile("lidt %0" :: "m" (*idt));
-}
-
-static inline void __sgdt(struct gdtr *gdt)
-{
-	__asm __volatile("sgdt %0" : "=m" (*gdt));
-}
-
-static inline void __lgdt(const struct gdtr *gdt)
-{
-	__asm __volatile("lgdt %0" :: "m" (*gdt));
-}
-
 static inline void _xsetbv(u32 index, u64 value)
 {
 	u32 eax = value;
@@ -1237,6 +1217,28 @@ struct kidt_entry64 {
 } __packed;
 #ifndef __linux__
 #include <poppack.h>
+#endif
+
+#ifndef _MSC_VER
+static inline void __sidt(struct gdtr *idt)
+{
+	__asm __volatile("sidt %0" : "=m" (*idt));
+}
+
+static inline void __lidt(const struct gdtr *idt)
+{
+	__asm __volatile("lidt %0" :: "m" (*idt));
+}
+
+static inline void __sgdt(struct gdtr *gdt)
+{
+	__asm __volatile("sgdt %0" : "=m" (*gdt));
+}
+
+static inline void __lgdt(const struct gdtr *gdt)
+{
+	__asm __volatile("lgdt %0" :: "m" (*gdt));
+}
 #endif
 
 #define LOW_U16_U64(x) ((u64)(x) & 0xFFFF)
