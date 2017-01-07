@@ -32,12 +32,17 @@ MAKEFLAGS += --no-print-directory
 
 all:
 	@make -C $(KBUILD) M=$(PWD) modules
-
-clean:
-	@make -C $(KBUILD) M=$(PWD) clean
+	$(CC) $(UM_SRC) -o $(UM_BIN)
 
 umk:
 	$(CC) $(UM_SRC) -o $(UM_BIN)
+
+dri:
+	@make -C $(KBUILD) M=$(PWD) modules
+
+clean:
+	@make -C $(KBUILD) M=$(PWD) clean
+	$(RM) $(UM_BIN)
 
 install: $(BIN)
 	@cp $(BIN) $(KDIR)
@@ -49,4 +54,3 @@ load:
 unload:
 	@echo Unloading $(BIN)
 	@rmmod $(BIN)
-

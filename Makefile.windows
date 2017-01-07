@@ -62,6 +62,7 @@ LIBS = -L$(CROSS_LIB) -lntoskrnl -lhal -lmingwex
 
 UM_SRC = um/um.c
 UM_BIN = a.out
+UM_LIB = -lntdll
 
 SRC = exit.c htable.c hotplug.c ksm.c sandbox.c mm.c main_nt.c page.c print.c resubv.c vcpu.c
 ASM = vmx.S
@@ -83,26 +84,28 @@ ifeq ($(VERBOSE), 1)
 	LEXTRA ?=
 else
 	PREPEND ?= @
-	CEXTRA ?= @echo "  CC 	$@"
-	AEXTRA ?= @echo "  AS 	$@"
-	LEXTRA ?= @echo "  LD 	$@"
+	CEXTRA ?= @echo "  CC   $@"
+	AEXTRA ?= @echo "  AS   $@"
+	LEXTRA ?= @echo "  LD   $@"
 endif
 
 .PHONY: all clean
 .PRECIOUS: $(DEP_DIR)/%.d
 
-all: $(TARGET)
+all: $(TARGET) $(UM_BIN)
 clean:
-	$(RM) $(TARGET) $(SYMBOL) $(OBJ) $(DEP)
-
-umk:
-	$(CC) $(UM_SRC) -o $(UM_BIN)
+	$(RM) $(UM_BIN) $(TARGET) $(SYMBOL) $(OBJ) $(DEP)
+umk: $(UM_BIN)
+dri: $(TARGET)
 
 $(TARGET): $(BIN_DIR) $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
 	$(PREPEND)$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LIBS)
 	$(PREPEND)$(OBJCOPY) $@ $(SYMBOL)
 	$(PREPEND)$(STRIP) $@
 	$(LEXTRA)
+
+$(UM_BIN):
+	$(PREPEND)$(CC) $(UM_SRC) -o $(UM_BIN) $(UM_LIB)
 
 $(OBJ_DIR)/%.o: %.c $(DEP_DIR)/%.d
 	$(PREPEND)$(CC) -c $(CFLAGS) $(DEPFLAGS) -o $@ $<

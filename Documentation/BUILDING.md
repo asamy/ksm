@@ -27,7 +27,17 @@ Install kernel headers:
 - ArchLinux: `[sudo] pacman -S linux-headers`
 - Fedora: `[sudo] yum install kernel-devel kernel-headers`
 
-Then `make`.
+Targets:
+
+- `all` - Build the kernel module and the userspace app
+- `umk` - Build the userspace app only
+- `dri` - Build the kernel module only
+- `clean` - Clean everything
+- `install` - Installs to kernel module dir (root required)
+- `load` - Load the kernel module (root required)
+- `unload` - Unload the kernel module (root required)
+
+Then `make <TARGET>`, e.g.: `make umk` (all is default).
 
 ## Building for Windows
 
@@ -65,10 +75,17 @@ You can pass one or more of the following variables to your `make` command:
 - `AEXTRA=arg` - Print something out after compiling an Assembler file.
 - `LEXTRA=arg` - Print something out after linking
 
+Targets:
+
+- `all` - Builds the driver and the usermode app
+- `umk` - Build just the usermode app
+- `dri` - Build just the driver
+- `clean` - Clean everything
+
 You may need to adjust the windows version you're compiling for, in that case
 adjust `WINVER` inside the Makefile manually or pass it through commandline:
 
-	make -f Makefile.windows C=1 WINVER=0x0602
+	make -f Makefile.windows C=1 WINVER=0x0602 all
 
 #### Cross under Linux
 
@@ -79,13 +96,13 @@ binutils-mingw-w64-x86-64`
 - ArchLinux: `[sudo] pacman -S mingw-w64-gcc`
 - Fedora: `[sudo] yum install mingw64-gcc`
 
-Then `make -f Makefile.windows C=1`
+Then `make -f Makefile.windows C=1 all`
 
 #### Under Native
 
 Natively, you'll want to adjust (or pass in command line) DDK paths, e.g.:
 
-`mingw32-make -f Makefile.windows CROSS_INC=/path/to/include/ddk`
+`mingw32-make -f Makefile.windows CROSS_INC=/path/to/include/ddk all`
 
 Or, simply just edit Makefile.windows manually.  Also make sure to adjust your
 environment variables (PATH) to point to the right `bin/` directory where the
@@ -137,4 +154,11 @@ Output can be seen via DebugView or WinDBG if live debugging (You might want to
 **Note for Windows 10**: DebugView seems to be having problems starting a 2nd
 time there, to workaround this, rename it's driver
 C:\windows\system32\drivers\Dbgv.sys to something else, then start it again.
+
+## Using the driver
+
+Since you started it, it does nothing, it's waiting for the usermode app to
+instruct it, to do so, run the usermode app as root/admin which will run an
+IOCTL to the driver to tell it to virtualize the system, then you can give it
+Process Identifiers (PIDs) to sandbox.
 
