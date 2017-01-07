@@ -107,3 +107,34 @@ Or:
 
 `msbuild ksm\ksm\ksm.vcxproj`
 
+## Loading the driver
+
+### On Linux
+Loading:
+- `sudo make load`  
+
+Unloading:
+- `sudo make unload`
+
+Output:
+- `sudo dmesg -wH`
+
+### On Windows
+In commandline as administrator:
+
+1. `sc create ksm type= kernel binPath= C:\path\to\your\ksm.sys`
+2. `sc start ksm`
+
+Unloading:
+- `sc stop ksm`
+
+You can also use [kload](https://github.com/asamy/kload)  
+Output can be seen via DebugView or WinDBG if live debugging (You might want to
+							      execute `ed
+							      Kd_DEFAULT_Mask
+							      8`).
+
+**Note for Windows 10**: DebugView seems to be having problems starting a 2nd
+time there, to workaround this, rename it's driver
+C:\windows\system32\drivers\Dbgv.sys to something else, then start it again.
+
