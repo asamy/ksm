@@ -79,7 +79,7 @@ static inline void free_cow_page(struct cow_page *page)
 {
 	list_del(&page->link);
 	mm_free_page(page->hva);
-	mm_free_page(page);
+	__mm_free_pool(page);
 }
 
 bool ksm_sandbox_handle_vmcall(struct vcpu *vcpu, uintptr_t arg)
