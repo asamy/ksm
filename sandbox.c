@@ -95,7 +95,9 @@ bool ksm_sandbox_handle_vmcall(struct vcpu *vcpu, uintptr_t arg)
 		}
 	}
 
-	ept_free_ptr(&vcpu->ept, eptp);
+	if (eptp != EPT_MAX_EPTP_LIST)
+		ept_free_ptr(&vcpu->ept, eptp);
+
 	return true;
 }
 

@@ -6,6 +6,7 @@
 - Intel TXT support
 - AMD-V with NPT support
 - Nesting support (Some fixes needed and support for minor features)
+- Introspection
 - More documentation
 - Finish writing tests
 - Failsafe state (e.g. when an unexpected thing happens, turn off and restore
