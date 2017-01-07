@@ -56,17 +56,17 @@ To make this short, these are the rules:
 - Labels: leftmost column
 - Lines should be aligned relative to opening parenthesis, e.g.:
 
-	```
-		static void func(int a, int b,
-				 int c, int d)
-		{
-			int a = 1 + 2 +
-				4 +
-				5 +
-				6;
-			...
-		}
-	```
+```
+static void func(int a, int b,
+		 int c, int d)
+{
+	int a = 1 + 2 +
+		4 +
+		5 +
+		6;
+	...
+}
+```
 - Case contents are not intended, but relative to the switch statement
 - Opening braces for structures is on the same line (i.e. `struct my_struct {
 						     };`)
@@ -75,20 +75,20 @@ To make this short, these are the rules:
 - Closing braces for empty or inlined structures should be on the same line as the structure definition (i.e. `struct my_struct { int i; }`)
 - If-else if-else braces should be on the same line as the paranethesis, e.g.:
 
-	```
-		if (tmp) {
-		} else if (other) {
-		} else {
-		}
-	```
+```
+if (tmp) {
+} else if (other) {
+} else {
+}
+```
 - Do not use braces for one-lined if/elseif/else, e.g.:
 
-	```
-		if (tmp)
-			tmp();
-		else if (other)
-			other();
-	```
+```
+if (tmp)
+	tmp();
+else if (other)
+	other();
+```
 
 ## Setting up your git tree (If you're unfamiliar with Git)
 
