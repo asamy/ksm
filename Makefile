@@ -18,7 +18,7 @@
 obj-m += ksmlinux.o
 ksmlinux-objs := exit.o htable.o hotplug.o ksm.o sandbox.o page.o resubv.o vcpu.o mm.o main_linux.o vmx.o
 ccflags-y := -Wno-format -Wno-declaration-after-statement -Wno-unused-function \
-	-DDBG -DENABLE_PRINT -std=gnu99
+	-DDBG -DENABLE_PRINT -DPMEM_SANDBOX -std=gnu99
 
 UM_SRC := um/um.c
 UM_BIN := a.out

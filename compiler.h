@@ -27,9 +27,15 @@
 
 #ifndef __linux__
 /* Windows definitions  */
+
+/* Sync with Linux  */
 #define BUG_ON(cond)	do {	\
 	if (!!(cond))		\
 		__ud2();	\
+} while (0)
+#define WARN_ON(cond)	do {	\
+	if (!!(cond))		\
+		VCPU_DEBUG("Badness in %s at %s:%d\n", __func__, __FILE__, __LINE__);	\
 } while (0)
 
 /* Don't expose this to the assembler, it won't understand it.  */

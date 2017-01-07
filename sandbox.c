@@ -102,19 +102,22 @@ bool ksm_sandbox_handle_vmcall(struct vcpu *vcpu, uintptr_t arg)
 }
 
 static DEFINE_DPC(__free_sa_task, __vmx_vmcall, HYPERCALL_SA_TASK, ctx);
-static inline void free_sa_task(struct ksm *k, struct sa_task *task, bool call)
+static inline void __free_sa_task(struct ksm *k, struct sa_task *task)
 {
 	struct cow_page *page = NULL;
 	struct cow_page *next = NULL;
-
-	if (call)
-		CALL_DPC(__free_sa_task, task);
 
 	list_for_each_entry_safe(page, next, &task->pages, link)
 		free_cow_page(page);
 
 	list_del(&task->link);
 	__mm_free_pool(task);
+}
+
+static inline void free_sa_task(struct ksm *k, struct sa_task *task)
+{
+	CALL_DPC(__free_sa_task, task);
+	__free_sa_task(k, task);
 }
 
 int ksm_sandbox_init(struct ksm *k)
@@ -129,7 +132,7 @@ int ksm_sandbox_exit(struct ksm *k)
 	struct sa_task *task = NULL;
 	struct sa_task *next = NULL;
 	list_for_each_entry_safe(task, next, &k->task_list, link)
-		free_sa_task(k, task, false);
+		__free_sa_task(k, task);
 
 	return 0;
 }
@@ -246,7 +249,7 @@ int ksm_unbox(struct ksm *k, pid_t pid)
 	spin_lock(&k->task_lock);
 	list_for_each_entry(task, &k->task_list, link) {
 		if (task->pid == pid) {
-			free_sa_task(k, task, true);
+			free_sa_task(k, task);
 			ret = 0;
 			break;
 		}
@@ -287,6 +290,16 @@ static struct sa_task *find_sa_task_pgd_pid(struct ksm *k, pid_t pid, u64 pgd)
 	return ret;
 }
 
+static struct sa_task *__find_sa_task_eptp(struct ksm *k, u16 eptp)
+{
+	struct sa_task *task = NULL;
+
+	list_for_each_entry(task, &k->task_list, link)
+		if (task_eptp(task) == eptp)
+			return task;
+	return NULL;
+}
+
 bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 			    u64 gva, u64 cr3, u16 curr, u8 ar, u8 ac,
 			    bool *invd, u16 *eptp_switch)
@@ -298,6 +311,7 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 	u64 *epte;
 	u16 eptp;
 	pid_t pid;
+	int i;
 
 	vcpu = container_of(ept, struct vcpu, ept);
 	k = vcpu_to_ksm(vcpu);
@@ -305,8 +319,31 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 	pid = proc_id();
 	task = find_sa_task_pgd_pid(k, pid, cr3 & PAGE_PA_MASK);
 	if (!task) {
-		/* Crashed maybe  */
+		/*
+		 * Crashed maybe...
+		 * Probably not a good way to detect this...  lazyness.
+		*/
 		*eptp_switch = EPTP_DEFAULT;
+
+		/* Free it  */
+		spin_lock(&k->task_lock);
+		task = __find_sa_task_eptp(k, curr);
+		WARN_ON(!task);
+
+		if (task) {
+			/* Free per-cpu EPTP for this task  */
+			for (i = 0; i < KSM_MAX_VCPUS; ++i) {
+				if (task->eptp[i] != EPT_MAX_EPTP_LIST) {
+					vcpu = ksm_cpu_at(k, i);
+					ept = &vcpu->ept;
+					ept_free_ptr(ept, task->eptp[i]);
+				}
+			}
+
+			__free_sa_task(k, task);
+		}
+
+		spin_unlock(&k->task_lock);
 		return true;
 	}
 
