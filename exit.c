@@ -938,6 +938,11 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 	case HYPERCALL_VMFUNC:
 		vcpu_adjust_rflags(vcpu, vcpu_emulate_vmfunc(vcpu, (struct h_vmfunc *)arg));
 		break;
+#ifdef PMEM_SANDBOX
+	case HYPERCALL_SA_TASK:
+		vcpu_adjust_rflags(vcpu, ksm_sandbox_handle_vmcall(vcpu, arg));
+		break;
+#endif
 	default:
 		VCPU_DEBUG("unsupported hypercall: %d\n", nr);
 		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);

@@ -39,6 +39,9 @@
 #define HYPERCALL_UNHOOK	4	/* Unhook page  */
 #endif
 #define HYPERCALL_VMFUNC	5	/* Emulate VMFunc  */
+#ifdef PMEM_SANDBOX
+#define HYPERCALL_SA_TASK	6	/* Sandbox: free EPTPs */
+#endif
 
 /*
  * NOTE:
@@ -600,6 +603,7 @@ extern bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 				   u64 gva, u64 cr3, u16 curr, u8 ar, u8 ac,
 				   bool *invd, u16 *eptp_switch);
 extern void ksm_sandbox_handle_cr3(struct vcpu *vcpu, u64 cr3);
+extern bool ksm_sandbox_handle_vmcall(struct vcpu *vcpu, uintptr_t arg);
 extern int ksm_sandbox(struct ksm *k, pid_t pid);
 extern int ksm_unbox(struct ksm *k, pid_t pid);
 #endif

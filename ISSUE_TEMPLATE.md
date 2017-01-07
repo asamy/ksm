@@ -29,6 +29,14 @@
 2. Kernel: WRITE_HERE
 3. Kernel version: WRITE_HERE Build number: AND_HERE
 
+### Build Configuration
+
+- EPAGE_HOOK
+- PMEM_SANDBOX
+- ...
+
+**REMOVE IF UNRELATED**
+
 ### Issue description
 
 Write as much as you can, reference the files that you uploaded in the uploaded

@@ -160,7 +160,7 @@ static inline void print_flush(void)
 	printbuf = buf + next_off + ((next & (PRINT_BUF_BUFFERS - 1)) << PRINT_BUF_SHIFT);
 	max = next_use - head_use;
 
-	strncpy(on_stack, printbuf, PRINT_BUF_ATONCE);
+	strncpy(on_stack, printbuf, sizeof(on_stack));
 	on_stack[PRINT_BUF_ATONCE] = '\0';
 	len = strlen(on_stack);
 	next_off += len;
@@ -318,12 +318,11 @@ void do_print(const char *fmt, ...)
 		KeAcquireInStackQueuedSpinLock(&lock, &q);
 
 		len = strlen(buffer);
-		pos = (size_t)next_use - (size_t)head_use;
+		pos = next_use - head_use;
 		if (pos + len >= PRINT_BUF_STRIDE)
 			return KeReleaseInStackQueuedSpinLock(&q);
 
 		next_use = stpcpy(next_use, buffer);
-		*next_use = '\0';
 		KeReleaseInStackQueuedSpinLock(&q);
 
 		/* Make sure print_thread() will see the update:  */

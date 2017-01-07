@@ -28,6 +28,7 @@
 
 #include "ksm.h"
 #include "mm.h"
+#include "percpu.h"
 
 /*
  * Note #1:
@@ -81,19 +82,31 @@ static inline void free_cow_page(struct cow_page *page)
 	mm_free_page(page);
 }
 
-static inline void free_sa_task(struct ksm *k, struct sa_task *task)
+bool ksm_sandbox_handle_vmcall(struct vcpu *vcpu, uintptr_t arg)
+{
+	struct sa_task *task = (struct sa_task *)arg;
+	u16 eptp = task_eptp(task);
+	if (vcpu_eptp_idx(vcpu) == eptp) {
+		if (vcpu->last_switch) {
+			vcpu_switch_root_eptp(vcpu, vcpu->eptp_before);
+			vcpu->last_switch = NULL;
+		} else {
+			vcpu_switch_root_eptp(vcpu, EPTP_DEFAULT);
+		}
+	}
+
+	ept_free_ptr(&vcpu->ept, eptp);
+	return true;
+}
+
+static DEFINE_DPC(__free_sa_task, __vmx_vmcall, HYPERCALL_SA_TASK, ctx);
+static inline void free_sa_task(struct ksm *k, struct sa_task *task, bool call)
 {
 	struct cow_page *page = NULL;
 	struct cow_page *next = NULL;
-	struct ept *ept;
-	int i;
 
-	for (i = 0; i < KSM_MAX_VCPUS; ++i) {
-		if (task->eptp[i] != EPT_MAX_EPTP_LIST) {
-			ept = &ksm_cpu_at(k, i)->ept;
-			ept_free_ptr(ept, task->eptp[i]);
-		}
-	}
+	if (call)
+		CALL_DPC(__free_sa_task, task);
 
 	list_for_each_entry_safe(page, next, &task->pages, link)
 		free_cow_page(page);
@@ -114,7 +127,7 @@ int ksm_sandbox_exit(struct ksm *k)
 	struct sa_task *task = NULL;
 	struct sa_task *next = NULL;
 	list_for_each_entry_safe(task, next, &k->task_list, link)
-		free_sa_task(k, task);
+		free_sa_task(k, task, false);
 
 	return 0;
 }
@@ -229,7 +242,7 @@ int ksm_unbox(struct ksm *k, pid_t pid)
 	spin_lock(&k->task_lock);
 	list_for_each_entry(task, &k->task_list, link) {
 		if (task->pid == pid) {
-			free_sa_task(k, task);
+			free_sa_task(k, task, true);
 			ret = 0;
 			break;
 		}
@@ -284,6 +297,7 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 	pid = proc_id();
 	task = find_sa_task_pgd_pid(k, pid, cr3 & PAGE_PA_MASK);
 	if (!task) {
+		/* Crashed maybe  */
 		*eptp_switch = EPTP_DEFAULT;
 		return true;
 	}
