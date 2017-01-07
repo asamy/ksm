@@ -20,7 +20,7 @@ is not recommended.
 
 ## Weird Video
 
-[![asciicast](https://asciinema.org/a/6yl1uuvkz70b7wbjgh2re7js3.png)](https://asciinema.org/a/6yl1uuvkz70b7wbjgh2re7js3)
+[![asciicast](https://asciinema.org/a/10cu6v7c6l0j4532cww8tq1a1.png)](https://asciinema.org/a/10cu6v7c6l0j4532cww8tq1a1)
 
 ## Features
 

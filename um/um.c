@@ -88,7 +88,9 @@ int main(int ac, char *av[])
 	if (ret < 0)
 		goto out;
 
-	printf("(%d) Pid> ", __get_pid());
+	printf("Type the pid then return to sandbox (prepend a - to unbox)\n");
+	printf("-1 completely desubverts\n");
+	printf("(%d own) Pid> ", __get_pid());
 	while (scanf("%d", &pid) == 1) {
 		printf("pid: %d\n", pid);
 		if (pid == -1) {
