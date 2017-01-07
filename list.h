@@ -338,7 +338,7 @@ static inline void list_splice_tail_init(struct list_head *list,
 * @member:	the name of the list_head within the struct.
 */
 #define list_entry(ptr, pos, member) \
-	((const char *)ptr - container_off_var(pos, member))
+	container_of_var(ptr, pos, member)
 
 /**
 * list_first_entry - get the first element from a list

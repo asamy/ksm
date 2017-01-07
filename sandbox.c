@@ -35,7 +35,7 @@
  *	etc.), this is just a physical memory sandboxer.
  *
  *	This is basically CoW (copy-on-write) implementation but on the
- *	physical level, so when a registered application attempts to access a
+ *	physical level, so when a registered application writes to a
  *	memory region, another region is allocated and the original one is
  *	redirected to that one with a copy of the contents in it, then only
  *	that application will see that copy and not others.
@@ -90,7 +90,7 @@ static inline void free_sa_task(struct ksm *k, struct sa_task *task)
 
 	for (i = 0; i < KSM_MAX_VCPUS; ++i) {
 		if (task->eptp[i] != EPT_MAX_EPTP_LIST) {
-			ept = &ksm_cpu(k)->ept;
+			ept = &ksm_cpu_at(k, i)->ept;
 			ept_free_ptr(ept, task->eptp[i]);
 		}
 	}
@@ -234,7 +234,7 @@ int ksm_unbox(struct ksm *k, pid_t pid)
 			break;
 		}
 	}
-
+	spin_unlock(&k->task_lock);
 	return ret;
 }
 
@@ -243,19 +243,31 @@ static struct sa_task *find_sa_task_pgd(struct ksm *k, u64 pgd)
 	struct sa_task *task = NULL;
 	struct sa_task *ret = NULL;
 
-	spin_lock(&k->task_lock);
 	list_for_each_entry(task, &k->task_list, link) {
 		if (task->pgd == pgd) {
 			ret = task;
 			break;
 		}
 	}
-	spin_unlock(&k->task_lock);
+	return ret;
+}
+
+static struct sa_task *find_sa_task_pgd_pid(struct ksm *k, pid_t pid, u64 pgd)
+{
+	struct sa_task *task = NULL;
+	struct sa_task *ret = NULL;
+
+	list_for_each_entry(task, &k->task_list, link) {
+		if (task->pgd == pgd || task->pid == pid) {
+			ret = task;
+			break;
+		}
+	}
 	return ret;
 }
 
 bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
-			    u64 gva, u16 curr, u8 ar, u8 ac,
+			    u64 gva, u64 cr3, u16 curr, u8 ar, u8 ac,
 			    bool *invd, u16 *eptp_switch)
 {
 	struct sa_task *task;
@@ -264,10 +276,13 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 	struct ksm *k;
 	u64 *epte;
 	u16 eptp;
+	pid_t pid;
 
 	vcpu = container_of(ept, struct vcpu, ept);
 	k = vcpu_to_ksm(vcpu);
-	task = find_sa_task(k, proc_pid());
+
+	pid = proc_id();
+	task = find_sa_task_pgd_pid(k, pid, cr3 & PAGE_PA_MASK);
 	if (!task) {
 		dbgbreak();
 		return false;
@@ -279,9 +294,7 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 	epte = ept_pte(EPT4(ept, curr), gpa);
 	BUG_ON(eptp != curr);
 
-	VCPU_DEBUG("%s: sandbox violation\n", proc_name());
 	if (dpl != 0 && ac & EPT_ACCESS_WRITE) {
-		VCPU_DEBUG("%s: allocating cow page\n", proc_name());
 		page = ksm_sandbox_copy_page(task, gpa);
 		if (!page)
 			return false;
@@ -289,7 +302,6 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 		__set_epte_ar_pfn(epte, ar | ac, page->hpa >> PAGE_SHIFT);
 		*invd = true;
 	} else {
-		VCPU_DEBUG("%s: let through\n", proc_name());
 		__set_epte_ar(epte, ar | ac);
 		*invd = true;
 	}

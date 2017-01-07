@@ -96,11 +96,11 @@
 #define vpid_nr()			(cpu_nr() + 1)
 #ifdef __linux__
 #define proc_name()			current->comm
-#define proc_pid()			current->pid
+#define proc_id()			current->pid
 #else
 #define current				PsGetCurrentProcess()
 #define proc_name()			PsGetProcessImageFileName(current)
-#define proc_pid()			PsGetProcessId(current)
+#define proc_id()			PsGetProcessId(current)
 #endif
 
 #ifdef ENABLE_PRINT
@@ -518,9 +518,14 @@ extern int ksm_free_idt(unsigned n);
 extern bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len);
 extern bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len);
 
+static inline struct vcpu *ksm_cpu_at(struct ksm *k, int cpu)
+{
+	return &k->vcpu_list[cpu];
+}
+
 static inline struct vcpu *ksm_cpu(struct ksm *k)
 {
-	return &k->vcpu_list[cpu_nr()];
+	return ksm_cpu_at(k, cpu_nr());
 }
 
 static inline struct vcpu *ksm_current_cpu(void)
@@ -592,7 +597,7 @@ typedef HANDLE pid_t;
 extern int ksm_sandbox_init(struct ksm *k);
 extern int ksm_sandbox_exit(struct ksm *k);
 extern bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
-				   u64 gva, u16 curr, u8 ar, u8 ac,
+				   u64 gva, u64 cr3, u16 curr, u8 ar, u8 ac,
 				   bool *invd, u16 *eptp_switch);
 extern void ksm_sandbox_handle_cr3(struct vcpu *vcpu, u64 cr3);
 extern int ksm_sandbox(struct ksm *k, pid_t pid);

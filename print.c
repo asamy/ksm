@@ -158,7 +158,7 @@ static inline void print_flush(void)
 	smp_rmb();
 	KeAcquireInStackQueuedSpinLock(&lock, &q);
 	printbuf = buf + next_off + ((next & (PRINT_BUF_BUFFERS - 1)) << PRINT_BUF_SHIFT);
-	max = next_use - head_use - 1;
+	max = next_use - head_use;
 
 	strncpy(on_stack, printbuf, PRINT_BUF_ATONCE);
 	on_stack[PRINT_BUF_ATONCE] = '\0';

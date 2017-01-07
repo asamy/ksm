@@ -294,20 +294,19 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
 
 /*
  * Called from:
- *	- ept_handle_violation() aka VM Exit violation
- *	- __ept_handle_violation()
+ *	- ept_handle_violation() aka VMX root mode (host mode)
+ *	- __ept_handle_violation() aka IDT #VE (guest mode)
  *
- * Returns the EPTP index to be switched to if needed, or the current one
- * (eptp) if no switching is required,  If invalidation is required, @invd is
- * going to be true, do note that invalidation can only occur inside VMX root
+ * @eptp_switch is modified if switching is needed.
+ * If invalidation is required, @invd will be set,
+ * do note that invalidation can only occur inside VMX root
  * mode, and it's not required in non-root (#VE).
  *
- * If an error occurs, it returns EPT_MAX_EPTP_LIST which is 512.
  * Note that we don't need to invalidate non existent entries, aka entries that
  * mostly have EPT_ACCESS_NONE which is usually not even allocated...
  */
 static bool do_ept_violation(struct vcpu *vcpu, u64 rip, int dpl, u64 gpa,
-			     u64 gva, u16 eptp, u8 ar, u8 ac,
+			     u64 gva, u64 cr3, u16 eptp, u8 ar, u8 ac,
 			     bool *invd, u16 *eptp_switch)
 {
 	struct ept *ept = &vcpu->ept;
@@ -335,10 +334,10 @@ static bool do_ept_violation(struct vcpu *vcpu, u64 rip, int dpl, u64 gpa,
 
 #ifdef PMEM_SANDBOX
 	if (ksm_sandbox_handle_ept(&vcpu->ept, dpl, gpa,
-				   gva, eptp, ar, ac,
+				   gva, cr3, eptp, ar, ac,
 				   invd, eptp_switch)) {
 		if (*eptp_switch != eptp)
-			VCPU_DEBUG("sandbox switch from %d  to %d\n", eptp, *eptp_switch);
+			VCPU_DEBUG("sandbox switch from %d to %d\n", eptp, *eptp_switch);
 
 		return true;
 	}
@@ -353,7 +352,7 @@ static bool do_ept_violation(struct vcpu *vcpu, u64 rip, int dpl, u64 gpa,
  */
 bool ept_handle_violation(struct vcpu *vcpu)
 {
-	u64 exit, gpa, gva;
+	u64 exit, gpa, gva, cr3;
 	u16 eptp, eptp_switch;
 	u8 ar, ac;
 	char sar[4], sac[4];
@@ -362,6 +361,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 
 	eptp = vcpu_eptp_idx(vcpu);
 	gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
+	cr3 = vmcs_read(GUEST_CR3);
 	dpl = VMX_AR_DPL(vmcs_read32(GUEST_SS_AR_BYTES));
 	gva = 0;
 	exit = vmcs_read(EXIT_QUALIFICATION);
@@ -377,7 +377,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 
 	eptp_switch = eptp;
 	if (!do_ept_violation(vcpu, vcpu->ip, dpl, gpa,
-			      gva, eptp, ar, ac,
+			      gva, cr3, eptp, ar, ac,
 			      &invd, &eptp_switch))
 		return false;
 
@@ -422,7 +422,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 
 	eptp_switch = eptp;
 	if (!do_ept_violation(vcpu, vcpu->ip, cs & 3, gpa,
-			      gva, eptp, ar, ac,
+			      gva, __readcr3(), eptp, ar, ac,
 			      &invd, &eptp_switch))
 		VCPU_BUGCHECK(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, rip, gpa);
 

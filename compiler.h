@@ -77,7 +77,9 @@ typedef signed long long intptr_t;
 #define container_of(address, type, field)	CONTAINING_RECORD(address, type, field)
 /* OTOH - MSVC does not have typeof.  Hack it.  */
 #define container_off_var(var, member)			\
-	((const char *)&(var)->member - (const char *)(var))
+	((char *)&(var)->member - (char *)(var))
+#define container_of_var(ptr, var, member)	\
+	((char *)ptr - container_off_var(var, member))
 
 #ifndef UM
 #include "list.h"

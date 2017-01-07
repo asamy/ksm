@@ -41,7 +41,7 @@ typedef unsigned long bitmap_t;
 
 #define BITMAP_BITS			(sizeof(bitmap_t) * CHAR_BIT)
 #define DECLARE_BITMAP(name, bits)	\
-	unsigned long name[BITMAP_BITS * bits]
+	bitmap_t name[BITMAP_BITS * bits]
 
 static inline unsigned long pos_bit(unsigned long pos)
 {
