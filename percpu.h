@@ -13,37 +13,10 @@
 static int __g_dpc_logical_rval = 0;
 
 #ifndef __linux__
-NTKERNELAPI
-#ifndef __GNUC__
-_IRQL_requires_max_(APC_LEVEL)
-_IRQL_requires_min_(PASSIVE_LEVEL)
-_IRQL_requires_same_
-#endif
-VOID
-KeGenericCallDpc(
-	_In_ PKDEFERRED_ROUTINE Routine,
-	_In_opt_ PVOID Context
-);
-
-NTKERNELAPI
-#ifndef __GNUC__
-_IRQL_requires_(DISPATCH_LEVEL)
-_IRQL_requires_same_
-#endif
-VOID
-KeSignalCallDpcDone(
-	_In_ PVOID SystemArgument1
-);
-
-NTKERNELAPI
-#ifndef __GNUC__
-_IRQL_requires_(DISPATCH_LEVEL)
-_IRQL_requires_same_
-#endif
-LOGICAL
-KeSignalCallDpcSynchronize(
-	_In_ PVOID SystemArgument2
-);
+NTKERNELAPI VOID KeGenericCallDpc(PKDEFERRED_ROUTINE Routine,
+				  PVOID Context);
+NTKERNELAPI VOID KeSignalCallDpcDone(PVOID SystemArgument1);
+NTKERNELAPI LOGICAL KeSignalCallDpcSynchronize(PVOID SystemArgument2);
 
 #define DEFINE_DPC(name, call, ...)	\
 	VOID __percpu_##name(PRKDPC dpc, void *ctx, void *sys0, void *sys1)	\

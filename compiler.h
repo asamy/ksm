@@ -92,7 +92,7 @@ typedef signed long long intptr_t;
 #define spin_lock_irqsave(s,f)		spin_lock((s));		(void)f
 #define spin_unlock_irqrestore(s,f)	spin_unlock((s));	(void)f
 
-NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(_In_ PEPROCESS process);
+NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(PEPROCESS process);
 #endif
 #endif
 
