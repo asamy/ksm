@@ -111,7 +111,7 @@ static struct file_operations ksm_fops = {
 static int ksm_reboot(struct notifier_block *nb, unsigned long action,
 		      void *data)
 {
-	ksm_exit(ksm);
+	ksm_free(ksm);
 	return 0;
 }
 
