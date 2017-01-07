@@ -18,6 +18,10 @@ nesting, that means it can emulate other hardware-assisted virtualization tools
 (VT-x) such as KVM or itself, it's however an experimental feature and
 is not recommended.
 
+## Weird Video
+
+[![asciicast](https://asciinema.org/a/6yl1uuvkz70b7wbjgh2re7js3.png)](https://asciinema.org/a/6yl1uuvkz70b7wbjgh2re7js3)
+
 ## Features
 
 - IDT Shadowing

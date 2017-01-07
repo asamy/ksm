@@ -61,6 +61,8 @@ LDFLAGS = -shared -Wl,--subsystem,native -Wl,--dynamicbase -Wl,--stack=0x6000 \
 LIBS = -L$(CROSS_LIB) -lntoskrnl -lhal -lmingwex
 
 UM_SRC = um/um.c
+UM_BIN = a.out
+
 SRC = exit.c htable.c hotplug.c ksm.c sandbox.c mm.c main_nt.c page.c print.c resubv.c vcpu.c
 ASM = vmx.S
 
@@ -92,8 +94,9 @@ endif
 all: $(TARGET)
 clean:
 	$(RM) $(TARGET) $(SYMBOL) $(OBJ) $(DEP)
-um:
-	$(CC) $(UM_SRC)
+
+umk:
+	$(CC) $(UM_SRC) -o $(UM_BIN)
 
 $(TARGET): $(BIN_DIR) $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
 	$(PREPEND)$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LIBS)

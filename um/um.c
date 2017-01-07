@@ -10,6 +10,7 @@
 #else
 #include <unistd.h>
 #include <sys/ioctl.h>
+typedef unsigned int u32;
 #endif
 
 #define UM

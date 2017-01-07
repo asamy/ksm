@@ -21,6 +21,8 @@ ccflags-y := -Wno-format -Wno-declaration-after-statement -Wno-unused-function \
 	-DDBG -DENABLE_PRINT -std=gnu99
 
 UM_SRC := um/um.c
+UM_BIN := a.out
+
 BIN := ksmlinux.ko
 KVERSION := $(shell uname -r)
 KDIR := /lib/modules/$(KVERSION)
@@ -34,8 +36,8 @@ all:
 clean:
 	@make -C $(KBUILD) M=$(PWD) clean
 
-um:
-	gcc $(UM_SRC)
+umk:
+	$(CC) $(UM_SRC) -o $(UM_BIN)
 
 install: $(BIN)
 	@cp $(BIN) $(KDIR)
