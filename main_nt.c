@@ -129,6 +129,9 @@ static NTSTATUS DriverDispatch(PDEVICE_OBJECT deviceObject, PIRP irp)
 		case KSM_IOCTL_SANDBOX:
 			status = ksm_sandbox(ksm, (pid_t)(*(int *)buf));
 			break;
+		case KSM_IOCTL_UNBOX:
+			status = ksm_unbox(ksm, (pid_t)(*(int *)buf));
+			break;
 #endif
 		case KSM_IOCTL_SUBVERT:
 			status = ksm_subvert(ksm);
@@ -190,10 +193,11 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		driverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DriverDispatch;
 
 	RtlInitUnicodeString(&deviceLink, KSM_DOS_NAME);
-	if (NT_SUCCESS(status = IoCreateSymbolicLink(&deviceLink, &deviceName)))
+	if (NT_SUCCESS(status = IoCreateSymbolicLink(&deviceLink, &deviceName))) {
+		VCPU_DEBUG_RAW("ready\n");
 		goto out;
+	}
 
-	dbgbreak();
 	IoDeleteDevice(deviceObject);
 exit:
 	ksm_free(ksm);

@@ -235,9 +235,9 @@ int ksm_hook_epage(void *original, void *redirect)
 	return 0;
 }
 
-int ksm_unhook_page(void *va)
+int ksm_unhook_page(struct ksm *k, void *va)
 {
-	struct page_hook_info *phi = ksm_find_page(ksm, va);
+	struct page_hook_info *phi = ksm_find_page(k, va);
 	if (!phi)
 		return ERR_NOTH;
 

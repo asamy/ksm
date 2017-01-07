@@ -141,15 +141,12 @@ int __ksm_init_cpu(struct ksm *k)
 			return ERR_DENIED;
 	}
 
-	vcpu = &k->vcpu_list[cpu_nr()];
+	vcpu = ksm_cpu(k);
 	ret = vcpu_create(vcpu);
 	if (ret < 0) {
 		VCPU_DEBUG_RAW("failed to create vcpu, oom?\n");
 		return ret;
 	}
-
-	/* Current cr3:  */
-	k->orig_pgd = __readcr3();
 
 	/* Saves state and calls vcpu_run()  */
 	ret = __vmx_vminit(vcpu);

@@ -44,8 +44,16 @@ static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 		if (ret < 0)
 			break;
 
-		VCPU_DEBUG("sandboxing %d\n", args);
+		VCPU_DEBUG("sandboxing %d\n", pid);
 		ret = ksm_sandbox(ksm, pid);
+		break;
+	case KSM_IOCTL_UNBOX:
+		ret = copy_from_user(&pid, (const void __force *)args, sizeof(pid));
+		if (ret < 0)
+			break;
+
+		VCPU_DEBUG("unsandboxing %d\n", pid);
+		ret = ksm_unbox(ksm, pid);
 		break;
 #endif
 	case KSM_IOCTL_SUBVERT:
@@ -108,11 +116,13 @@ static int __init ksm_start(void)
 		return ret;
 
 	major_no = register_chrdev(0, UM_DEVICE_NAME, &ksm_fops);
-	VCPU_DEBUG("Major: %d\n", major_no);
+	if (major_no < 0)
+		goto out_exit;
 
+	VCPU_DEBUG("Major: %d\n", major_no);
 	class = class_create(THIS_MODULE, UM_DEVICE_NAME);
 	if (!class)
-		goto out_exit;
+		goto out_unregister;
 
 	dev = device_create(class, NULL, MKDEV(major_no, 0), NULL, UM_DEVICE_NAME);
 	if (dev) {
@@ -125,8 +135,9 @@ static int __init ksm_start(void)
 	class_unregister(class);
 	class_destroy(class);
 
-out_exit:
+out_unregister:
 	unregister_chrdev(major_no, UM_DEVICE_NAME);
+out_exit:
 	ksm_free(ksm);
 	return ret;
 }

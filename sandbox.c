@@ -23,6 +23,7 @@
 #include <linux/mm.h>
 #else
 #include <ntifs.h>
+#include <intrin.h>
 #endif
 
 #include "ksm.h"
@@ -57,7 +58,7 @@ struct cow_page {
 	u64 gpa;
 	u64 hpa;
 	void *hva;
-	struct list_node link;
+	struct list_head link;
 };
 
 struct sa_task {
@@ -65,7 +66,7 @@ struct sa_task {
 	u64 pgd;
 	u16 eptp[KSM_MAX_VCPUS];
 	struct list_head pages;
-	struct list_node link;
+	struct list_head link;
 };
 
 static inline u16 task_eptp(struct sa_task *task)
@@ -80,7 +81,7 @@ static inline void free_cow_page(struct cow_page *page)
 	mm_free_page(page);
 }
 
-static inline void __free_sa_task(struct ksm *k, struct sa_task *task)
+static inline void free_sa_task(struct ksm *k, struct sa_task *task)
 {
 	struct cow_page *page = NULL;
 	struct cow_page *next = NULL;
@@ -97,15 +98,8 @@ static inline void __free_sa_task(struct ksm *k, struct sa_task *task)
 	list_for_each_entry_safe(page, next, &task->pages, link)
 		free_cow_page(page);
 
-	__mm_free_pool(task);
-}
-
-static inline void free_sa_task(struct ksm *k, struct sa_task *task)
-{
-	spin_lock(&k->task_lock);
 	list_del(&task->link);
-	spin_unlock(&k->task_lock);
-	__free_sa_task(k, task);
+	__mm_free_pool(task);
 }
 
 int ksm_sandbox_init(struct ksm *k)
@@ -120,7 +114,7 @@ int ksm_sandbox_exit(struct ksm *k)
 	struct sa_task *task = NULL;
 	struct sa_task *next = NULL;
 	list_for_each_entry_safe(task, next, &k->task_list, link)
-		__free_sa_task(k, task);
+		free_sa_task(k, task);
 
 	return 0;
 }
@@ -142,7 +136,7 @@ static inline int create_sa_task(struct ksm *k, pid_t pid, u64 pgd)
 		task->eptp[i] = EPT_MAX_EPTP_LIST;
 
 	spin_lock_irqsave(&k->task_lock, flags);
-	list_add(&k->task_list, &task->link);
+	list_add(&task->link, &k->task_list);
 	spin_unlock_irqrestore(&k->task_lock, flags);
 	return 0;
 }
@@ -169,7 +163,7 @@ static inline struct cow_page *ksm_sandbox_copy_page(struct sa_task *task, u64 g
 	page->gpa = gpa;
 	page->hpa = __pa(hva);
 	page->hva = hva;
-	list_add(&task->pages, &page->link);
+	list_add(&page->link, &task->pages);
 	return page;
 
 err_cow:
@@ -227,6 +221,23 @@ static struct sa_task *find_sa_task(struct ksm *k, pid_t pid)
 	return ret;
 }
 
+int ksm_unbox(struct ksm *k, pid_t pid)
+{
+	struct sa_task *task = NULL;
+	int ret = ERR_NOTH;
+
+	spin_lock(&k->task_lock);
+	list_for_each_entry(task, &k->task_list, link) {
+		if (task->pid == pid) {
+			free_sa_task(k, task);
+			ret = 0;
+			break;
+		}
+	}
+
+	return ret;
+}
+
 static struct sa_task *find_sa_task_pgd(struct ksm *k, u64 pgd)
 {
 	struct sa_task *task = NULL;
@@ -251,9 +262,6 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 	struct cow_page *page;
 	struct vcpu *vcpu;
 	struct ksm *k;
-	pte_t *pte;
-	bool u_pte;
-	bool u_access;
 	u64 *epte;
 	u16 eptp;
 
@@ -261,8 +269,8 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 	k = vcpu_to_ksm(vcpu);
 	task = find_sa_task(k, proc_pid());
 	if (!task) {
-		*eptp_switch = EPTP_DEFAULT;
-		return true;
+		dbgbreak();
+		return false;
 	}
 
 	eptp = task_eptp(task);
@@ -271,15 +279,9 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 	epte = ept_pte(EPT4(ept, curr), gpa);
 	BUG_ON(eptp != curr);
 
-	pte = pte_from_cr3_va(task->pgd, gva);
-	u_pte = pte && pte->pte & PAGE_USER;
-	u_access = dpl != 0;
-
 	VCPU_DEBUG("%s: sandbox violation\n", proc_name());
-	if (u_pte != gva && ac && !u_pte & EPT_ACCESS_WRITE) {
+	if (dpl != 0 && ac & EPT_ACCESS_WRITE) {
 		VCPU_DEBUG("%s: allocating cow page\n", proc_name());
-		dbgbreak();
-
 		page = ksm_sandbox_copy_page(task, gpa);
 		if (!page)
 			return false;
@@ -297,20 +299,23 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 
 void ksm_sandbox_handle_cr3(struct vcpu *vcpu, u64 cr3)
 {
-	u64 pgd = cr3 & PAGE_PA_MASK;
-	struct ksm *k = vcpu_to_ksm(vcpu);
-	struct sa_task *task = find_sa_task_pgd(k, pgd);
+	struct ksm *k;
+	struct sa_task *task;
 	u16 *eptp;
 
+	k = vcpu_to_ksm(vcpu);
+	task = find_sa_task_pgd(k, cr3 & PAGE_PA_MASK);
 	if (task) {
 		eptp = &task->eptp[cpu_nr()];
 		if (*eptp == EPT_MAX_EPTP_LIST)
 			BUG_ON(!ept_create_ptr(&vcpu->ept, EPT_ACCESS_RX, eptp));
 
+		vcpu->last_switch = task;
+		vcpu->eptp_before = vcpu_eptp_idx(vcpu);
 		vcpu_switch_root_eptp(vcpu, *eptp);
-	} else {
-		/* Switch to default ...  */
-		vcpu_switch_root_eptp(vcpu, EPTP_DEFAULT);
+	} else if (vcpu->last_switch) {
+		vcpu_switch_root_eptp(vcpu, vcpu->eptp_before);
+		vcpu->last_switch = NULL;
 	}
 }
 

@@ -73,13 +73,14 @@ typedef signed long long intptr_t;
 #define _bool_true_false_are_defined
 #endif
 
+/* Avoid NT retardism  */
+#define container_of(address, type, field)	CONTAINING_RECORD(address, type, field)
+/* OTOH - MSVC does not have typeof.  Hack it.  */
+#define container_off_var(var, member)			\
+	((const char *)&(var)->member - (const char *)(var))
+
 #ifndef UM
 #include "list.h"
-
-#define list_for_each_entry_safe(entry, next, list, link)	\
-	list_for_each_safe(list, entry, next, link)
-#define list_for_each_entry(entry, list, link)	\
-	list_for_each(list, entry, link)
 
 #define spinlock_t		KSPIN_LOCK
 #define spin_lock_init		KeInitializeSpinLock
@@ -90,6 +91,8 @@ typedef signed long long intptr_t;
 	KeReleaseInStackQueuedSpinLock(&(q))
 #define spin_lock_irqsave(s,f)		spin_lock((s));		(void)f
 #define spin_unlock_irqrestore(s,f)	spin_unlock((s));	(void)f
+
+NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(_In_ PEPROCESS process);
 #endif
 #endif
 
@@ -136,10 +139,6 @@ typedef signed long long intptr_t;
 #define STATUS_HV_FEATURE_UNAVAILABLE			0xC035001E
 #define STATUS_HV_ACCESS_DENIED				0xC0350006
 #define STATUS_HV_NOT_PRESENT				0xC0351000
-#endif
-
-#ifndef UM
-NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(_In_ PEPROCESS process);
 #endif
 
 #if defined(ENABLE_DBGPRINT) || defined(ENABLE_FILEPRINT)

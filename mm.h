@@ -346,7 +346,7 @@ static inline void mm_unmap(void *addr, size_t size)
 
 static inline void *mm_alloc_page(void)
 {
-	void *v = ExAllocatePool(NonPagedPool, PAGE_SIZE);
+	void *v = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, 0);
 	if (v)
 		__stosq(v, 0, PAGE_SIZE >> 3);
 
@@ -355,7 +355,7 @@ static inline void *mm_alloc_page(void)
 
 static inline void __mm_free_page(void *v)
 {
-	ExFreePool(v);
+	ExFreePoolWithTag(v, 0);
 }
 
 static inline void mm_free_page(void *v)

@@ -28,11 +28,6 @@
 #include "bitmap.h"
 #include "htable.h"
 
-#ifndef __linux__
-/* Avoid NT retardism  */
-#define container_of(address, type, field)	CONTAINING_RECORD(address, type, field)
-#endif
-
 #define KSM_MAX_VCPUS		32
 #define __EXCEPTION_BITMAP	0
 
@@ -392,6 +387,11 @@ struct vcpu {
 	struct gdtr idt;
 	/* Shadow entires we know about so we can restore them appropriately.  */
 	struct kidt_entry64 shadow_idt[256];
+#ifdef PMEM_SANDBOX
+	/* EPTP before switch to per-task eptp.  */
+	u16 eptp_before;
+	void *last_switch;
+#endif
 #ifdef NESTED_VMX
 	/* Nested  */
 	struct nested_vcpu nested_vcpu;
@@ -480,7 +480,6 @@ struct ksm {
 	struct vcpu vcpu_list[KSM_MAX_VCPUS];
 	struct pmem_range ranges[MAX_RANGES];
 	int range_count;
-	uintptr_t orig_pgd;
 	uintptr_t host_pgd;
 #ifdef EPAGE_HOOK
 	struct htable ht;
@@ -579,7 +578,7 @@ static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)
 #ifdef EPAGE_HOOK
 /* page.c  */
 extern int ksm_hook_epage(void *original, void *redirect);
-extern int ksm_unhook_page(void *original);
+extern int ksm_unhook_page(struct ksm *k, void *original);
 extern int __ksm_unhook_page(struct page_hook_info *phi);
 extern struct page_hook_info *ksm_find_page(struct ksm *k, void *va);
 extern struct page_hook_info *ksm_find_page_pfn(struct ksm *k, uintptr_t pfn);
@@ -597,6 +596,7 @@ extern bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 				   bool *invd, u16 *eptp_switch);
 extern void ksm_sandbox_handle_cr3(struct vcpu *vcpu, u64 cr3);
 extern int ksm_sandbox(struct ksm *k, pid_t pid);
+extern int ksm_unbox(struct ksm *k, pid_t pid);
 #endif
 
 /* vcpu.c  */

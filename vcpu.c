@@ -208,8 +208,7 @@ void ept_free_ptr(struct ept *ept, u16 eptp)
 static void free_pml4_list(struct ept *ept)
 {
 	for_each_eptp(ept, i)
-		if (EPT4(ept, i))
-			ept_free_ptr(ept, i);
+		ept_free_ptr(ept, i);
 }
 
 static inline bool init_ept(struct ept *ept)
@@ -489,6 +488,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	u8 err = 0;
 
 	uintptr_t cr0 = __readcr0();
+	uintptr_t cr3 = __readcr3();
 	uintptr_t cr4 = __readcr4();
 
 	__sgdt(&gdtr);
@@ -743,7 +743,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write64(GUEST_IA32_DEBUGCTL, __readmsr(MSR_IA32_DEBUGCTLMSR));
 	err |= vmcs_write(GUEST_PENDING_DBG_EXCEPTIONS, 0);
 	err |= vmcs_write(GUEST_CR0, cr0);
-	err |= vmcs_write(GUEST_CR3, k->orig_pgd);
+	err |= vmcs_write(GUEST_CR3, cr3);
 	err |= vmcs_write(GUEST_CR4, cr4);
 	err |= vmcs_write(GUEST_ES_BASE, 0);
 	err |= vmcs_write(GUEST_CS_BASE, 0);
@@ -900,7 +900,7 @@ void vcpu_free(struct vcpu *vcpu)
 
 void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 {
-	u16 curr = index;
+	u16 curr;
 	BUG_ON(!test_bit(index, (const volatile bitmap_t *)vcpu->ept.ptr_bitmap));
 
 	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VE) {
@@ -913,7 +913,7 @@ void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 	} else {
 		/* Emulated  */
 		struct ve_except_info *ve = vcpu->ve;
-		if (ve->eptp == curr)
+		if (ve->eptp == index)
 			return;
 
 		ve->eptp = index;
@@ -924,4 +924,3 @@ void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 	/* We have to invalidate, we just switched to a new paging hierarchy  */
 	__invept_all();
 }
-

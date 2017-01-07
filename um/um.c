@@ -74,7 +74,9 @@ int main(int ac, char *av[])
 {
 	devfd_t dev;
 	int ret;
-	pidtype_t pid;
+	int pid;
+	u32 cmd;
+	char *prep = "";
 
 	dev = open_device();
 	if (dev < 0) {
@@ -89,13 +91,21 @@ int main(int ac, char *av[])
 	printf("(%d) Pid> ", __get_pid());
 	while (scanf("%d", &pid) == 1) {
 		printf("pid: %d\n", pid);
-		if ((int)pid < 0) {
+		if (pid == -1) {
 			printf("invalid pid: %d\n", pid);
 			break;
 		}
 
-		ret = do_ioctl(dev, KSM_IOCTL_SANDBOX, &pid);
-		printf("sbox %d, ret: %d\n", pid, ret);
+		cmd = KSM_IOCTL_SANDBOX;
+		prep = "";
+		if (pid < 0) {
+			pid = -pid;
+			cmd = KSM_IOCTL_UNBOX;
+			prep = "un";
+		}
+
+		ret = do_ioctl(dev, cmd, &pid);
+		printf("%ssbox %d, ret: %d\n", prep, pid, ret);
 		printf("Pid> ");
 		fflush(stdout);
 	}
