@@ -18,7 +18,7 @@ nesting, that means it can emulate other hardware-assisted virtualization tools
 (VT-x) such as KVM or itself, it's however an experimental feature and
 is not recommended.
 
-## Weird Video
+## Usage under Linux (+sandbox)
 
 [![asciicast](https://asciinema.org/a/10cu6v7c6l0j4532cww8tq1a1.png)](https://asciinema.org/a/10cu6v7c6l0j4532cww8tq1a1)
 
