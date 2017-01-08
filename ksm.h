@@ -609,7 +609,7 @@ extern int ksm_unbox(struct ksm *k, pid_t pid);
 #endif
 
 /* vcpu.c  */
-extern int vcpu_create(struct vcpu *vcpu);
+extern int vcpu_init(struct vcpu *vcpu);
 extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
 extern u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa);

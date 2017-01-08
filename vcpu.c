@@ -810,7 +810,7 @@ off:
 	KSM_DEBUG("%d: something went wrong: %d\n", err, verr);
 }
 
-int vcpu_create(struct vcpu *vcpu)
+int vcpu_init(struct vcpu *vcpu)
 {
 #ifdef NESTED_VMX
 	vcpu->nested_vcpu.feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;

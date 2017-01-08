@@ -128,6 +128,12 @@ int __ksm_init_cpu(struct ksm *k)
 	u64 required_feat_bits = FEATURE_CONTROL_LOCKED |
 		FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX;
 
+	vcpu = ksm_cpu(k);
+	if (vcpu->subverted) {
+		KSM_DEBUG_RAW("CPU already subverted\n");
+		return 0;
+	}
+
 #ifdef __linux__
 	if (tboot_enabled())
 		required_feat_bits |= FEATURE_CONTROL_VMXON_ENABLED_INSIDE_SMX;
@@ -141,13 +147,7 @@ int __ksm_init_cpu(struct ksm *k)
 			return ERR_DENIED;
 	}
 
-	vcpu = ksm_cpu(k);
-	if (vcpu->subverted) {
-		KSM_DEBUG_RAW("CPU already subverted\n");
-		return 0;
-	}
-
-	ret = vcpu_create(vcpu);
+	ret = vcpu_init(vcpu);
 	if (ret < 0) {
 		KSM_DEBUG_RAW("failed to create vcpu, oom?\n");
 		return ret;
