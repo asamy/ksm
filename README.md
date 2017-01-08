@@ -31,18 +31,6 @@ is not recommended.
 - VMX Nesting (Experimental, do not use)
 - Userspace physical memory sandboxer (Experimental, do not use)
 
-## Why not other hypervisors?
-
-You may have already guessed from the `Features` part, if not, here are some reasons:
-
-- Do not implement the new processor features KSM implements (VMFUNC, #VE, etc.)
-- Are not simple enough to work with or understand
-- Simply, just have messy code base or try too hard to implement endless C++ features that just make code ugly.
-- Too big code base and do not have the same purpose (e.g. research or similar)
-
-Such features for my purpose were really cruical, I needed a quicker physical memory virtualization technique
-that I can relay on.
-
 ## Requirements
 
 - An Intel processor (with VT-x and EPT support)

@@ -242,7 +242,6 @@ int ksm_init(struct ksm **kp)
 
 	ret = register_cpu_callback();
 	if (ret == 0) {
-		k->host_pgd = __readcr3();
 		*kp = k;
 		return ret;
 	}
