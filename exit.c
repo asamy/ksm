@@ -596,7 +596,7 @@ static inline bool vcpu_handle_unhook(struct vcpu *vcpu, uintptr_t dpa)
 {
 	struct ept *ept = &vcpu->ept;
 	KSM_DEBUG("unhook page %p\n", dpa);
-	for_each_eptp(i)
+	for_each_eptp(ept, i)
 		ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, dpa, dpa);
 	__invept_all();
 	return true;

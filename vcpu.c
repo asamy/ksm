@@ -315,6 +315,8 @@ static bool do_ept_violation(struct vcpu *vcpu, u64 rip, int dpl, u64 gpa,
 			     bool *invd, u16 *eptp_switch)
 {
 	struct ept *ept = &vcpu->ept;
+	struct ksm *k = vcpu_to_ksm(vcpu);
+
 	if (ar == EPT_ACCESS_NONE) {
 		if (!ept_alloc_page(EPT4(ept, eptp), EPT_ACCESS_ALL, gpa, gpa))
 			return false;
@@ -323,7 +325,7 @@ static bool do_ept_violation(struct vcpu *vcpu, u64 rip, int dpl, u64 gpa,
 	}
 
 #ifdef EPAGE_HOOK
-	struct page_hook_info *phi = ksm_find_page(vcpu->ksm, (void *)gva);
+	struct page_hook_info *phi = ksm_find_page(k, (void *)gva);
 	if (phi) {
 		*eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
 		KSM_DEBUG("Found hooked page, switching from %d to %d\n", eptp, *eptp_switch);
