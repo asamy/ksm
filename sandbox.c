@@ -159,13 +159,20 @@ static inline int create_sa_task(struct ksm *k, pid_t pid, u64 pgd)
 	return 0;
 }
 
-static inline struct cow_page *ksm_sandbox_copy_page(struct sa_task *task, u64 gpa)
+static inline struct cow_page *ksm_sandbox_copy_page(struct vcpu *vcpu,
+						     struct sa_task *task,
+						     u64 gpa)
 {
 	char *hva;
 	char *h;
+	u64 hpa;
 	struct cow_page *page;
 
-	h = mm_remap(gpa & ~(PAGE_SIZE - 1), PAGE_SIZE);
+	hpa = gpa_to_hpa(vcpu, gpa, &hpa);
+	if (!hpa)
+		return false;
+
+	h = mm_remap(hpa, PAGE_SIZE);
 	if (!h)
 		return false;
 
@@ -355,7 +362,7 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 
 	if (ac & EPT_ACCESS_WRITE) {
 		KSM_DEBUG("allocating cow page for %p\n", gpa);
-		page = ksm_sandbox_copy_page(task, gpa);
+		page = ksm_sandbox_copy_page(vcpu, task, gpa);
 		if (!page)
 			return false;
 
