@@ -1,14 +1,13 @@
 # ksm v1.5-dev [![BountySource](https://www.bountysource.com/badge/team?team_id=189129&style=raised)](https://www.bountysource.com/teams/ksm?utm_source=ksm&utm_medium=shield&utm_campaign=raised) [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/project/asamy/ksm)
 
 A really simple and lightweight x64 hypervisor written in C for Intel processors.  
-KSM supports userspace physical memory virtualization which can be enabled at
+KSM has a self-contained userspace physical memory virtualization which can be enabled at
 compiletime, it's quite a new feature but it'll be extended to be more of a
 generic sandboxer (fs, etc.) later on.
 
 Currently, KSM runs on Windows and Linux kernels natively, and aims to support
-macOS by 2017, if you want to port KSM see porting guidelines down below.  Note
-that the `master` branch may be unstable (bugs, unfinished features, etc.), so
-you might want to stick with the releases for a captured stable state.
+macOS by 2017, if you want to port KSM see porting guidelines down below, see
+Documentation/SPEC.md for more information.
 
 Unlike other hypervisors (e.g. KVM, XEN, etc.), KSM's purpose is not to run
 other Operating Systems, instead, KSM can be used as an extra layer of
