@@ -132,7 +132,9 @@ static int __init ksm_start(void)
 	if (major_no < 0)
 		goto out_exit;
 
+	ret = -EINVAL;
 	VCPU_DEBUG("Major: %d\n", major_no);
+
 	class = class_create(THIS_MODULE, UM_DEVICE_NAME);
 	if (!class)
 		goto out_unregister;
@@ -141,10 +143,9 @@ static int __init ksm_start(void)
 	if (dev) {
 		register_reboot_notifier(&reboot_notify);
 		VCPU_DEBUG_RAW("ready\n");
-		return ret;
+		return 0;
 	}
 
-	ret = -EINVAL;
 	VCPU_DEBUG_RAW("failed to create device\n");
 	class_unregister(class);
 	class_destroy(class);
