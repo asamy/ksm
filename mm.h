@@ -192,12 +192,6 @@ static inline uintptr_t __pte_to_va(pte_t *pte)
 	return (uintptr_t)page_address(page);
 }
 
-static inline void __stosq(unsigned long long *a, unsigned long x, unsigned long count)
-{
-	/* Generates stosq anyway...  */
-	memset(a, x, count << 3);
-}
-
 static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
 {
 	pgd_t *pgd;
@@ -231,7 +225,7 @@ static inline void __mm_free_page(void *v)
 
 static inline void mm_free_page(void *v)
 {
-	__stosq(v, 0, PAGE_SIZE >> 3);
+	memset(v, 0, PAGE_SIZE);
 	__mm_free_page(v);
 }
 
@@ -353,7 +347,7 @@ static inline void *mm_alloc_page(void)
 {
 	void *v = ExAllocatePoolWithTag(NonPagedPool, PAGE_SIZE, 0);
 	if (v)
-		__stosq(v, 0, PAGE_SIZE >> 3);
+		memset(v, 0, PAGE_SIZE);
 
 	return v;
 }
@@ -365,7 +359,7 @@ static inline void __mm_free_page(void *v)
 
 static inline void mm_free_page(void *v)
 {
-	__stosq(v, 0, PAGE_SIZE >> 3);
+	memset(v, 0, PAGE_SIZE);
 	__mm_free_page(v);
 }
 
@@ -373,7 +367,7 @@ static inline void *mm_alloc_pool(size_t size)
 {
 	void *v = ExAllocatePool(NonPagedPool, size);
 	if (v)
-		__stosq(v, 0, size >> 3);
+		memset(v, 0, size);
 
 	return v;
 }
@@ -392,7 +386,7 @@ static inline bool mm_is_kernel_addr(void *va)
 static inline void mm_free_pool(void *v, size_t size)
 {
 	if (size)
-		__stosq(v, 0, size >> 3);
+		memset(v, 0, size);
 
 	__mm_free_pool(v);
 }
