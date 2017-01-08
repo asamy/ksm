@@ -329,7 +329,7 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 		/*
 		 * Crashed maybe...
 		 * Probably not a good way to detect this...  lazyness.
-		*/
+		 */
 		*eptp_switch = EPTP_DEFAULT;
 
 		/* Free it  */
@@ -337,6 +337,7 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 		task = __find_sa_task_eptp(k, curr);
 		WARN_ON(!task);
 
+		KSM_DEBUG("Task %p died, cleaning up\n", task);
 		if (task) {
 			/* Free per-cpu EPTP for this task  */
 			for (i = 0; i < KSM_MAX_VCPUS; ++i) {

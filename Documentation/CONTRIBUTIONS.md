@@ -6,12 +6,7 @@ Contributions are really appreciated and can be submitted by one of the followin
 - Github pull requests
 - git request-pull
 
-
-	The github issues is a great place to start, although implementing new features
-	is perfectly fine and very welcome, feel free to do whatever your little heart
-	wants.
-
-	See also (TODO / In development) seciton in this README.
+See also TODO.md for more information on what you can do.
 
 The following is _not_ required, but **prefered**:
 
@@ -55,18 +50,6 @@ To make this short, these are the rules:
 - Preprocessor macros: leftmost column
 - Labels: leftmost column
 - Lines should be aligned relative to opening parenthesis, e.g.:
-
-```
-static void func(int a, int b,
-		 int c, int d)
-{
-	int a = 1 + 2 +
-		4 +
-		5 +
-		6;
-	...
-}
-```
 - Case contents are not intended, but relative to the switch statement
 - Opening braces for structures is on the same line (i.e. `struct my_struct {
 						     };`)
