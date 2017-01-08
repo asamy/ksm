@@ -19,14 +19,14 @@ static inline void do_cpu(void *v)
 	int(*f) (struct ksm *) = v;
 	int ret = f(ksm);
 
-	VCPU_DEBUG("On CPU calling %d\n", ret);
+	KSM_DEBUG("On CPU calling %d\n", ret);
 }
 
 static int ksm_hotplug_cpu(struct notifier_block *nfb, unsigned long action, void *hcpu)
 {
 	unsigned long cpu = (unsigned long)hcpu;
 
-	VCPU_DEBUG("CPU %d action: %d\n", cpu, action);
+	KSM_DEBUG("CPU %d action: %d\n", cpu, action);
 	switch (action) {
 	case CPU_ONLINE:
 	case CPU_ONLINE_FROZEN:
@@ -76,7 +76,7 @@ static void ksm_hotplug_cpu(void *ctx, PKE_PROCESSOR_CHANGE_NOTIFY_CONTEXT chang
 		affinity.Mask = 1ULL << pnr->Number;
 		KeSetSystemGroupAffinityThread(&affinity, &prev);
 
-		VCPU_DEBUG_RAW("New processor\n");
+		KSM_DEBUG_RAW("New processor\n");
 		status = __ksm_init_cpu(ksm);
 		if (!NT_SUCCESS(status))
 			*op_status = status;

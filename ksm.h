@@ -71,21 +71,21 @@
 #define REG_R15			15
 #define REG_MAX			16
 
-#define VCPU_BUGCHECK_CODE		0xCCDDFF11
+#define KSM_PANIC_CODE		0xCCDDFF11
 #define VCPU_TRIPLEFAULT		0x33DDE83A
 #define VCPU_BUG_UNHANDLED		0xBAADF00D
 #define VCPU_IRQ_NOT_HANDLED		0xCAFEBABE
-#define VCPU_BUGCHECK_FAILED_VMENTRY	0xBAADBABE
-#define VCPU_BUGCHECK_GUEST_STATE	0xBAAD7A1E
-#define VCPU_BUGCHECK_UNEXPECTED	0xEEEEEEE9
+#define KSM_PANIC_FAILED_VMENTRY	0xBAADBABE
+#define KSM_PANIC_GUEST_STATE	0xBAAD7A1E
+#define KSM_PANIC_UNEXPECTED	0xEEEEEEE9
 #ifdef DBG
 #ifndef __linux__
-#define VCPU_BUGCHECK(a, b, c, d)	dbgbreak(); KeBugCheckEx(MANUALLY_INITIATED_CRASH, a, b, c, d)
+#define KSM_PANIC(a, b, c, d)	dbgbreak(); KeBugCheckEx(MANUALLY_INITIATED_CRASH, a, b, c, d)
 #else
-#define VCPU_BUGCHECK(a, b, c, d)	dbgbreak(); panic("bugcheck 0x%016X 0x%016X 0x%016X 0x%016X\n", a, b, c, d)
+#define KSM_PANIC(a, b, c, d)	dbgbreak(); panic("bugcheck 0x%016X 0x%016X 0x%016X 0x%016X\n", a, b, c, d)
 #endif
 #else
-#define VCPU_BUGCHECK(a, b, c, d)	(void)0
+#define KSM_PANIC(a, b, c, d)	(void)0
 #endif
 
 /* Short name:  */
@@ -108,21 +108,21 @@
 
 #ifdef ENABLE_PRINT
 #ifdef __linux__
-#define VCPU_DEBUG(fmt, args...)	printk(KERN_INFO "ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
-#define VCPU_DEBUG_RAW(str)		printk(KERN_INFO "ksm: CPU %d: %s: " str, cpu_nr(), __func__)
+#define KSM_DEBUG(fmt, args...)	printk(KERN_INFO "ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
+#define KSM_DEBUG_RAW(str)		printk(KERN_INFO "ksm: CPU %d: %s: " str, cpu_nr(), __func__)
 #else
 #ifdef _MSC_VER
-#define VCPU_DEBUG(fmt, ...)		do_print("ksm: CPU %d: " __func__ ": " fmt, cpu_nr(), __VA_ARGS__)
-#define VCPU_DEBUG_RAW(str)		do_print("ksm: CPU %d: " __func__ ": " str, cpu_nr())
+#define KSM_DEBUG(fmt, ...)		do_print("ksm: CPU %d: " __func__ ": " fmt, cpu_nr(), __VA_ARGS__)
+#define KSM_DEBUG_RAW(str)		do_print("ksm: CPU %d: " __func__ ": " str, cpu_nr())
 #else
 /* avoid warning on empty argument list  */
-#define VCPU_DEBUG(fmt, args...)	do_print("ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
-#define VCPU_DEBUG_RAW(str)		do_print("ksm: CPU %d: %s: " str, cpu_nr(), __func__)
+#define KSM_DEBUG(fmt, args...)	do_print("ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
+#define KSM_DEBUG_RAW(str)		do_print("ksm: CPU %d: %s: " str, cpu_nr(), __func__)
 #endif
 #endif
 #else
-#define VCPU_DEBUG(fmt, ...)
-#define VCPU_DEBUG_RAW(str)
+#define KSM_DEBUG(fmt, ...)
+#define KSM_DEBUG_RAW(str)
 #endif
 
 /*
@@ -130,8 +130,8 @@
  * utterly useless...
  */
 #ifdef VCPU_TRACER_LOG
-#define VCPU_TRACER_START()		VCPU_DEBUG("%p\n", gc)
-#define VCPU_TRACER_END()		VCPU_DEBUG("%p handled\n", gc)
+#define VCPU_TRACER_START()		KSM_DEBUG("%p\n", gc)
+#define VCPU_TRACER_END()		KSM_DEBUG("%p handled\n", gc)
 #else
 #define VCPU_TRACER_START()
 #define VCPU_TRACER_END()

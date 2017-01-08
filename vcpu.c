@@ -326,7 +326,7 @@ static bool do_ept_violation(struct vcpu *vcpu, u64 rip, int dpl, u64 gpa,
 	struct page_hook_info *phi = ksm_find_page(vcpu->ksm, (void *)gva);
 	if (phi) {
 		*eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
-		VCPU_DEBUG("Found hooked page, switching from %d to %d\n", eptp, *eptp_switch);
+		KSM_DEBUG("Found hooked page, switching from %d to %d\n", eptp, *eptp_switch);
 		return true;
 	}
 #endif
@@ -336,7 +336,7 @@ static bool do_ept_violation(struct vcpu *vcpu, u64 rip, int dpl, u64 gpa,
 				   gva, cr3, eptp, ar, ac,
 				   invd, eptp_switch)) {
 		if (*eptp_switch != eptp)
-			VCPU_DEBUG("sandbox switch from %d to %d\n", eptp, *eptp_switch);
+			KSM_DEBUG("sandbox switch from %d to %d\n", eptp, *eptp_switch);
 
 		return true;
 	}
@@ -371,7 +371,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 
 	ar_get_bits(ar, sar);
 	ar_get_bits(ac, sac);
-	VCPU_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
+	KSM_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   eptp, gpa, gva, ar, sar, ac, sac);
 
 	eptp_switch = eptp;
@@ -415,7 +415,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 
 	ar_get_bits(ar, sar);
 	ar_get_bits(ac, sac);
-	VCPU_DEBUG("0x%X:%p [%d]: PA %p VA %p (%d AR %s - %d AC %s)\n",
+	KSM_DEBUG("0x%X:%p [%d]: PA %p VA %p (%d AR %s - %d AC %s)\n",
 		   cs, rip, eptp, gpa, gva, ar, sar, ac, sac);
 	info->except_mask = 0;
 
@@ -423,7 +423,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 	if (!do_ept_violation(vcpu, vcpu->ip, cs & 3, gpa,
 			      gva, __readcr3(), eptp, ar, ac,
 			      &invd, &eptp_switch))
-		VCPU_BUGCHECK(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, rip, gpa);
+		KSM_PANIC(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, rip, gpa);
 
 	if (eptp_switch != eptp)
 		vcpu_vmfunc(eptp, 0);
@@ -509,7 +509,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	u64 pa = __pa(vmxon);
 	err = __vmx_on(&pa);
 	if (err) {
-		VCPU_DEBUG("vmxon failed: %d\n", err);
+		KSM_DEBUG("vmxon failed: %d\n", err);
 		return;
 	}
 
@@ -576,7 +576,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	vcpu->cpu_ctl = vm_cpuctl;
 
 	if ((vm_cpuctl & req_cpuctl) != req_cpuctl) {
-		VCPU_DEBUG("Primary controls required are not supported: 0x%X 0x%X\n",
+		KSM_DEBUG("Primary controls required are not supported: 0x%X 0x%X\n",
 			   req_cpuctl, vm_cpuctl & req_cpuctl);
 		return;
 	}
@@ -609,7 +609,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
 	vcpu->secondary_ctl = vm_2ndctl;
 	if ((vm_2ndctl & req_2ndctl) != req_2ndctl) {
-		VCPU_DEBUG("Secondary controls required are not supported: 0x%X 0x%X\n",
+		KSM_DEBUG("Secondary controls required are not supported: 0x%X 0x%X\n",
 			   req_2ndctl, vm_2ndctl & req_2ndctl);
 		return;
 	}
@@ -807,7 +807,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 off:
 	verr = vmcs_read32(VM_INSTRUCTION_ERROR);
 	__vmx_off();
-	VCPU_DEBUG("%d: something went wrong: %d\n", err, verr);
+	KSM_DEBUG("%d: something went wrong: %d\n", err, verr);
 }
 
 int vcpu_create(struct vcpu *vcpu)

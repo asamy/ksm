@@ -354,7 +354,7 @@ bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
 	BUG_ON(eptp != curr);
 
 	if (ac & EPT_ACCESS_WRITE) {
-		VCPU_DEBUG("allocating cow page for %p\n", gpa);
+		KSM_DEBUG("allocating cow page for %p\n", gpa);
 		page = ksm_sandbox_copy_page(task, gpa);
 		if (!page)
 			return false;

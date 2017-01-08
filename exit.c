@@ -302,7 +302,7 @@ static inline bool nested_inject_ve(struct vcpu *vcpu)
 		return false;
 
 	if (info->except_mask == 0) {
-		VCPU_DEBUG("Trying to inject #VE but guest opted-out.\n");
+		KSM_DEBUG("Trying to inject #VE but guest opted-out.\n");
 		mm_unmap(info, PAGE_SIZE);
 		return false;
 	}
@@ -323,8 +323,8 @@ static inline bool nested_inject_ve(struct vcpu *vcpu)
 static bool vcpu_nop(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
-	VCPU_DEBUG_RAW("you need to handle the corresponding VM-exit for the handler you set.\n");
-	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, VCPU_BUG_UNHANDLED, curr_handler, prev_handler);
+	KSM_DEBUG_RAW("you need to handle the corresponding VM-exit for the handler you set.\n");
+	KSM_PANIC(KSM_PANIC_CODE, VCPU_BUG_UNHANDLED, curr_handler, prev_handler);
 	return false;
 }
 
@@ -354,7 +354,7 @@ static bool vcpu_handle_triplefault(struct vcpu *vcpu)
 {
 	/* A triple fault occured during handling of a double fault in guest, bug check.  */
 	VCPU_TRACER_START();
-	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, VCPU_TRIPLEFAULT, curr_handler, prev_handler);
+	KSM_PANIC(KSM_PANIC_CODE, VCPU_TRIPLEFAULT, curr_handler, prev_handler);
 	VCPU_TRACER_END();
 	return false;
 }
@@ -388,7 +388,7 @@ static bool vcpu_handle_taskswitch(struct vcpu *vcpu)
 	if (selector & 4)
 		table = "ldt";
 
-	VCPU_DEBUG("switching through %s (selector: %d => table: %s index: %d)\n",
+	KSM_DEBUG("switching through %s (selector: %d => table: %s index: %d)\n",
 		   name, selector, table, selector >> 3);
 	VCPU_TRACER_END();
 	return true;
@@ -470,7 +470,7 @@ static bool vcpu_handle_vmfunc(struct vcpu *vcpu)
 	 *	2) EPTP index is too high.
 	 */
 	VCPU_TRACER_START();
-	VCPU_DEBUG("vmfunc caused VM-exit!  func is %d eptp index is %d\n",
+	KSM_DEBUG("vmfunc caused VM-exit!  func is %d eptp index is %d\n",
 		   ksm_read_reg32(vcpu, REG_AX), ksm_read_reg32(vcpu, REG_CX));
 	vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 	vcpu_advance_rip(vcpu);
@@ -500,7 +500,7 @@ static bool vcpu_dump_pml(struct vcpu *vcpu)
 		/* CPU guarantees that the lower 12 bits (the offset) are always 0.  */
 		u64 gpa = *((u64 *)vcpu->pml + pml_index);
 		u64 gva = (u64)__va(gpa);
-		VCPU_DEBUG("On PML %d: GPA %p GVA %p\n", pml_index, gpa, gva);
+		KSM_DEBUG("On PML %d: GPA %p GVA %p\n", pml_index, gpa, gva);
 
 		/* Reset AD bits now otherwise we probably won't get this page again  */
 		u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
@@ -510,7 +510,7 @@ static bool vcpu_dump_pml(struct vcpu *vcpu)
 	/* Reset the PML index now...  */
 	vmcs_write16(GUEST_PML_INDEX, pml_index);
 	/* We're done here  */
-	VCPU_DEBUG_RAW("PML dump done\n");
+	KSM_DEBUG_RAW("PML dump done\n");
 	/* We definitely modified AD bits  */
 	__invept_all();
 	return true;
@@ -521,10 +521,10 @@ static bool vcpu_handle_pml_full(struct vcpu *vcpu)
 {
 #ifdef ENABLE_PML
 	/* Page Modification Log is now full, dump it.  */
-	VCPU_DEBUG_RAW("PML full\n");
+	KSM_DEBUG_RAW("PML full\n");
 	return vcpu_dump_pml(vcpu);
 #else
-	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, VCPU_BUG_UNHANDLED, 0xDEAFDEAF, 0xBAADF00D);
+	KSM_PANIC(KSM_PANIC_CODE, VCPU_BUG_UNHANDLED, 0xDEAFDEAF, 0xBAADF00D);
 	return false;
 #endif
 }
@@ -587,7 +587,7 @@ static inline void vcpu_do_exit(struct vcpu *vcpu)
 #ifdef EPAGE_HOOK
 static bool vcpu_handle_hook(struct vcpu *vcpu, struct page_hook_info *h)
 {
-	VCPU_DEBUG("page hook request for %p => %p (%p)\n", h->dpa, h->cpa, h->c_va);
+	KSM_DEBUG("page hook request for %p => %p (%p)\n", h->dpa, h->cpa, h->c_va);
 	h->ops->init_eptp(h, &vcpu->ept);
 	return true;
 }
@@ -595,7 +595,7 @@ static bool vcpu_handle_hook(struct vcpu *vcpu, struct page_hook_info *h)
 static inline bool vcpu_handle_unhook(struct vcpu *vcpu, uintptr_t dpa)
 {
 	struct ept *ept = &vcpu->ept;
-	VCPU_DEBUG("unhook page %p\n", dpa);
+	KSM_DEBUG("unhook page %p\n", dpa);
 	for_each_eptp(i)
 		ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, dpa, dpa);
 	__invept_all();
@@ -944,7 +944,7 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 		break;
 #endif
 	default:
-		VCPU_DEBUG("unsupported hypercall: %d\n", nr);
+		KSM_DEBUG("unsupported hypercall: %d\n", nr);
 		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 		break;
 	}
@@ -1899,7 +1899,7 @@ static bool vcpu_handle_io_port(struct vcpu *vcpu)
 			ksm_write_reg(vcpu, REG_CX, 0);
 	}
 
-	VCPU_DEBUG("%s: port: 0x%X, addr: %p [0x%X] (str: %d, count: %d, size: %d)\n",
+	KSM_DEBUG("%s: port: 0x%X, addr: %p [0x%X] (str: %d, count: %d, size: %d)\n",
 		   type, port, addr, *addr, exit & 16, count, size);
 
 	vcpu_advance_rip(vcpu);
@@ -2028,7 +2028,7 @@ static bool vcpu_handle_wrmsr(struct vcpu *vcpu)
 static bool vcpu_handle_invalid_state(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
-	VCPU_BUGCHECK(VCPU_BUGCHECK_GUEST_STATE, vcpu->ip, vcpu->eflags, prev_handler);
+	KSM_PANIC(KSM_PANIC_GUEST_STATE, vcpu->ip, vcpu->eflags, prev_handler);
 	VCPU_TRACER_END();
 	return false;
 }
@@ -2047,7 +2047,7 @@ static bool vcpu_handle_tpr_threshold(struct vcpu *vcpu)
 	/* should maybe congratulate them or something.
 	 * Note: This will never happen because TPR Threshold is
 	 * set to 0 in VMCS.  */
-	VCPU_DEBUG("!!! TPR below threshold\n");
+	KSM_DEBUG("!!! TPR below threshold\n");
 	return true;
 }
 
@@ -2057,7 +2057,7 @@ static bool vcpu_handle_apic_access(struct vcpu *vcpu)
 	u16 offset = exit & APIC_ACCESS_OFFSET;
 	u32 type = exit & APIC_ACCESS_TYPE;
 
-	VCPU_DEBUG("!!! APIC access using offset 0x%04X and type 0x%X\n",
+	KSM_DEBUG("!!! APIC access using offset 0x%04X and type 0x%X\n",
 		   offset, type);
 	return true;
 }
@@ -2067,7 +2067,7 @@ static bool vcpu_handle_eoi_induced(struct vcpu *vcpu)
 	u32 exit = vmcs_read32(EXIT_QUALIFICATION);
 	u16 vector = exit & 0xFFF;
 
-	VCPU_DEBUG("!!! EOI induced, vector: 0x%04X\n", vector);
+	KSM_DEBUG("!!! EOI induced, vector: 0x%04X\n", vector);
 	return true;
 }
 
@@ -2090,7 +2090,7 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 		return vcpu_inject_pf(vcpu, idt->base, PGF_PRESENT);
 	}
 
-	VCPU_DEBUG("Loading new IDT (new size: %d old size: %d)  Copying %d entries\n",
+	KSM_DEBUG("Loading new IDT (new size: %d old size: %d)  Copying %d entries\n",
 		   idt->limit, vcpu->idt.limit, entries);
 
 	vcpu->g_idt = *idt;
@@ -2118,7 +2118,7 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 	if (((info >> 7) & 7) == 1)
 		addr &= 0xFFFFFFFF;
 
-	VCPU_DEBUG("GDT/IDT access, addr %p\n", addr);
+	KSM_DEBUG("GDT/IDT access, addr %p\n", addr);
 	switch ((info >> 28) & 3) {
 	case 0:		/* sgdt  */
 		dt.limit = vmcs_read32(GUEST_GDTR_LIMIT);
@@ -2186,7 +2186,7 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 		if (((info >> 7) & 7) == 1)
 			addr &= 0xFFFFFFFF;
 
-		VCPU_DEBUG("LDT/TR access, addr %p\n", addr);
+		KSM_DEBUG("LDT/TR access, addr %p\n", addr);
 		switch (sel_idx) {
 		case 0:
 			sel = vmcs_read16(GUEST_LDTR_SELECTOR);
@@ -2228,12 +2228,12 @@ static bool vcpu_handle_ept_violation(struct vcpu *vcpu)
 		    nested_has_secondary(nested, SECONDARY_EXEC_ENABLE_EPT) &&
 		    (nested_inject_ve(vcpu) ||
 		     vcpu_enter_nested_hypervisor(vcpu, EXIT_REASON_EPT_VIOLATION))) {
-			VCPU_DEBUG_RAW("Throw-back EPT violation to nested hypervisor\n");
+			KSM_DEBUG_RAW("Throw-back EPT violation to nested hypervisor\n");
 			return true;
 		}
 #endif
 
-		VCPU_BUGCHECK(EPT_BUGCHECK_CODE,
+		KSM_PANIC(EPT_BUGCHECK_CODE,
 			      EPT_UNHANDLED_VIOLATION,
 			      vcpu->ip,
 			      vmcs_read64(GUEST_PHYSICAL_ADDRESS));
@@ -2252,7 +2252,7 @@ static bool vcpu_handle_ept_misconfig(struct vcpu *vcpu)
 	u16 eptp = vcpu_eptp_idx(vcpu);
 
 	u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
-	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, EPT_BUGCHECK_MISCONFIG, gpa, *epte);
+	KSM_PANIC(KSM_PANIC_CODE, EPT_BUGCHECK_MISCONFIG, gpa, *epte);
 	return false;
 }
 
@@ -2299,7 +2299,7 @@ static bool vcpu_handle_apic_write(struct vcpu *vcpu)
 	u32 exit = vmcs_read32(EXIT_QUALIFICATION);
 	u16 offset = exit & 0xFF0;
 
-	VCPU_DEBUG("!!! APIC write at offset 0x%04X\n", offset);
+	KSM_DEBUG("!!! APIC write at offset 0x%04X\n", offset);
 	return true;
 }
 
@@ -2650,7 +2650,7 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 
 static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *regs)
 {
-	VCPU_DEBUG("%p: ax=0x%016llX   cx=0x%016llX  dx=0x%016llX\n"
+	KSM_DEBUG("%p: ax=0x%016llX   cx=0x%016llX  dx=0x%016llX\n"
 		   "    bx=0x%016llX   sp=0x%016llX  bp=0x%016llX\n"
 		   "    si=0x%016llX   di=0x%016llX  r08=0x%016llX\n"
 		   "    r09=0x%016llX  r10=0x%016llX r11=0x%016llX\n"
@@ -2702,7 +2702,7 @@ bool vcpu_handle_exit(uintptr_t *stack)
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	if (nested_entered(nested) && nested_can_handle(nested, exit_reason) &&
 	    vcpu_enter_nested_hypervisor(vcpu, exit_reason)) {
-		VCPU_DEBUG("Nested is to handle violation: %d\n", curr_handler);
+		KSM_DEBUG("Nested is to handle violation: %d\n", curr_handler);
 		goto do_pending_irq;
 	}
 #endif
@@ -2720,7 +2720,7 @@ bool vcpu_handle_exit(uintptr_t *stack)
 		 * error that happened past VM-exit.
 		 */
 		dbgbreak();
-		VCPU_BUGCHECK(VCPU_BUGCHECK_FAILED_VMENTRY, vcpu->ip,
+		KSM_PANIC(KSM_PANIC_FAILED_VMENTRY, vcpu->ip,
 			      vmcs_read(EXIT_QUALIFICATION), curr_handler);
 	}
 
@@ -2767,5 +2767,5 @@ void vcpu_handle_fail(struct regs *regs)
 
 	vcpu_dump_state(ksm_current_cpu(), regs);
 	dbgbreak();
-	VCPU_BUGCHECK(VCPU_BUGCHECK_CODE, err, curr_handler, prev_handler);
+	KSM_PANIC(KSM_PANIC_CODE, err, curr_handler, prev_handler);
 }

@@ -17,12 +17,12 @@
 #ifdef __linux__
 static void ksm_resume(void)
 {
-	VCPU_DEBUG("in resume: %d\n", ksm_subvert(ksm));
+	KSM_DEBUG("in resume: %d\n", ksm_subvert(ksm));
 }
 
 static int ksm_suspend(void)
 {
-	VCPU_DEBUG("in suspend: %d\n", ksm_unsubvert(ksm));
+	KSM_DEBUG("in suspend: %d\n", ksm_unsubvert(ksm));
 	return 0;
 }
 

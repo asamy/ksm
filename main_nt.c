@@ -88,8 +88,8 @@ static inline NTSTATUS check_dynamic_pgtables(void)
 			return STATUS_NOT_FOUND;
 
 		uintptr_t tmp = (uintptr_t)MmGetVirtualForPhysical;
-		VCPU_DEBUG("PXE: %p PPE %p PDE %p PTE %p\n", pxe_base, ppe_base, pde_base, pte_base);
-		VCPU_DEBUG("Addr 0x%X 0x%X\n", __pa((uintptr_t *)tmp), va_to_pa(tmp));
+		KSM_DEBUG("PXE: %p PPE %p PDE %p PTE %p\n", pxe_base, ppe_base, pde_base, pte_base);
+		KSM_DEBUG("Addr 0x%X 0x%X\n", __pa((uintptr_t *)tmp), va_to_pa(tmp));
 	}
 
 	return STATUS_SUCCESS;
@@ -104,7 +104,7 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 	RtlInitUnicodeString(&deviceLink, KSM_DOS_NAME);
 
 	ret = ksm_free(ksm);
-	VCPU_DEBUG("ret: 0x%08X\n", ret);
+	KSM_DEBUG("ret: 0x%08X\n", ret);
 #ifdef ENABLE_PRINT
 	print_exit();
 #endif
@@ -124,7 +124,7 @@ static NTSTATUS DriverDispatch(PDEVICE_OBJECT deviceObject, PIRP irp)
 	switch (stack->MajorFunction) {
 	case IRP_MJ_DEVICE_CONTROL:	
 		ioctl = stack->Parameters.DeviceIoControl.IoControlCode;
-		VCPU_DEBUG("%s: IOCTL: 0x%08X\n", proc_name(), ioctl);
+		KSM_DEBUG("%s: IOCTL: 0x%08X\n", proc_name(), ioctl);
 
 		switch (ioctl) {
 #ifdef PMEM_SANDBOX
@@ -179,7 +179,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	entry = driverObject->DriverSection;
 	PsLoadedModuleList = entry->InLoadOrderLinks.Flink;
 
-	VCPU_DEBUG("We're mapped at %p (size: %d bytes (%d KB), on %d pages)\n",
+	KSM_DEBUG("We're mapped at %p (size: %d bytes (%d KB), on %d pages)\n",
 		   entry->DllBase, entry->SizeOfImage,
 		   entry->SizeOfImage / 1024, entry->SizeOfImage / PAGE_SIZE);
 	g_driver_base = (uintptr_t)entry->DllBase;
@@ -204,7 +204,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 
 	RtlInitUnicodeString(&deviceLink, KSM_DOS_NAME);
 	if (NT_SUCCESS(status = IoCreateSymbolicLink(&deviceLink, &deviceName))) {
-		VCPU_DEBUG_RAW("ready\n");
+		KSM_DEBUG_RAW("ready\n");
 		ksm->host_pgd = __readcr3();
 		goto out;
 	}
@@ -219,6 +219,6 @@ err:
 	print_exit();
 #endif
 out:
-	VCPU_DEBUG("ret: 0x%08X\n", status);
+	KSM_DEBUG("ret: 0x%08X\n", status);
 	return status;
 }

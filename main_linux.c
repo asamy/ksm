@@ -33,11 +33,11 @@ static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 {
 	int ret = -EINVAL;
 	int __maybe_unused pid = 0;
-	VCPU_DEBUG("ioctl from %s: cmd(0x%08X) args(%p)\n",
+	KSM_DEBUG("ioctl from %s: cmd(0x%08X) args(%p)\n",
 		   current->comm, cmd, args);
 
 	if (mm && current->mm != mm) {
-		VCPU_DEBUG("not processing ioctl from %s\n", current->comm);
+		KSM_DEBUG("not processing ioctl from %s\n", current->comm);
 		goto out;
 	}
 
@@ -48,7 +48,7 @@ static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 		if (ret < 0)
 			break;
 
-		VCPU_DEBUG("sandboxing %d\n", pid);
+		KSM_DEBUG("sandboxing %d\n", pid);
 		ret = ksm_sandbox(ksm, pid);
 		break;
 	case KSM_IOCTL_UNBOX:
@@ -56,7 +56,7 @@ static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 		if (ret < 0)
 			break;
 
-		VCPU_DEBUG("unsandboxing %d\n", pid);
+		KSM_DEBUG("unsandboxing %d\n", pid);
 		ret = ksm_unbox(ksm, pid);
 		break;
 #endif
@@ -73,32 +73,32 @@ static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 	case KSM_IOCTL_UNSUBVERT:
 		ret = ksm_unsubvert(ksm);
 		if (ret == 0 && mm) {
-			VCPU_DEBUG("derefering stolen mm\n");
+			KSM_DEBUG("derefering stolen mm\n");
 			mmdrop(mm);
 			mm = NULL;
 		}
 
 		break;
 	default:
-		VCPU_DEBUG("unknown ioctl code %X\n", cmd);
+		KSM_DEBUG("unknown ioctl code %X\n", cmd);
 		ret = -EINVAL;
 		break;
 	}
 
 out:
-	VCPU_DEBUG("ioctl ret: %d\n", ret);
+	KSM_DEBUG("ioctl ret: %d\n", ret);
 	return ret;
 }
 
 static int ksm_open(struct inode *node, struct file *filp)
 {
-	VCPU_DEBUG("open() from %s\n", current->comm);
+	KSM_DEBUG("open() from %s\n", current->comm);
 	return 0;
 }
 
 static int ksm_release(struct inode *inode, struct file *filp)
 {
-	VCPU_DEBUG("release() from %s\n", current->comm);
+	KSM_DEBUG("release() from %s\n", current->comm);
 	return 0;
 }
 
@@ -133,7 +133,7 @@ static int __init ksm_start(void)
 		goto out_exit;
 
 	ret = -EINVAL;
-	VCPU_DEBUG("Major: %d\n", major_no);
+	KSM_DEBUG("Major: %d\n", major_no);
 
 	class = class_create(THIS_MODULE, UM_DEVICE_NAME);
 	if (!class)
@@ -142,11 +142,11 @@ static int __init ksm_start(void)
 	dev = device_create(class, NULL, MKDEV(major_no, 0), NULL, UM_DEVICE_NAME);
 	if (dev) {
 		register_reboot_notifier(&reboot_notify);
-		VCPU_DEBUG_RAW("ready\n");
+		KSM_DEBUG_RAW("ready\n");
 		return 0;
 	}
 
-	VCPU_DEBUG_RAW("failed to create device\n");
+	KSM_DEBUG_RAW("failed to create device\n");
 	class_unregister(class);
 	class_destroy(class);
 
@@ -169,7 +169,7 @@ static void __exit ksm_cleanup(void)
 
 	active = ksm->active_vcpus;
 	ret = ksm_free(ksm);
-	VCPU_DEBUG("%d were active: ret: %d\n", active, ret);
+	KSM_DEBUG("%d were active: ret: %d\n", active, ret);
 
 	if (mm)
 		mmdrop(mm);

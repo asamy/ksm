@@ -143,19 +143,19 @@ int __ksm_init_cpu(struct ksm *k)
 
 	vcpu = ksm_cpu(k);
 	if (vcpu->subverted) {
-		VCPU_DEBUG_RAW("CPU already subverted\n");
+		KSM_DEBUG_RAW("CPU already subverted\n");
 		return 0;
 	}
 
 	ret = vcpu_create(vcpu);
 	if (ret < 0) {
-		VCPU_DEBUG_RAW("failed to create vcpu, oom?\n");
+		KSM_DEBUG_RAW("failed to create vcpu, oom?\n");
 		return ret;
 	}
 
 	/* Saves state and calls vcpu_run()  */
 	ret = __vmx_vminit(vcpu);
-	VCPU_DEBUG("%s: Started: %d\n", proc_name(), !ret);
+	KSM_DEBUG("%s: Started: %d\n", proc_name(), !ret);
 
 	if (ret == 0) {
 		vcpu->subverted = true;
@@ -220,7 +220,7 @@ int ksm_init(struct ksm **kp)
 	ret = mm_cache_ram_ranges(&k->ranges[0], &k->range_count);
 	if (ret < 0)
 		goto out_ksm;
-	VCPU_DEBUG("%d physical memory ranges\n", k->range_count);
+	KSM_DEBUG("%d physical memory ranges\n", k->range_count);
 
 #ifdef PMEM_SANDBOX
 	ret = ksm_sandbox_init(k);
