@@ -63,14 +63,14 @@ static inline int init_msr_bitmap(struct ksm *k)
 	 * We currently opt in for MSRs that are VT-x related, so that we can
 	 * emulate nesting.
 	 */
-	bitmap_t *read_lo = (bitmap_t *)k->msr_bitmap;
+	unsigned long *read_lo = (unsigned long *)k->msr_bitmap;
 	set_bit(MSR_IA32_FEATURE_CONTROL, read_lo);
 #ifdef NESTED_VMX
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		set_bit(msr, read_lo);
 #endif
 
-	bitmap_t *write_lo = (bitmap_t *)((char *)k->msr_bitmap + 2048);
+	unsigned long *write_lo = (unsigned long *)((char *)k->msr_bitmap + 2048);
 	set_bit(MSR_IA32_FEATURE_CONTROL, write_lo);
 #ifdef NESTED_VMX
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
@@ -95,7 +95,7 @@ static inline int init_io_bitmaps(struct ksm *k)
 	}
 
 #if 0	/* This can be anonying  */
-	bitmap_t *bitmap_a = (bitmap_t *)(k->io_bitmap_a);
+	unsigned long *bitmap_a = (unsigned long *)(k->io_bitmap_a);
 	set_bit(0x60, bitmap_a);	/* PS/2 Mice  */
 	set_bit(0x64, bitmap_a);	/* PS/2 Mice and keyboard  */
 #endif

@@ -900,7 +900,7 @@ void vcpu_free(struct vcpu *vcpu)
 void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 {
 	u16 curr;
-	BUG_ON(!test_bit(index, (const volatile bitmap_t *)vcpu->ept.ptr_bitmap));
+	BUG_ON(!test_bit(index, (const volatile unsigned long *)vcpu->ept.ptr_bitmap));
 
 	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VE) {
 		/* Native  */

@@ -32,16 +32,14 @@
 #ifndef __BITMAP_H
 #define __BITMAP_H
 
-typedef unsigned long bitmap_t;
-
 #ifndef __linux__
 #ifndef CHAR_BIT
 #define CHAR_BIT	8
 #endif
 
-#define BITMAP_BITS			(sizeof(bitmap_t) * CHAR_BIT)
+#define BITMAP_BITS			(sizeof(unsigned long) * CHAR_BIT)
 #define DECLARE_BITMAP(name, bits)	\
-	bitmap_t name[BITMAP_BITS * bits]
+	unsigned long name[BITMAP_BITS * bits]
 
 static inline unsigned long pos_bit(unsigned long pos)
 {
@@ -53,32 +51,32 @@ static inline unsigned long bit_at(unsigned long pos)
 	return pos / BITMAP_BITS;
 }
 
-static inline void set_bit(unsigned long pos, bitmap_t *bmp)
+static inline void set_bit(unsigned long pos, unsigned long *bmp)
 {
 	bmp[bit_at(pos)] |= pos_bit(pos);
 }
 
-static inline void clear_bit(unsigned long pos, bitmap_t *bmp)
+static inline void clear_bit(unsigned long pos, unsigned long *bmp)
 {
 	bmp[bit_at(pos)] &= ~pos_bit(pos);
 }
 
-static inline bool test_bit(unsigned long pos, volatile const bitmap_t *bmp)
+static inline bool test_bit(unsigned long pos, volatile const unsigned long *bmp)
 {
 	return !!(bmp[bit_at(pos)] & pos_bit(pos));
 }
 
 static inline unsigned long count_bits(unsigned long count)
 {
-	return ((count + BITMAP_BITS - 1) / BITMAP_BITS) * sizeof(bitmap_t);
+	return ((count + BITMAP_BITS - 1) / BITMAP_BITS) * sizeof(unsigned long);
 }
 
-static inline void clear_bits(bitmap_t *bmp, unsigned long count)
+static inline void clear_bits(unsigned long *bmp, unsigned long count)
 {
 	memset(bmp, 0x00, count_bits(count));
 }
 
-static inline void fill_bits(bitmap_t *bmp, unsigned long count, unsigned char bits)
+static inline void fill_bits(unsigned long *bmp, unsigned long count, unsigned char bits)
 {
 	memset(bmp, bits, count_bits(count));
 }
@@ -105,7 +103,7 @@ static inline unsigned long __ffz(unsigned long x)
 #endif
 }
 
-static inline unsigned long find_first_bit(bitmap_t *bmp, unsigned long size)
+static inline unsigned long find_first_bit(unsigned long *bmp, unsigned long size)
 {
 	unsigned long i;
 
@@ -116,7 +114,7 @@ static inline unsigned long find_first_bit(bitmap_t *bmp, unsigned long size)
 	return size;
 }
 
-static inline unsigned long find_first_zero_bit(bitmap_t *bmp, unsigned long size)
+static inline unsigned long find_first_zero_bit(unsigned long *bmp, unsigned long size)
 {
 	unsigned long i;
 

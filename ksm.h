@@ -243,18 +243,18 @@ struct pi_desc {
 
 static inline bool pi_test_bit(struct pi_desc *d, int vector)
 {
-	return test_bit(vector, (bitmap_t *)d->pir);
+	return test_bit(vector, (unsigned long *)d->pir);
 }
 
 static inline void pi_set_irq(struct pi_desc *d, int vector)
 {
-	set_bit(vector, (bitmap_t *)d->pir);
+	set_bit(vector, (unsigned long *)d->pir);
 	d->on = 1;
 }
 
 static inline void pi_clear_irq(struct pi_desc *d, int vector)
 {
-	clear_bit(vector, (bitmap_t *)d->pir);
+	clear_bit(vector, (unsigned long *)d->pir);
 	d->on = 0;
 }
 
