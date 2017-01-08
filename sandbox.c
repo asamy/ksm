@@ -168,8 +168,7 @@ static inline struct cow_page *ksm_sandbox_copy_page(struct vcpu *vcpu,
 	u64 hpa;
 	struct cow_page *page;
 
-	hpa = gpa_to_hpa(vcpu, gpa, &hpa);
-	if (!hpa)
+	if (!gpa_to_hpa(vcpu, gpa, &hpa))
 		return false;
 
 	h = mm_remap(hpa, PAGE_SIZE);
