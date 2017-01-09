@@ -45,31 +45,37 @@
 
 /*
  * NOTE:
- *	All of these are relative to current stack
+ *	All of these are relative to the per-cpu host stack
  *	pointer, do not change!!!  These are supposed
  *	to match ones defined by Intel in Exit Qualification.
  *	Those are also matched with the assembly code, see PUSH_REGS.
  *
  *	For a brief look on how the stack looks like when passed over to
  *	vcpu_handle_exit(), see vmx.S
+ *
+ * Note for the last 2:
+ *	STACK_EFL_VCPU: in vcpu_do_exit(), this is vcpu.
+ *	STACK_EFL_VCPU: in vcpu_handle_fail(), this is the eflags.
+ *	STACK_VCPU:	in vcpu_handle_fail(), this is vcpu,
  */
-#define REG_AX			0
-#define REG_CX			1
-#define REG_DX			2
-#define REG_BX			3
-#define REG_SP			4
-#define REG_BP			5
-#define REG_SI			6
-#define REG_DI			7
-#define REG_R8			8
-#define REG_R9			9
-#define REG_R10			10
-#define REG_R11			11
-#define REG_R12			12
-#define REG_R13			13
-#define REG_R14			14
-#define REG_R15			15
-#define REG_MAX			16
+#define STACK_REG_AX			0
+#define STACK_REG_CX			1
+#define STACK_REG_DX			2
+#define STACK_REG_BX			3
+#define STACK_REG_SP			4
+#define STACK_REG_BP			5
+#define STACK_REG_SI			6
+#define STACK_REG_DI			7
+#define STACK_REG_R8			8
+#define STACK_REG_R9			9
+#define STACK_REG_R10			10
+#define STACK_REG_R11			11
+#define STACK_REG_R12			12
+#define STACK_REG_R13			13
+#define STACK_REG_R14			14
+#define STACK_REG_R15			15
+#define STACK_EFL_VCPU			16
+#define STACK_VCPU			17
 
 #define KSM_PANIC_CODE		0xCCDDFF11
 #define VCPU_TRIPLEFAULT		0x33DDE83A
@@ -190,11 +196,6 @@
 #define EPT_UNHANDLED_VIOLATION		0xEEEEEEEE
 #define KSM_EPT_REQUIRED_EPT		(VMX_EPT_PAGE_WALK_4_BIT | VMX_EPTP_WB_BIT |\
 					 VMX_EPT_INVEPT_BIT | VMX_EPT_EXTENT_GLOBAL_BIT)
-
-struct regs {
-	uintptr_t gp[REG_MAX];
-	uintptr_t eflags;
-};
 
 struct shadow_idt_entry {
 	unsigned n;
@@ -375,9 +376,9 @@ struct vcpu {
 	u64 vm_func_ctl;	/* Same as above  */
 	bool subverted;
 	/* Those are set during VM-exit only:  */
-	uintptr_t *gp;
-	uintptr_t eflags;
-	uintptr_t ip;
+	uintptr_t *hsp;		/* stack ptr when passed to vcpu_handle_exit()  */
+	uintptr_t eflags;	/* guest eflags  */
+	uintptr_t ip;		/* guest IP  */
 	uintptr_t cr0_guest_host_mask;
 	uintptr_t cr4_guest_host_mask;
 	/* Pending IRQ  */
@@ -410,32 +411,32 @@ static inline bool vcpu_has_pending_irq(const struct vcpu *vcpu)
 
 static inline void ksm_write_reg16(struct vcpu *vcpu, int reg, u16 val)
 {
-	*(u16 *)&vcpu->gp[reg] = val;
+	*(u16 *)&vcpu->hsp[reg] = val;
 }
 
 static inline void ksm_write_reg32(struct vcpu *vcpu, int reg, u32 val)
 {
-	*(u32 *)&vcpu->gp[reg] = val;
+	*(u32 *)&vcpu->hsp[reg] = val;
 }
 
 static inline void ksm_write_reg(struct vcpu *vcpu, int reg, uintptr_t val)
 {
-	*(uintptr_t *)&vcpu->gp[reg] = val;
+	*(uintptr_t *)&vcpu->hsp[reg] = val;
 }
 
 static inline u16 ksm_read_reg16(struct vcpu *vcpu, int reg)
 {
-	return (u16)vcpu->gp[reg];
+	return (u16)vcpu->hsp[reg];
 }
 
 static inline u32 ksm_read_reg32(struct vcpu *vcpu, int reg)
 {
-	return (u32)vcpu->gp[reg];
+	return (u32)vcpu->hsp[reg];
 }
 
 static inline uintptr_t ksm_read_reg(struct vcpu *vcpu, int reg)
 {
-	return vcpu->gp[reg];
+	return vcpu->hsp[reg];
 }
 
 static inline u32 ksm_combine_reg32(struct vcpu *vcpu, int lo, int hi)
@@ -450,7 +451,7 @@ static inline u64 ksm_combine_reg64(struct vcpu *vcpu, int lo, int hi)
 
 static inline uintptr_t *ksm_reg(struct vcpu *vcpu, int reg)
 {
-	return &vcpu->gp[reg];
+	return &vcpu->hsp[reg];
 }
 
 #ifdef EPAGE_HOOK

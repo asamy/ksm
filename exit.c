@@ -394,8 +394,8 @@ static bool vcpu_handle_cpuid(struct vcpu *vcpu)
 	VCPU_TRACER_START();
 
 	int cpuid[4];
-	int func = ksm_read_reg32(vcpu, REG_AX);
-	int subf = ksm_read_reg32(vcpu, REG_CX);
+	int func = ksm_read_reg32(vcpu, STACK_REG_AX);
+	int subf = ksm_read_reg32(vcpu, STACK_REG_CX);
 	__cpuidex(cpuid, func, subf);
 
 #ifndef NESTED_VMX
@@ -403,10 +403,10 @@ static bool vcpu_handle_cpuid(struct vcpu *vcpu)
 		cpuid[2] &= ~(1 << (X86_FEATURE_VMX & 31));
 #endif
 
-	ksm_write_reg32(vcpu, REG_AX, cpuid[0]);
-	ksm_write_reg32(vcpu, REG_BX, cpuid[1]);
-	ksm_write_reg32(vcpu, REG_CX, cpuid[2]);
-	ksm_write_reg32(vcpu, REG_DX, cpuid[3]);
+	ksm_write_reg32(vcpu, STACK_REG_AX, cpuid[0]);
+	ksm_write_reg32(vcpu, STACK_REG_BX, cpuid[1]);
+	ksm_write_reg32(vcpu, STACK_REG_CX, cpuid[2]);
+	ksm_write_reg32(vcpu, STACK_REG_DX, cpuid[3]);
 	vcpu_advance_rip(vcpu);
 
 	VCPU_TRACER_END();
@@ -449,8 +449,8 @@ static bool vcpu_handle_rdtsc(struct vcpu *vcpu)
 	VCPU_TRACER_START();
 
 	u64 tsc = __rdtsc();
-	ksm_write_reg32(vcpu, REG_AX, tsc);
-	ksm_write_reg32(vcpu, REG_DX, tsc >> 32);
+	ksm_write_reg32(vcpu, STACK_REG_AX, tsc);
+	ksm_write_reg32(vcpu, STACK_REG_DX, tsc >> 32);
 	vcpu_advance_rip(vcpu);
 
 	VCPU_TRACER_END();
@@ -466,7 +466,7 @@ static bool vcpu_handle_vmfunc(struct vcpu *vcpu)
 	 */
 	VCPU_TRACER_START();
 	KSM_DEBUG("vmfunc caused VM-exit!  func is %d eptp index is %d\n",
-		   ksm_read_reg32(vcpu, REG_AX), ksm_read_reg32(vcpu, REG_CX));
+		   ksm_read_reg32(vcpu, STACK_REG_AX), ksm_read_reg32(vcpu, STACK_REG_CX));
 	vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
 	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END()
@@ -574,9 +574,9 @@ static inline void vcpu_do_exit(struct vcpu *vcpu)
 	__writecr3(cr3);
 
 	/* See __vmx_entrypoint in assembly on how this is used.  */
-	ksm_write_reg(vcpu, REG_CX, ret);
-	ksm_write_reg(vcpu, REG_DX, ksm_read_reg(vcpu, REG_SP));
-	ksm_write_reg(vcpu, REG_AX, vcpu->eflags);
+	ksm_write_reg(vcpu, STACK_REG_CX, ret);
+	ksm_write_reg(vcpu, STACK_REG_DX, ksm_read_reg(vcpu, STACK_REG_SP));
+	ksm_write_reg(vcpu, STACK_REG_AX, vcpu->eflags);
 }
 
 #ifdef EPAGE_HOOK
@@ -906,11 +906,11 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 	VCPU_TRACER_START();
 
 	/* VMFUNC does not have CPL checks, so emulator shouldn't have too...  */
-	uint8_t nr = ksm_read_reg32(vcpu, REG_CX);
+	uint8_t nr = ksm_read_reg32(vcpu, STACK_REG_CX);
 	if (nr != HYPERCALL_VMFUNC && vcpu_inject_gp_if(vcpu, !vcpu_probe_cpl(0)))
 		goto out;
 
-	uintptr_t arg = ksm_read_reg(vcpu, REG_DX);
+	uintptr_t arg = ksm_read_reg(vcpu, STACK_REG_DX);
 	switch (nr) {
 	case HYPERCALL_STOP:
 		vcpu_do_exit(vcpu);
@@ -1830,19 +1830,19 @@ out:
 static bool vcpu_handle_io_port(struct vcpu *vcpu)
 {
 	uintptr_t exit = vmcs_read(EXIT_QUALIFICATION);
-	uintptr_t *addr = ksm_reg(vcpu, REG_AX);
+	uintptr_t *addr = ksm_reg(vcpu, STACK_REG_AX);
 	if (exit & 16) {
 		/* string  */
-		addr = (uintptr_t *)ksm_read_reg(vcpu, REG_SI);
+		addr = (uintptr_t *)ksm_read_reg(vcpu, STACK_REG_SI);
 		if (exit & 8)	/* in?  */
-			addr = (uintptr_t *)ksm_read_reg(vcpu, REG_DI);
+			addr = (uintptr_t *)ksm_read_reg(vcpu, STACK_REG_DI);
 	}
 
 	u16 port = exit >> 16;
 	u32 size = (exit & 7) + 1;
 	u32 count = 1;
 	if (exit & 32)
-		count = ksm_read_reg32(vcpu, REG_CX);
+		count = ksm_read_reg32(vcpu, STACK_REG_CX);
 
 	const char *type = "in";
 	if (exit & 8) {
@@ -1884,14 +1884,14 @@ static bool vcpu_handle_io_port(struct vcpu *vcpu)
 		*
 		* For in the register is RDI, for out it's RSI.
 		*/
-		uintptr_t *reg = ksm_reg(vcpu, (exit & 8) ? REG_DI : REG_SI);
+		uintptr_t *reg = ksm_reg(vcpu, (exit & 8) ? STACK_REG_DI : STACK_REG_SI);
 		if (vcpu->eflags & X86_EFLAGS_DF)
 			*reg -= count * size;
 		else
 			*reg += count * size;
 
 		if (exit & 32)
-			ksm_write_reg(vcpu, REG_CX, 0);
+			ksm_write_reg(vcpu, STACK_REG_CX, 0);
 	}
 
 	KSM_DEBUG("%s: port: 0x%X, addr: %p [0x%X] (str: %d, count: %d, size: %d)\n",
@@ -1905,7 +1905,7 @@ static bool vcpu_handle_rdmsr(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
-	u32 msr = ksm_read_reg32(vcpu, REG_CX);
+	u32 msr = ksm_read_reg32(vcpu, STACK_REG_CX);
 	u64 val = 0;
 
 	switch (msr) {
@@ -1950,8 +1950,8 @@ static bool vcpu_handle_rdmsr(struct vcpu *vcpu)
 		break;
 	}
 
-	ksm_write_reg32(vcpu, REG_AX, val);
-	ksm_write_reg32(vcpu, REG_DX, val >> 32);
+	ksm_write_reg32(vcpu, STACK_REG_AX, val);
+	ksm_write_reg32(vcpu, STACK_REG_DX, val >> 32);
 	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
 	return true;
@@ -1961,8 +1961,8 @@ static bool vcpu_handle_wrmsr(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
-	u32 msr = ksm_read_reg32(vcpu, REG_CX);
-	u64 val = ksm_combine_reg64(vcpu, REG_AX, REG_DX);
+	u32 msr = ksm_read_reg32(vcpu, STACK_REG_CX);
+	u64 val = ksm_combine_reg64(vcpu, STACK_REG_AX, STACK_REG_DX);
 
 	switch (msr) {
 	case MSR_IA32_DEBUGCTLMSR:
@@ -2260,9 +2260,9 @@ static bool vcpu_handle_rdtscp(struct vcpu *vcpu)
 	u32 tsc_aux;
 	u64 tsc = __rdtscp((unsigned int *)&tsc_aux);
 
-	ksm_write_reg32(vcpu, REG_AX, tsc);
-	ksm_write_reg32(vcpu, REG_DX, tsc >> 32);
-	ksm_write_reg32(vcpu, REG_CX, tsc_aux);
+	ksm_write_reg32(vcpu, STACK_REG_AX, tsc);
+	ksm_write_reg32(vcpu, STACK_REG_DX, tsc >> 32);
+	ksm_write_reg32(vcpu, STACK_REG_CX, tsc_aux);
 	vcpu_advance_rip(vcpu);
 
 	VCPU_TRACER_END();
@@ -2282,8 +2282,8 @@ static bool vcpu_handle_xsetbv(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 
-	u32 ext = ksm_read_reg32(vcpu, REG_CX);
-	u64 val = ksm_combine_reg64(vcpu, REG_AX, REG_DX);
+	u32 ext = ksm_read_reg32(vcpu, STACK_REG_CX);
+	u64 val = ksm_combine_reg64(vcpu, STACK_REG_AX, STACK_REG_DX);
 	_xsetbv(ext, val);
 	vcpu_advance_rip(vcpu);
 
@@ -2421,7 +2421,7 @@ static inline bool nested_can_handle_io(const struct nested_vcpu *nested)
 static inline bool nested_can_handle_msr(const struct nested_vcpu *nested, bool write)
 {
 	struct vcpu *vcpu = container_of(nested, struct vcpu, nested_vcpu);
-	u32 msr = ksm_read_reg32(vcpu, REG_CX);
+	u32 msr = ksm_read_reg32(vcpu, STACK_REG_CX);
 	u64 gpa = __nested_vmcs_read(nested->vmcs, MSR_BITMAP);
 	u64 hpa;
 	u8 *bitmap;
@@ -2646,7 +2646,7 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 	[EXIT_REASON_PCOMMIT] = vcpu_nop
 };
 
-static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *regs)
+static inline void vcpu_dump_state(uintptr_t *stack)
 {
 	KSM_DEBUG("%p: ax=0x%016llX   cx=0x%016llX  dx=0x%016llX\n"
 		  "    bx=0x%016llX   sp=0x%016llX  bp=0x%016llX\n"
@@ -2657,14 +2657,14 @@ static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *r
 		  "    cs=0x%02X      ds=0x%02X     es=0x%02X\n"
 		  "    fs=0x%016llX   gs=0x%016llX  kgs=0x%016llX\n"
 		  "    cr0=0x%016llX  cr3=0x%016llX cr4=0x%016llX\n"
-		  "	dr0=0x%016llX  dr1=0x%016llX dr2=0x%016llX\n"
-		  "	dr3=0x%016llX  dr6=0x%016llX dr7=0x%016llX\n",
-		  vcpu, regs->gp[REG_AX], regs->gp[REG_CX], regs->gp[REG_DX],
-		  regs->gp[REG_BX], vmcs_read(GUEST_RSP), regs->gp[REG_BP],
-		  regs->gp[REG_SI], regs->gp[REG_DI], regs->gp[REG_R8],
-		  regs->gp[REG_R9], regs->gp[REG_R10], regs->gp[REG_R11],
-		  regs->gp[REG_R12], regs->gp[REG_R13], regs->gp[REG_R14],
-		  regs->gp[REG_R15], vmcs_read(GUEST_RIP), (u32)regs->eflags,
+		  "    dr0=0x%016llX  dr1=0x%016llX dr2=0x%016llX\n"
+		  "    dr3=0x%016llX  dr6=0x%016llX dr7=0x%016llX\n",
+		  stack[STACK_VCPU], stack[STACK_REG_AX], stack[STACK_REG_CX], stack[STACK_REG_DX],
+		  stack[STACK_REG_BX], vmcs_read(GUEST_RSP), stack[STACK_REG_BP],
+		  stack[STACK_REG_SI], stack[STACK_REG_DI], stack[STACK_REG_R8],
+		  stack[STACK_REG_R9], stack[STACK_REG_R10], stack[STACK_REG_R11],
+		  stack[STACK_REG_R12], stack[STACK_REG_R13], stack[STACK_REG_R14],
+		  stack[STACK_REG_R15], vmcs_read(GUEST_RIP), (u32)stack[STACK_EFL_VCPU],
 		  vmcs_read(GUEST_CS_SELECTOR), vmcs_read(GUEST_DS_SELECTOR),
 		  vmcs_read(GUEST_ES_SELECTOR), vmcs_read(GUEST_FS_BASE),
 		  vmcs_read(GUEST_GS_BASE), __readmsr(MSR_IA32_KERNEL_GS_BASE),
@@ -2676,12 +2676,12 @@ static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *r
 bool vcpu_handle_exit(uintptr_t *stack)
 {
 	/* Only called from assembly (__vmx_entrypoint)  */
-	struct vcpu *vcpu = (struct vcpu *)stack[REG_MAX];
+	struct vcpu *vcpu = (struct vcpu *)stack[STACK_EFL_VCPU];
 	struct pending_irq *irq = &vcpu->irq;
 	bool ret = true;
 
-	vcpu->gp = stack;
-	vcpu->gp[REG_SP] = vmcs_read(GUEST_RSP);
+	vcpu->hsp = stack;
+	vcpu->hsp[STACK_REG_SP] = vmcs_read(GUEST_RSP);
 	vcpu->eflags = vmcs_read(GUEST_RFLAGS);
 	vcpu->ip = vmcs_read(GUEST_RIP);
 
@@ -2750,7 +2750,7 @@ do_pending_irq:
 	return ret;
 }
 
-void vcpu_handle_fail(struct regs *regs)
+void vcpu_handle_fail(uintptr_t *stack)
 {
 	/*
 	 * Handle failure due to either:
@@ -2759,12 +2759,12 @@ void vcpu_handle_fail(struct regs *regs)
 	 *
 	 * Only called from assembly.
 	 */
-	struct vcpu *vcpu = (struct vcpu *)regs->gp[REG_MAX];
+	struct vcpu *vcpu = (struct vcpu *)stack[STACK_VCPU];
 	u32 err = 0;
-	if (regs->eflags & X86_EFLAGS_ZF)
+	if (stack[STACK_EFL_VCPU] & X86_EFLAGS_ZF)
 		err = vmcs_read32(VM_INSTRUCTION_ERROR);
 
-	vcpu_dump_state(vcpu, regs);
+	vcpu_dump_state(stack);
 	dbgbreak();
 	KSM_PANIC(KSM_PANIC_CODE, err, vcpu->curr_handler, vcpu->prev_handler);
 }
