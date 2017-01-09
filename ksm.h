@@ -390,6 +390,8 @@ struct vcpu {
 	struct gdtr idt;
 	/* Shadow entires we know about so we can restore them appropriately.  */
 	struct kidt_entry64 shadow_idt[256];
+	u16 curr_handler;
+	u16 prev_handler;
 #ifdef PMEM_SANDBOX
 	/* EPTP before switch to per-task eptp.  */
 	u16 eptp_before;

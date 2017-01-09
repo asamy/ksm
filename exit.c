@@ -29,11 +29,6 @@
 
 #include "ksm.h"
 
-static u16 curr_handler = 0;
-#ifdef DBG
-static u16 prev_handler = 0;
-#endif
-
 #ifdef NESTED_VMX
 /* FIXME:  Support these!  */
 static const u32 nested_unsupported_primary = CPU_BASED_MOV_DR_EXITING;
@@ -324,7 +319,7 @@ static bool vcpu_nop(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
 	KSM_DEBUG_RAW("you need to handle the corresponding VM-exit for the handler you set.\n");
-	KSM_PANIC(KSM_PANIC_CODE, VCPU_BUG_UNHANDLED, curr_handler, prev_handler);
+	KSM_PANIC(KSM_PANIC_CODE, VCPU_BUG_UNHANDLED, vcpu->curr_handler, vcpu->prev_handler);
 	return false;
 }
 
@@ -354,7 +349,7 @@ static bool vcpu_handle_triplefault(struct vcpu *vcpu)
 {
 	/* A triple fault occured during handling of a double fault in guest, bug check.  */
 	VCPU_TRACER_START();
-	KSM_PANIC(KSM_PANIC_CODE, VCPU_TRIPLEFAULT, curr_handler, prev_handler);
+	KSM_PANIC(KSM_PANIC_CODE, VCPU_TRIPLEFAULT, vcpu->curr_handler, vcpu->prev_handler);
 	VCPU_TRACER_END();
 	return false;
 }
@@ -2028,7 +2023,7 @@ static bool vcpu_handle_wrmsr(struct vcpu *vcpu)
 static bool vcpu_handle_invalid_state(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
-	KSM_PANIC(KSM_PANIC_GUEST_STATE, vcpu->ip, vcpu->eflags, prev_handler);
+	KSM_PANIC(KSM_PANIC_GUEST_STATE, vcpu->ip, vcpu->eflags, vcpu->prev_handler);
 	VCPU_TRACER_END();
 	return false;
 }
@@ -2059,6 +2054,7 @@ static bool vcpu_handle_apic_access(struct vcpu *vcpu)
 
 	KSM_DEBUG("!!! APIC access using offset 0x%04X and type 0x%X\n",
 		   offset, type);
+	dbgbreak();
 	return true;
 }
 
@@ -2068,6 +2064,7 @@ static bool vcpu_handle_eoi_induced(struct vcpu *vcpu)
 	u16 vector = exit & 0xFFF;
 
 	KSM_DEBUG("!!! EOI induced, vector: 0x%04X\n", vector);
+	dbgbreak();
 	return true;
 }
 
@@ -2234,9 +2231,9 @@ static bool vcpu_handle_ept_violation(struct vcpu *vcpu)
 #endif
 
 		KSM_PANIC(EPT_BUGCHECK_CODE,
-			      EPT_UNHANDLED_VIOLATION,
-			      vcpu->ip,
-			      vmcs_read64(GUEST_PHYSICAL_ADDRESS));
+			  EPT_UNHANDLED_VIOLATION,
+			  vcpu->ip,
+			  vmcs_read64(GUEST_PHYSICAL_ADDRESS));
 	}
 
 	VCPU_TRACER_END();
@@ -2300,6 +2297,7 @@ static bool vcpu_handle_apic_write(struct vcpu *vcpu)
 	u16 offset = exit & 0xFF0;
 
 	KSM_DEBUG("!!! APIC write at offset 0x%04X\n", offset);
+	dbgbreak();
 	return true;
 }
 
@@ -2651,28 +2649,28 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 static inline void vcpu_dump_state(const struct vcpu *vcpu, const struct regs *regs)
 {
 	KSM_DEBUG("%p: ax=0x%016llX   cx=0x%016llX  dx=0x%016llX\n"
-		   "    bx=0x%016llX   sp=0x%016llX  bp=0x%016llX\n"
-		   "    si=0x%016llX   di=0x%016llX  r08=0x%016llX\n"
-		   "    r09=0x%016llX  r10=0x%016llX r11=0x%016llX\n"
-		   "    r12=0x%016llX  r13=0x%016llX r14=0x%016llX\n"
-		   "    r15=0x%016llX  rip=0x%016llX efl=0x%08lX"
-		   "    cs=0x%02X      ds=0x%02X     es=0x%02X\n"
-		   "    fs=0x%016llX   gs=0x%016llX  kgs=0x%016llX\n"
-		   "    cr0=0x%016llX  cr3=0x%016llX cr4=0x%016llX\n"
-		   "	dr0=0x%016llX  dr1=0x%016llX dr2=0x%016llX\n"
-		   "	dr3=0x%016llX  dr6=0x%016llX dr7=0x%016llX\n",
-		   vcpu, regs->gp[REG_AX], regs->gp[REG_CX], regs->gp[REG_DX],
-		   regs->gp[REG_BX], vmcs_read(GUEST_RSP), regs->gp[REG_BP],
-		   regs->gp[REG_SI], regs->gp[REG_DI], regs->gp[REG_R8],
-		   regs->gp[REG_R9], regs->gp[REG_R10], regs->gp[REG_R11],
-		   regs->gp[REG_R12], regs->gp[REG_R13], regs->gp[REG_R14],
-		   regs->gp[REG_R15], vmcs_read(GUEST_RIP), (u32)regs->eflags,
-		   vmcs_read(GUEST_CS_SELECTOR), vmcs_read(GUEST_DS_SELECTOR),
-		   vmcs_read(GUEST_ES_SELECTOR), vmcs_read(GUEST_FS_BASE),
-		   vmcs_read(GUEST_GS_BASE), __readmsr(MSR_IA32_KERNEL_GS_BASE),
-		   vmcs_read(GUEST_CR0), vmcs_read(GUEST_CR3), vmcs_read(GUEST_CR4),
-		   __readdr(0), __readdr(1), __readdr(2),
-		   __readdr(3), __readdr(6), vmcs_read(GUEST_DR7));
+		  "    bx=0x%016llX   sp=0x%016llX  bp=0x%016llX\n"
+		  "    si=0x%016llX   di=0x%016llX  r08=0x%016llX\n"
+		  "    r09=0x%016llX  r10=0x%016llX r11=0x%016llX\n"
+		  "    r12=0x%016llX  r13=0x%016llX r14=0x%016llX\n"
+		  "    r15=0x%016llX  rip=0x%016llX efl=0x%08lX"
+		  "    cs=0x%02X      ds=0x%02X     es=0x%02X\n"
+		  "    fs=0x%016llX   gs=0x%016llX  kgs=0x%016llX\n"
+		  "    cr0=0x%016llX  cr3=0x%016llX cr4=0x%016llX\n"
+		  "	dr0=0x%016llX  dr1=0x%016llX dr2=0x%016llX\n"
+		  "	dr3=0x%016llX  dr6=0x%016llX dr7=0x%016llX\n",
+		  vcpu, regs->gp[REG_AX], regs->gp[REG_CX], regs->gp[REG_DX],
+		  regs->gp[REG_BX], vmcs_read(GUEST_RSP), regs->gp[REG_BP],
+		  regs->gp[REG_SI], regs->gp[REG_DI], regs->gp[REG_R8],
+		  regs->gp[REG_R9], regs->gp[REG_R10], regs->gp[REG_R11],
+		  regs->gp[REG_R12], regs->gp[REG_R13], regs->gp[REG_R14],
+		  regs->gp[REG_R15], vmcs_read(GUEST_RIP), (u32)regs->eflags,
+		  vmcs_read(GUEST_CS_SELECTOR), vmcs_read(GUEST_DS_SELECTOR),
+		  vmcs_read(GUEST_ES_SELECTOR), vmcs_read(GUEST_FS_BASE),
+		  vmcs_read(GUEST_GS_BASE), __readmsr(MSR_IA32_KERNEL_GS_BASE),
+		  vmcs_read(GUEST_CR0), vmcs_read(GUEST_CR3), vmcs_read(GUEST_CR4),
+		  __readdr(0), __readdr(1), __readdr(2),
+		  __readdr(3), __readdr(6), vmcs_read(GUEST_DR7));
 }
 
 bool vcpu_handle_exit(uintptr_t *stack)
@@ -2689,9 +2687,9 @@ bool vcpu_handle_exit(uintptr_t *stack)
 
 	u32 exit_reason = vmcs_read32(VM_EXIT_REASON);
 #ifdef DBG
-	prev_handler = curr_handler;
+	vcpu->prev_handler = vcpu->curr_handler;
 #endif
-	curr_handler = (u16)exit_reason;
+	vcpu->curr_handler = (u16)exit_reason;
 
 #ifdef NESTED_VMX
 	/*
@@ -2702,26 +2700,26 @@ bool vcpu_handle_exit(uintptr_t *stack)
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	if (nested_entered(nested) && nested_can_handle(nested, exit_reason) &&
 	    vcpu_enter_nested_hypervisor(vcpu, exit_reason)) {
-		KSM_DEBUG("Nested is to handle violation: %d\n", curr_handler);
+		KSM_DEBUG("Nested is to handle event: %d\n", vcpu->curr_handler);
 		goto do_pending_irq;
 	}
 #endif
 
 	uintptr_t eflags = vcpu->eflags;
-	if (curr_handler < sizeof(g_handlers) / sizeof(g_handlers[0]) &&
-	    (ret = g_handlers[curr_handler](vcpu)) &&
+	if (vcpu->curr_handler < sizeof(g_handlers) / sizeof(g_handlers[0]) &&
+	    (ret = g_handlers[vcpu->curr_handler](vcpu)) &&
 	    (vcpu->eflags ^ eflags) != 0)
 		vmcs_write(GUEST_RFLAGS, vcpu->eflags);
 
 	if (exit_reason & VMX_EXIT_REASONS_FAILED_VMENTRY &&
-	    curr_handler != EXIT_REASON_INVALID_STATE) {
+	    vcpu->curr_handler != EXIT_REASON_INVALID_STATE) {
 		/*
 		 * Mostly comes via invalid guest state, and is due to a cruical
 		 * error that happened past VM-exit.
 		 */
 		dbgbreak();
 		KSM_PANIC(KSM_PANIC_FAILED_VMENTRY, vcpu->ip,
-			      vmcs_read(EXIT_QUALIFICATION), curr_handler);
+			  vmcs_read(EXIT_QUALIFICATION), vcpu->curr_handler);
 	}
 
 	if (!ret) {
@@ -2761,11 +2759,12 @@ void vcpu_handle_fail(struct regs *regs)
 	 *
 	 * Only called from assembly.
 	 */
+	struct vcpu *vcpu = (struct vcpu *)regs->gp[REG_MAX];
 	u32 err = 0;
 	if (regs->eflags & X86_EFLAGS_ZF)
 		err = vmcs_read32(VM_INSTRUCTION_ERROR);
 
-	vcpu_dump_state(ksm_current_cpu(), regs);
+	vcpu_dump_state(vcpu, regs);
 	dbgbreak();
-	KSM_PANIC(KSM_PANIC_CODE, err, curr_handler, prev_handler);
+	KSM_PANIC(KSM_PANIC_CODE, err, vcpu->curr_handler, vcpu->prev_handler);
 }

@@ -113,16 +113,16 @@ compiler, etc lie.
 The solution under `ksm/` directory is a VS 2015 solution.
 
 To build it under MSVC, you'll need the following:
-- Visual Studio Community 2015)
+- Visual Studio Community 2015
   - https://www.visualstudio.com/downloads/
-- Windows Software Development Kit (SDK) [You can install this during the VS install]
+- Windows Software Development Kit (SDK) [**You can install this during the VS install**]
   - https://developer.microsoft.com/en-us/windows/downloads/windows-10-sdk
 - Windows Driver Kit (WDK)
   - https://developer.microsoft.com/en-us/windows/hardware/windows-driver-kit
 
 **NOTE**:  You need to adjust the Windows version you are targetting via the
-project properities, right click the Project (`ksm`) then go to Driver Settings
--> General -> Target OS Version.
+project properities when inside Visual Studio, right click the Project (`ksm`)
+then go to Driver Settings -> General -> Target OS Version.
 
 Then you can build it via either the VS interface (right click the project then build),
 or the hardway if you prefer, from VS command line, simply cd to where `ksm` is and:
