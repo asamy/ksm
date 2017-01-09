@@ -136,8 +136,8 @@
  * utterly useless...
  */
 #ifdef VCPU_TRACER_LOG
-#define VCPU_TRACER_START()		KSM_DEBUG("%p\n", gc)
-#define VCPU_TRACER_END()		KSM_DEBUG("%p handled\n", gc)
+#define VCPU_TRACER_START()		KSM_DEBUG("%p\n", vcpu)
+#define VCPU_TRACER_END()		KSM_DEBUG("%p handled\n", vcpu)
 #else
 #define VCPU_TRACER_START()
 #define VCPU_TRACER_END()

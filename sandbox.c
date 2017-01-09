@@ -206,11 +206,16 @@ int ksm_sandbox(struct ksm *k, pid_t pid)
 	struct task_struct *tsk;
 
 	if (!tsk_pid)
-		return -EINVAL;
+		return -ESRCH;
 
 	tsk = pid_task(tsk_pid, PIDTYPE_PID);
 	if (!tsk)
-		return -ENOENT;
+		return -EINVAL;		/* can this happen?  */
+
+	/* Ignore anonymous processes  */
+	WARN_ON(!tsk->mm);
+	if (!tsk->mm)
+		return -EFAULT;
 
 	return create_sa_task(k, pid, __pa(tsk->mm->pgd) & PAGE_PA_MASK);
 #else
