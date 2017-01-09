@@ -79,10 +79,8 @@ int main(int ac, char *av[])
 	u32 cmd;
 
 	dev = open_device();
-	if (dev < 0) {
-		perror("open");
-		return -1;
-	}
+	if (dev < 0)
+		goto err;
 
 	ret = do_ioctl(dev, KSM_IOCTL_SUBVERT, &dev);
 	if (ret < 0)
@@ -115,5 +113,7 @@ int main(int ac, char *av[])
 
 out:
 	close_device(dev);
+err:
+	printf("ret: %d\n", ret);
 	return ret;
 }

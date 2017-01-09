@@ -35,6 +35,10 @@
 #ifdef __linux__
 extern struct resource iomem_resource;
 
+/*
+ * find_vm_area() isn't exported, so
+ * we will need to track remappings on our own...
+ */
 struct remap_region {
 	struct vm_struct *area;
 	struct list_head link;
@@ -58,12 +62,6 @@ void *mm_remap(u64 phys, size_t size)
 	 * Since we can't use ioremap() for physical RAM, we are just going to
 	 * allocate some memory then re-map it using the VM API.  Just like
 	 * ioremap()...
-	 *
-	 * Note that we can't just allocate from other APIs and just use
-	 * ioremap_page_range() here, this will generate #UD because the VA may
-	 * be already mapped.
-	 *
-	 * This is guaranteed to allocate via swappers PGD (init_mm).
 	 */
 	unsigned long vaddr;
 	unsigned long last;

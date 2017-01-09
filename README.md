@@ -28,7 +28,7 @@ is not recommended.
 - EPTP switching VMFUNC (if not available natively, it will be emulated using a VMCALL)
 - APIC virtualization (Experimental, do not use)
 - VMX Nesting (Experimental, do not use)
-- Userspace physical memory sandboxer (Experimental, do not use)
+- Userspace physical memory sandboxer
 
 ## Requirements
 

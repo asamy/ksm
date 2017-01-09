@@ -602,7 +602,7 @@ typedef HANDLE pid_t;
 
 extern int ksm_sandbox_init(struct ksm *k);
 extern int ksm_sandbox_exit(struct ksm *k);
-extern bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
+extern bool ksm_sandbox_handle_ept(struct vcpu *vcpu, int dpl, u64 gpa,
 				   u64 gva, u64 cr3, u16 curr, u8 ar, u8 ac,
 				   bool *invd, u16 *eptp_switch);
 extern void ksm_sandbox_handle_cr3(struct vcpu *vcpu, u64 cr3);

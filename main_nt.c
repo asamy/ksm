@@ -52,6 +52,9 @@ uintptr_t ppe_base = 0xfffff6fb7da00000ull;
 uintptr_t pde_base = 0xfffff6fb40000000ull;
 uintptr_t pte_base = 0xfffff68000000000ull;
 
+/* Master process cr3  */
+static uintptr_t caller_cr3 = 0;
+
 static inline NTSTATUS check_dynamic_pgtables(void)
 {
 	/* On Windows 10 build 14316+ Page table base addresses are not static.  */
@@ -122,9 +125,15 @@ static NTSTATUS DriverDispatch(PDEVICE_OBJECT deviceObject, PIRP irp)
 	u32 ioctl;
 
 	switch (stack->MajorFunction) {
-	case IRP_MJ_DEVICE_CONTROL:	
+	case IRP_MJ_DEVICE_CONTROL:
 		ioctl = stack->Parameters.DeviceIoControl.IoControlCode;
 		KSM_DEBUG("%s: IOCTL: 0x%08X\n", proc_name(), ioctl);
+
+		if (caller_cr3 != 0 && caller_cr3 != __readcr3()) {
+			KSM_DEBUG("%s: not processing ioctl\n", proc_name());
+			status = STATUS_ABANDONED;
+			break;
+		}
 
 		switch (ioctl) {
 #ifdef PMEM_SANDBOX
@@ -136,10 +145,13 @@ static NTSTATUS DriverDispatch(PDEVICE_OBJECT deviceObject, PIRP irp)
 			break;
 #endif
 		case KSM_IOCTL_SUBVERT:
+			caller_cr3 = __readcr3();
 			status = ksm_subvert(ksm);
 			break;
 		case KSM_IOCTL_UNSUBVERT:
 			status = ksm_unsubvert(ksm);
+			if (NT_SUCCESS(status))
+				caller_cr3 = 0;
 			break;
 		default:
 			status = STATUS_NOT_SUPPORTED;
@@ -180,8 +192,8 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	PsLoadedModuleList = entry->InLoadOrderLinks.Flink;
 
 	KSM_DEBUG("We're mapped at %p (size: %d bytes (%d KB), on %d pages)\n",
-		   entry->DllBase, entry->SizeOfImage,
-		   entry->SizeOfImage / 1024, entry->SizeOfImage / PAGE_SIZE);
+		  entry->DllBase, entry->SizeOfImage,
+		  entry->SizeOfImage / 1024, entry->SizeOfImage / PAGE_SIZE);
 	g_driver_base = (uintptr_t)entry->DllBase;
 	g_driver_size = entry->SizeOfImage;
 

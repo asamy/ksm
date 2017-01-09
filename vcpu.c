@@ -334,7 +334,7 @@ static bool do_ept_violation(struct vcpu *vcpu, u64 rip, int dpl, u64 gpa,
 #endif
 
 #ifdef PMEM_SANDBOX
-	if (ksm_sandbox_handle_ept(&vcpu->ept, dpl, gpa,
+	if (ksm_sandbox_handle_ept(vcpu, dpl, gpa,
 				   gva, cr3, eptp, ar, ac,
 				   invd, eptp_switch)) {
 		if (*eptp_switch != eptp)

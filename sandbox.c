@@ -311,20 +311,20 @@ static struct sa_task *__find_sa_task_eptp(struct ksm *k, u16 eptp)
 	return NULL;
 }
 
-bool ksm_sandbox_handle_ept(struct ept *ept, int dpl, u64 gpa,
+bool ksm_sandbox_handle_ept(struct vcpu *vcpu, int dpl, u64 gpa,
 			    u64 gva, u64 cr3, u16 curr, u8 ar, u8 ac,
 			    bool *invd, u16 *eptp_switch)
 {
 	struct sa_task *task;
 	struct cow_page *page;
-	struct vcpu *vcpu;
+	struct ept *ept;
 	struct ksm *k;
 	u64 *epte;
 	u16 eptp;
 	pid_t pid;
 	int i;
 
-	vcpu = container_of(ept, struct vcpu, ept);
+	ept = &vcpu->ept;
 	k = vcpu_to_ksm(vcpu);
 
 	pid = proc_id();
