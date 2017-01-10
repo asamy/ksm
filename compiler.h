@@ -20,7 +20,7 @@
 #define dbgbreak()	(void)0
 #endif
 
-#define break_if(cond)	do {	\
+#define BREAK_ON(cond)	do {	\
 	if (!!(cond))		\
 		dbgbreak();	\
 } while (0)

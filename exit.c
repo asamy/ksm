@@ -664,26 +664,26 @@ static inline u32 nested_build_ar_bytes(u32 type, u32 s, u32 dpl, u32 present,
 
 static inline void nested_save(uintptr_t vmcs, u32 field)
 {
-	break_if(!__nested_vmcs_write(vmcs, field, vmcs_read(field)));
+	BREAK_ON(!__nested_vmcs_write(vmcs, field, vmcs_read(field)));
 }
 
 static inline void nested_save16(uintptr_t vmcs, u32 field)
 {
-	break_if(!__nested_vmcs_write(vmcs, field, vmcs_read16(field)));
+	BREAK_ON(!__nested_vmcs_write(vmcs, field, vmcs_read16(field)));
 }
 
 static inline void nested_save32(uintptr_t vmcs, u32 field)
 {
-	break_if(!__nested_vmcs_write(vmcs, field, vmcs_read32(field)));
+	BREAK_ON(!__nested_vmcs_write(vmcs, field, vmcs_read32(field)));
 }
 
 static inline void nested_save64(uintptr_t vmcs, u32 field)
 {
 #if 0
-	break_if(!__nested_vmcs_write(vmcs, field, vmcs_read32(field)) ||
+	BREAK_ON(!__nested_vmcs_write(vmcs, field, vmcs_read32(field)) ||
 		 !__nested_vmcs_write(vmcs, field + 1, vmcs_read32(field + 1)));
 #else
-	break_if(!__nested_vmcs_write(vmcs, field, vmcs_read(field)));
+	BREAK_ON(!__nested_vmcs_write(vmcs, field, vmcs_read(field)));
 #endif
 }
 
@@ -976,28 +976,28 @@ static inline bool nested_can_exec_vmx(struct vcpu *vcpu)
 static inline u8 nested_copy(uintptr_t vmcs, u32 field)
 {
 	u8 err = vmcs_write(field, __nested_vmcs_read(vmcs, field));
-	break_if(err);
+	BREAK_ON(err);
 	return err;
 }
 
 static inline u8 nested_copy16(uintptr_t vmcs, u32 field)
 {
 	u8 err = vmcs_write16(field, __nested_vmcs_read16(vmcs, field));
-	break_if(err);
+	BREAK_ON(err);
 	return err;
 }
 
 static inline u8 nested_copy32(uintptr_t vmcs, u32 field)
 {
 	u8 err = vmcs_write32(field, __nested_vmcs_read32(vmcs, field));
-	break_if(err);
+	BREAK_ON(err);
 	return err;
 }
 
 static inline u8 nested_copy64(uintptr_t vmcs, u32 field)
 {
 	u8 err = vmcs_write64(field, __nested_vmcs_read64(vmcs, field));
-	break_if(err);
+	BREAK_ON(err);
 	return err;
 }
 
