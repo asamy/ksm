@@ -6,8 +6,7 @@ compiletime, it's quite a new feature but it'll be extended to be more of a
 generic sandboxer (fs, etc.) later on.
 
 Currently, KSM runs on Windows and Linux kernels natively, and aims to support
-macOS by 2017, if you want to port KSM see porting guidelines down below, see
-Documentation/SPEC.md for more information.
+macOS by 2017, if you want to port KSM see Documentation/SPEC.md for more information.
 
 Unlike other hypervisors (e.g. KVM, XEN, etc.), KSM's purpose is not to run
 other Operating Systems, instead, KSM can be used as an extra layer of
@@ -26,9 +25,9 @@ is not recommended.
 - IDT Shadowing
 - EPT violation #VE (enabled only when support is present)
 - EPTP switching VMFUNC (if not available natively, it will be emulated using a VMCALL)
+- Userspace physical memory sandboxer
 - APIC virtualization (Experimental, do not use)
 - VMX Nesting (Experimental, do not use)
-- Userspace physical memory sandboxer
 
 ## Requirements
 
