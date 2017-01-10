@@ -267,7 +267,7 @@ out_ksm:
 int __ksm_exit_cpu(struct ksm *k)
 {
 	int ret = ERR_NOTH;
-	struct vcpu *vcpu = &k->vcpu_list[cpu_nr()];
+	struct vcpu *vcpu = ksm_cpu(k);
 	if (!vcpu->subverted)
 		return ret;
 

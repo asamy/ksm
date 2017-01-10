@@ -160,7 +160,7 @@ static inline void print_flush(void)
 	printbuf = buf + next_off + ((next & (PRINT_BUF_BUFFERS - 1)) << PRINT_BUF_SHIFT);
 	max = next_use - head_use;
 
-	strncpy(on_stack, printbuf, sizeof(on_stack));
+	strncpy(on_stack, printbuf, PRINT_BUF_ATONCE);
 	on_stack[PRINT_BUF_ATONCE] = '\0';
 	len = strlen(on_stack);
 	next_off += len;

@@ -422,7 +422,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 	info->except_mask = 0;
 
 	eptp_switch = eptp;
-	if (!do_ept_violation(vcpu, vcpu->ip, cs & 3, gpa,
+	if (!do_ept_violation(vcpu, rip, cs & 3, gpa,
 			      gva, __readcr3(), eptp, ar, ac,
 			      &invd, &eptp_switch))
 		KSM_PANIC(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, rip, gpa);

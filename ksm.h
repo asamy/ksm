@@ -86,9 +86,9 @@
 #define KSM_PANIC_UNEXPECTED	0xEEEEEEE9
 #ifdef DBG
 #ifndef __linux__
-#define KSM_PANIC(a, b, c, d)	dbgbreak(); KeBugCheckEx(MANUALLY_INITIATED_CRASH, a, b, c, d)
+#define KSM_PANIC(a, b, c, d)	KeBugCheckEx(MANUALLY_INITIATED_CRASH, a, b, c, d)
 #else
-#define KSM_PANIC(a, b, c, d)	dbgbreak(); panic("bugcheck 0x%016X 0x%016X 0x%016X 0x%016X\n", a, b, c, d)
+#define KSM_PANIC(a, b, c, d)panic("bugcheck 0x%016X 0x%016X 0x%016X 0x%016X\n", a, b, c, d)
 #endif
 #else
 #define KSM_PANIC(a, b, c, d)	(void)0
@@ -661,7 +661,7 @@ static inline void ept_set_ar(struct ept *ept, int eptp, u64 gpa, int ar)
 static inline bool ept_gpa_to_hpa(struct ept *ept, int eptp, u64 gpa, u64 *hpa)
 {
 	u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
-	if (!(*epte & EPT_AR_MASK))
+	if (!epte || !(*epte & EPT_AR_MASK))
 		return false;
 
 	*hpa = PAGE_PA(*epte);

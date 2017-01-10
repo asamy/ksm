@@ -365,7 +365,7 @@ static inline void mm_free_page(void *v)
 
 static inline void *mm_alloc_pool(size_t size)
 {
-	void *v = ExAllocatePool(NonPagedPool, size);
+	void *v = ExAllocatePoolWithTag(NonPagedPool, size, 0);
 	if (v)
 		memset(v, 0, size);
 
