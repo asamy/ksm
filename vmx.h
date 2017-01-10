@@ -503,9 +503,9 @@ static inline u8 __vmx_vmread(size_t field, size_t *value)
 {
 	size_t tmp;
 	u8 error;
-	__asm __volatile("vmread %[Field], %[Value]; setna %[Err]"
-			 : [Value] "=r" (tmp), [Err] "=qm" (error)
-			 : [Field] "r" (field)
+	__asm __volatile("vmread %2, %0; setna %1"
+			 : "=r" (tmp), "=qm" (error)
+			 : "r" (field)
 			 : "cc");
 	*value = tmp;
 	return error;
@@ -514,9 +514,9 @@ static inline u8 __vmx_vmread(size_t field, size_t *value)
 static inline u8 __vmx_vmwrite(size_t field, size_t value)
 {
 	u8 error;
-	__asm __volatile("vmwrite %[Value], %[Field]; setna %[Err]"
-			 : [Err] "=qm" (error)
-			 : [Value] "r" (value), [Field] "r" (field)
+	__asm __volatile("vmwrite %1, %2; setna %0"
+			 : "=qm" (error)
+			 : "r" (value), "r" (field)
 			 : "cc");
 	return error;
 }
