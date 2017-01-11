@@ -2,7 +2,8 @@
 #include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
-#include <errno.h>
+#include <stdint.h>
+#include <stddef.h>
 #include <ctype.h>
 
 #ifdef _WIN32
@@ -85,10 +86,10 @@ static inline bool getchr(char *o)
 	return false;
 }
 
-static void print_hex_ascii_line(const uint8_t *payload, size_t len, size_t offset)
+static void print_hex_ascii_line(const u8 *payload, size_t len, size_t offset)
 {
 	size_t i, gap;
-	uint8_t ch;
+	u8 ch;
 
 	printf("%05zd   ", offset);
 	/* hex  */
@@ -118,13 +119,13 @@ static void print_hex_ascii_line(const uint8_t *payload, size_t len, size_t offs
 	putchar('\n');
 }
 
-static void print_payload(const uint8_t *payload, size_t len)
+static void print_payload(const u8 *payload, size_t len)
 {
 	size_t len_rem = len;
 	size_t line_width = 16;
 	size_t line_len;
 	size_t offset = 0;
-	const uint8_t *ch = payload;
+	const u8 *ch = payload;
 
 	if (len <= 0)
 		return;
@@ -224,7 +225,7 @@ int main(int ac, char *av[])
 					printf("\tHits: %d\n", w.hits);
 					printf("\tMisses: %d\n", w.miss);
 					printf("Buffer:\n");
-					print_payload((const uint8_t *)w.buf, 0x1000);
+					print_payload((const u8 *)w.buf, 0x1000);
 				}
 				break;
 			default:
