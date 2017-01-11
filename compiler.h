@@ -2,6 +2,9 @@
  * ksm - a really simple and fast x64 hypervisor
  * Copyright (C) 2016, 2017 Ahmed Samy <asamy@protonmail.com>
  *
+ * Define UM before including this file to eliminate unneeded 
+ * definitions.
+ *
  * Public domain.
 */
 #ifndef __COMPILER_H
@@ -90,7 +93,7 @@ typedef signed long long intptr_t;
 #ifndef UM
 #include "list.h"
 
-#define spinlock_t		KSPIN_LOCK
+typedef KSPIN_LOCK spinlock_t;
 #define spin_lock_init		KeInitializeSpinLock
 #define spin_lock(s) \
 	KLOCK_QUEUE_HANDLE q;	\
@@ -154,21 +157,21 @@ NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(PEPROCESS process);
 #endif
 #define ERR_NOTH 		STATUS_HV_NOT_PRESENT
 #define ERR_CPUID		STATUS_HV_CPUID_FEATURE_VALIDATION_ERROR
-#define ERR_BUSY		STATUS_HV_NOT_ALLOWED_WITH_NESTED_VIRT_ACTIVE
+#define ERR_BUSY		STATUS_DEVICE_BUSY
 #define ERR_FEAT		STATUS_HV_FEATURE_UNAVAILABLE
 #define ERR_UNSUP		STATUS_NOT_SUPPORTED
 #define ERR_DENIED		STATUS_HV_ACCESS_DENIED
 #define ERR_NOMEM		STATUS_NO_MEMORY
 #define ERR_EXCEPT		GetExceptionCode()
 #define ERR_RANGE		STATUS_BUFFER_OVERFLOW
+#define ERR_INVAL		STATUS_INVALID_PARAMETER_1
+#define ERR_EXIST		STATUS_ADDRESS_ALREADY_EXISTS
 #else
 /* Linux definitions  */
 #ifndef __ASSEMBLY__
 #include <stdbool.h>
 #endif
 #include <asm-generic/errno-base.h>
-
-#define list_node		list_head
 
 #define __align(alignment)	__attribute__((__aligned__(alignment)))
 #define KERNEL_STACK_SIZE	(6 << PAGE_SHIFT)
@@ -180,8 +183,10 @@ NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(PEPROCESS process);
 #define ERR_UNSUP		-EOPNOTSUPP
 #define ERR_DENIED		-EACCES
 #define ERR_NOMEM		-ENOMEM
-#define ERR_EXCEPT		-EINVAL
+#define ERR_EXCEPT		-EACCES
 #define ERR_RANGE		-ERANGE
+#define ERR_INVAL		-EINVAL
+#define ERR_EXIST		-EEXIST
 #endif
 
 #ifndef __func__

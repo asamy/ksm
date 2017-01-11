@@ -4,6 +4,7 @@
 
 You can define one or more of the following:
 
+- `INTROSPECT_ENGINE` - Enables a tiny physical memory introspection engine
 - `PMEM_SANDBOX` - Enables userspace physical memory virtualizer
 - `EPAGE_HOOK` - Enables executable page shadow hook
 - `ENABLE_PML` - Enables Page Modification Log if supported.

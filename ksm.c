@@ -61,7 +61,7 @@ static inline int init_msr_bitmap(struct ksm *k)
 	 *	set_bit(MSR_STAR - 0xC0000000, write_hi);
 	 *
 	 * We currently opt in for MSRs that are VT-x related, so that we can
-	 * emulate nesting.
+	 * emulate VT-x.
 	 */
 	unsigned long *read_lo = (unsigned long *)k->msr_bitmap;
 	set_bit(MSR_IA32_FEATURE_CONTROL, read_lo);
@@ -188,6 +188,7 @@ int ksm_init(struct ksm **kp)
 	struct ksm *k;
 	int info[4];
 	int ret = ERR_NOMEM;
+	int i;
 	u64 vpid;
 	u64 req = KSM_EPT_REQUIRED_EPT
 #ifdef ENABLE_PML
@@ -213,6 +214,9 @@ int ksm_init(struct ksm **kp)
 	if (!k)
 		return ret;
 
+	k->vpid_ept = vpid;
+	KSM_DEBUG("EPT/VPID available features: 0x%016X\n", vpid);
+
 #ifdef EPAGE_HOOK
 	htable_init(&k->ht, rehash, NULL);
 #endif
@@ -220,7 +224,10 @@ int ksm_init(struct ksm **kp)
 	ret = mm_cache_ram_ranges(&k->ranges[0], &k->range_count);
 	if (ret < 0)
 		goto out_ksm;
+
 	KSM_DEBUG("%d physical memory ranges\n", k->range_count);
+	for (i = 0; i < k->range_count; ++i)
+		KSM_DEBUG("Range: %p -> %p\n", k->ranges[i].start, k->ranges[i].end);
 
 #ifdef PMEM_SANDBOX
 	ret = ksm_sandbox_init(k);
@@ -228,9 +235,15 @@ int ksm_init(struct ksm **kp)
 		goto out_ksm;
 #endif
 
-	ret = init_msr_bitmap(k);
+#ifdef INTROSPECT_ENGINE
+	ret = ksm_introspect_init(k);
 	if (ret < 0)
 		goto out_sbox;
+#endif
+
+	ret = init_msr_bitmap(k);
+	if (ret < 0)
+		goto out_intro;
 
 	ret = init_io_bitmaps(k);
 	if (ret < 0)
@@ -251,7 +264,11 @@ out_io:
 	free_io_bitmaps(k);
 out_msr:
 	free_msr_bitmap(k);
+out_intro:
+#ifdef INTROSPECT_ENGINE
+	ksm_introspect_exit(k);
 out_sbox:
+#endif
 #ifdef PMEM_SANDBOX
 	ksm_sandbox_exit(k);
 #endif
@@ -304,15 +321,26 @@ int ksm_free(struct ksm *k)
 {
 	int ret;
 
-	ret = ksm_unsubvert(k);
-	free_msr_bitmap(k);
-	free_io_bitmaps(k);
-#ifdef EPAGE_HOOK
-	htable_clear(&k->ht);
-#endif
+	/* These may need virtualization active...  */
 #ifdef PMEM_SANDBOX
 	ksm_sandbox_exit(k);
 #endif
+#ifdef INTROSPECT_ENGINE
+	ksm_introspect_exit(k);
+#endif
+
+	/* Desubvert all:  */
+	ret = ksm_unsubvert(k);
+
+	/* Free shaved stuff:  */
+	free_msr_bitmap(k);
+	free_io_bitmaps(k);
+
+	/* Clear page hook table  */
+#ifdef EPAGE_HOOK
+	htable_clear(&k->ht);
+#endif
+
 	unregister_cpu_callback();
 	unregister_power_callback();
 	return ret;

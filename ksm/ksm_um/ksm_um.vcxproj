@@ -21,6 +21,9 @@
   <ItemGroup>
     <ClCompile Include="..\..\um\um.c" />
   </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="..\..\um\um.h" />
+  </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{C7188CA8-344E-4BDB-BB33-A8BA5D1A6516}</ProjectGuid>
     <RootNamespace>ksm_um</RootNamespace>

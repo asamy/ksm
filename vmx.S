@@ -68,7 +68,7 @@
 	pushq	%rdi
 	pushq	%rsi
 	pushq	%rbp
-	pushq	$-1
+	subq	$8, %rsp	/* placeholder  */
 	pushq	%rbx
 	pushq	%rdx
 	pushq	%rcx

@@ -53,10 +53,10 @@ static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
 	__invept_all();
 }
 
-static inline u16 epage_select_eptp(struct page_hook_info *phi, u16 cur, u8 ar, u8 ac)
+static inline u16 epage_select_eptp(struct page_hook_info *phi, struct ept_ve_around *ve)
 {
 	/* called from an EPT violation  */
-	if (ac & EPT_ACCESS_RW)
+	if (ve->info->exit & EPT_ACCESS_RW)
 		return EPTP_RWHOOK;
 
 	return EPTP_EXHOOK;
@@ -143,46 +143,6 @@ static DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
  * specific process (if not already), to make sure that the current CR3 is
  * updated.  Also do note that userspace pages tend to be paged out all the
  * time, so the above notes also apply.
- *
- * On windows, this can be something like:
- *
- * \code
- *	HANDLE pid = ...;
- *	PEPROCESS process;
- *	KAPC_STATE apc;
- *	NTSTATUS ret = STATUS_NOT_FOUND;
- *	if (!NT_SUCCESS(PsLookupProcessByProcessId(pid, &process)))
- *		return ret;
- *
- *	KeStackAttachProcess(process, &apc);
- *		ret = ksm_hook_epage(original, redirect);
- *	KeUnStackDeAttachProcess(&apc);
- *	ObfDereferenceObject(process);
- *	return ret;
- * \endcode
- *
- * On Linux:
- *
- * \code
- *	pid_t pid = ...;
- *	struct pid *tsk_pid = find_vpid(pid);
- *	unsigned long cr3 = __readcr3();
- *	int ret = -ENOENT;
- *
- *	if (!tsk_pid);
- *		return ret;
- *
- *	struct task_struct *tsk = pid_task(tsk_pid, PIDTYPE_PID);
- *	if (!tsk)
- *		return ret;
- *
- *	preempt_disable();
- *		__writecr3(__pa(tsk->active_mm->pgd));
- *		ret = ksm_hook_epage(original, redirect);
- *		__writecr3(cr3);
- *	preempt_enable();
- *	return ret;
- * \endcode
  *
  * Do also note the inline-code provided above is not tested, but should work.
  */

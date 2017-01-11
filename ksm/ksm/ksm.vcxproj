@@ -21,8 +21,7 @@
   </PropertyGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.Default.props" />
   <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'" Label="Configuration">
-    <TargetVersion>
-    </TargetVersion>
+    <TargetVersion>Windows7</TargetVersion>
     <UseDebugLibraries>true</UseDebugLibraries>
     <PlatformToolset>WindowsKernelModeDriver10.0</PlatformToolset>
     <ConfigurationType>Driver</ConfigurationType>
@@ -67,7 +66,7 @@
       <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
     </DriverSign>
     <ClCompile>
-      <PreprocessorDefinitions>ENABLE_DBGPRINT;NESTED_VMX;PMEM_SANDBOX;EPAGE_HOOK;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ENABLE_DBGPRINT;NESTED_VMX;PMEM_SANDBOX;EPAGE_HOOK;INTROSPECT_ENGINE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
     <Link>
@@ -95,6 +94,7 @@
     <ClCompile Include="..\..\exit.c" />
     <ClCompile Include="..\..\hotplug.c" />
     <ClCompile Include="..\..\htable.c" />
+    <ClCompile Include="..\..\introspect.c" />
     <ClCompile Include="..\..\ksm.c" />
     <ClCompile Include="..\..\main_nt.c" />
     <ClCompile Include="..\..\mm.c" />
@@ -113,7 +113,6 @@
     <ClInclude Include="..\..\mm.h" />
     <ClInclude Include="..\..\pe.h" />
     <ClInclude Include="..\..\percpu.h" />
-    <ClInclude Include="..\..\um\um.h" />
     <ClInclude Include="..\..\vmx.h" />
     <ClInclude Include="..\..\x86.h" />
   </ItemGroup>

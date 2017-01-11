@@ -64,7 +64,8 @@ UM_SRC = um/um.c
 UM_BIN = a.out
 UM_LIB = -lntdll
 
-SRC = exit.c htable.c hotplug.c ksm.c sandbox.c mm.c main_nt.c page.c print.c resubv.c vcpu.c
+SRC = exit.c htable.c hotplug.c introspect.c ksm.c sandbox.c mm.c \
+      main_nt.c page.c print.c resubv.c vcpu.c
 ASM = vmx.S
 
 BIN_DIR ?= bin

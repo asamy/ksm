@@ -119,15 +119,18 @@ static void DriverUnload(PDRIVER_OBJECT driverObject)
 static NTSTATUS DriverDispatch(PDEVICE_OBJECT deviceObject, PIRP irp)
 {
 	NTSTATUS status = STATUS_SUCCESS;
-	PIO_STACK_LOCATION stack = IoGetCurrentIrpStackLocation(irp);
-	void *buf = irp->AssociatedIrp.SystemBuffer;
-	u32 inlen = stack->Parameters.DeviceIoControl.InputBufferLength;
+	PIO_STACK_LOCATION stack;
+	void *buf;
+	u32 inlen;
 	u32 ioctl;
 
+	stack = IoGetCurrentIrpStackLocation(irp);
 	switch (stack->MajorFunction) {
 	case IRP_MJ_DEVICE_CONTROL:
+		buf = irp->AssociatedIrp.SystemBuffer;
 		ioctl = stack->Parameters.DeviceIoControl.IoControlCode;
-		KSM_DEBUG("%s: IOCTL: 0x%08X\n", proc_name(), ioctl);
+		inlen = stack->Parameters.DeviceIoControl.InputBufferLength;
+		KSM_DEBUG("%s: IOCTL: 0x%08X of length: %d\n", proc_name(), ioctl, inlen);
 
 		if (caller_cr3 != 0 && caller_cr3 != __readcr3()) {
 			KSM_DEBUG("%s: not processing ioctl\n", proc_name());
@@ -138,10 +141,16 @@ static NTSTATUS DriverDispatch(PDEVICE_OBJECT deviceObject, PIRP irp)
 		switch (ioctl) {
 #ifdef PMEM_SANDBOX
 		case KSM_IOCTL_SANDBOX:
-			status = ksm_sandbox(ksm, (pid_t)(*(int *)buf));
+			if (inlen < 4)
+				status = STATUS_INFO_LENGTH_MISMATCH;
+			else
+				status = ksm_sandbox(ksm, (pid_t)(*(int *)buf));
 			break;
 		case KSM_IOCTL_UNBOX:
-			status = ksm_unbox(ksm, (pid_t)(*(int *)buf));
+			if (inlen < 4)
+				status = STATUS_INFO_LENGTH_MISMATCH;
+			else
+				status = ksm_unbox(ksm, (pid_t)(*(int *)buf));
 			break;
 #endif
 		case KSM_IOCTL_SUBVERT:
@@ -153,6 +162,26 @@ static NTSTATUS DriverDispatch(PDEVICE_OBJECT deviceObject, PIRP irp)
 			if (NT_SUCCESS(status))
 				caller_cr3 = 0;
 			break;
+#ifdef INTROSPECT_ENGINE
+		case KSM_IOCTL_INTRO_START:
+			status = ksm_introspect_start(ksm);
+			break;
+		case KSM_IOCTL_INTRO_STOP:
+			status = ksm_introspect_stop(ksm);
+			break;
+		case KSM_IOCTL_INTRO_WATCH:
+			if (inlen < sizeof(struct watch_ioctl))
+				status = STATUS_INFO_LENGTH_MISMATCH;
+			else
+				status = ksm_introspect_add_watch(ksm, (struct watch_ioctl *)buf);
+			break;
+		case KSM_IOCTL_INTRO_UNWATCH:
+			if (inlen < sizeof(struct watch_ioctl))
+				status = STATUS_INFO_LENGTH_MISMATCH;
+			else
+				status = ksm_introspect_rem_watch(ksm, (struct watch_ioctl *)buf);
+			break;
+#endif
 		default:
 			status = STATUS_NOT_SUPPORTED;
 			break;
@@ -160,7 +189,16 @@ static NTSTATUS DriverDispatch(PDEVICE_OBJECT deviceObject, PIRP irp)
 		break;
 	case IRP_MJ_SHUTDOWN:
 		/* Ignore return value  */
-		ksm_free(ksm);
+		ksm_unsubvert(ksm);
+		break;
+	case IRP_MJ_CREATE:
+		KSM_DEBUG("open from %s\n", proc_name());
+		break;
+	case IRP_MJ_CLOSE:
+		KSM_DEBUG("close from %s\n", proc_name());
+		break;
+	default:
+		KSM_DEBUG("unhandled func %X\n", stack->MajorFunction);
 		break;
 	}
 

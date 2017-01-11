@@ -52,7 +52,7 @@ PUSHAQ MACRO
 	push	rdi
 	push	rsi
 	push	rbp
-	push	-1
+	sub	rsp, 8	; placeholder
 	push	rbx
 	push	rdx
 	push	rcx

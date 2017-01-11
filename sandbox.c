@@ -87,14 +87,13 @@ bool ksm_sandbox_handle_vmcall(struct vcpu *vcpu, uintptr_t arg)
 	struct sa_task *task = (struct sa_task *)arg;
 	u16 eptp = task_eptp(task);
 	if (vcpu_eptp_idx(vcpu) == eptp) {
-		if (vcpu->last_switch) {
+		if (vcpu->last_switch)
 			vcpu_switch_root_eptp(vcpu, vcpu->eptp_before);
-			vcpu->last_switch = NULL;
-		} else {
+		else
 			vcpu_switch_root_eptp(vcpu, EPTP_DEFAULT);
-		}
 	}
 
+	vcpu->last_switch = NULL;
 	if (eptp != EPT_MAX_EPTP_LIST)
 		ept_free_ptr(&vcpu->ept, eptp);
 
@@ -140,7 +139,6 @@ int ksm_sandbox_exit(struct ksm *k)
 static inline int create_sa_task(struct ksm *k, pid_t pid, u64 pgd)
 {
 	struct sa_task *task;
-	unsigned long flags;
 	int i;
 
 	task = mm_alloc_pool(sizeof(*task));
@@ -153,9 +151,9 @@ static inline int create_sa_task(struct ksm *k, pid_t pid, u64 pgd)
 	for (i = 0; i < KSM_MAX_VCPUS; ++i)
 		task->eptp[i] = EPT_MAX_EPTP_LIST;
 
-	spin_lock_irqsave(&k->task_lock, flags);
+	spin_lock(&k->task_lock);
 	list_add(&task->link, &k->task_list);
-	spin_unlock_irqrestore(&k->task_lock, flags);
+	spin_unlock(&k->task_lock);
 	return 0;
 }
 
@@ -311,12 +309,12 @@ static struct sa_task *__find_sa_task_eptp(struct ksm *k, u16 eptp)
 	return NULL;
 }
 
-bool ksm_sandbox_handle_ept(struct vcpu *vcpu, int dpl, u64 gpa,
-			    u64 gva, u64 cr3, u16 curr, u8 ar, u8 ac,
-			    bool *invd, u16 *eptp_switch)
+bool ksm_sandbox_handle_ept(struct ept_ve_around *ve)
 {
 	struct sa_task *task;
 	struct cow_page *page;
+	struct ve_except_info *info;
+	struct vcpu *vcpu;
 	struct ept *ept;
 	struct ksm *k;
 	u64 *epte;
@@ -324,26 +322,28 @@ bool ksm_sandbox_handle_ept(struct vcpu *vcpu, int dpl, u64 gpa,
 	pid_t pid;
 	int i;
 
+	vcpu = ve->vcpu;
 	ept = &vcpu->ept;
+	info = ve->info;
 	k = vcpu_to_ksm(vcpu);
 
 	pid = proc_id();
-	task = find_sa_task_pgd_pid(k, pid, cr3 & PAGE_PA_MASK);
+	task = find_sa_task_pgd_pid(k, pid, ve->cr3 & PAGE_PA_MASK);
 	if (!task) {
 		/*
 		 * Crashed maybe...
 		 * Probably not a good way to detect this...  lazyness.
 		 */
-		*eptp_switch = EPTP_DEFAULT;
+		bool ret = info->eptp > EPTP_NORMAL;
+		if (ret)
+			ve->eptp_next = EPTP_DEFAULT;
 
 		/* Free it  */
 		spin_lock(&k->task_lock);
-		task = __find_sa_task_eptp(k, curr);
-		WARN_ON(!task);
-
-		KSM_DEBUG("Task %p died, cleaning up\n", task);
+		task = __find_sa_task_eptp(k, info->eptp);
 		if (task) {
 			/* Free per-cpu EPTP for this task  */
+			KSM_DEBUG("Task %p died, cleaning up\n", task);
 			for (i = 0; i < KSM_MAX_VCPUS; ++i) {
 				if (task->eptp[i] != EPT_MAX_EPTP_LIST) {
 					vcpu = ksm_cpu_at(k, i);
@@ -356,28 +356,31 @@ bool ksm_sandbox_handle_ept(struct vcpu *vcpu, int dpl, u64 gpa,
 		}
 
 		spin_unlock(&k->task_lock);
-		return true;
+		return ret;
 	}
 
 	eptp = task_eptp(task);
 	BUG_ON(eptp == EPT_MAX_EPTP_LIST);
 
-	epte = ept_pte(EPT4(ept, curr), gpa);
-	BUG_ON(eptp != curr);
+	epte = ept_pte(EPT4(ept, info->eptp), info->gpa);
+	BUG_ON(eptp != info->eptp);
 
-	if (ac & EPT_ACCESS_WRITE) {
-		KSM_DEBUG("allocating cow page for %p\n", gpa);
-		page = ksm_sandbox_copy_page(vcpu, task, gpa);
+	if (info->exit & EPT_ACCESS_WRITE) {
+		KSM_DEBUG("allocating cow page for %p\n", info->gpa);
+		page = ksm_sandbox_copy_page(vcpu, task, info->gpa);
+		WARN_ON(!page);
 		if (!page)
-			return false;
+			goto manually_fix;
 
-		__set_epte_ar_pfn(epte, ar | ac, page->hpa >> PAGE_SHIFT);
-		*invd = true;
+		__set_epte_ar_inplace(epte, info->exit & EPT_AR_MASK);
+		__set_epte_pfn(epte, page->hpa >> PAGE_SHIFT);
 	} else {
-		__set_epte_ar(epte, ar | ac);
-		*invd = true;
+manually_fix:
+		KSM_DEBUG("Manually fixing AR for %p (0x%X)\n", info->gpa, info->exit & EPT_AR_MASK);
+		__set_epte_ar_inplace(epte, info->exit & EPT_AR_MASK);
 	}
 
+	ve->invalidate = true;
 	return true;
 }
 

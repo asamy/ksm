@@ -33,6 +33,7 @@ static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 {
 	int ret = -EINVAL;
 	int __maybe_unused pid = 0;
+	struct __maybe_unused watch_ioctl watch;
 	KSM_DEBUG("ioctl from %s: cmd(0x%08X) args(%p)\n",
 		   current->comm, cmd, args);
 
@@ -77,8 +78,29 @@ static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 			mmdrop(mm);
 			mm = NULL;
 		}
-
 		break;
+#ifdef INTROSPECT_ENGINE
+	case KSM_IOCTL_INTRO_START:
+		ret = ksm_introspect_start(ksm);
+		break;
+	case KSM_IOCTL_INTRO_STOP:
+		ret = ksm_introspect_stop(ksm);
+		break;
+	case KSM_IOCTL_INTRO_WATCH:
+		ret = copy_from_user(&watch, (const void __force *)args, sizeof(watch));
+		if (ret < 0)
+			break;
+
+		ret = ksm_introspect_add_watch(ksm, &watch);
+		break;
+	case KSM_IOCTL_INTRO_UNWATCH:
+		ret = copy_from_user(&watch, (const void __force *)args, sizeof(watch));
+		if (ret < 0)
+			break;
+
+		ret = ksm_introspect_rem_watch(ksm, &watch);
+		break;
+#endif
 	default:
 		KSM_DEBUG("unknown ioctl code %X\n", cmd);
 		ret = -EINVAL;
@@ -111,7 +133,7 @@ static struct file_operations ksm_fops = {
 static int ksm_reboot(struct notifier_block *nb, unsigned long action,
 		      void *data)
 {
-	ksm_free(ksm);
+	ksm_unsubvert(ksm);
 	return 0;
 }
 

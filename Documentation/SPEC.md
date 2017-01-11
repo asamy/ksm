@@ -287,23 +287,23 @@ Here's an example of what happens during both phases:
 #define page_index(a)	(a >> 12) & ENTRY_MASK		/* bits 11:0  */
 
 	/* First level:  Translate GVA to GPA:  */
-	GVA = some_arbitrary_value;
-	PML4 = VA_OF(CR3 & PAGE_PA_MASK);
-	PDPT = VA_OF(PML4[pdpt_index(GVA)] & PAGE_PA_MASK);
-	PDT = VA_OF(PDPT[pdt_index(GVA)] & PAGE_PA_MASK);
-	PT = VA_OF(PDT[pt_index(GVA)] & PAGE_PA_MASK);
-	PAGE = PT[page_index(GVA)];
-	GPA = PAGE & PAGE_PA_MASK;
+	gva = some_arbitrary_value;
+	pml4 = VA_OF(CR3 & PAGE_PA_MASK);
+	pdpt = VA_OF(pml4[pdpt_index(gva)] & PAGE_PA_MASK);
+	pdt = VA_OF(pdpt[pdt_index(gva)] & PAGE_PA_MASK);
+	pt = VA_OF(pdt[pt_index(gva)] & PAGE_PA_MASK);
+	page = pt[page_index(gva)];
+	gpa = page & PAGE_PA_MASK;
 
 	/* We now have GPA, and we know it's valid!  (assume so)  */
 	/* Second level: Translate GPA to HPA */
-	EPTP = read_eptp_from_current_vmcs;
-	PML4 = VA_OF(EPTP & PAGE_PA_MASK);
-	PDPT = VA_OF(PML4[pdpt_index(GPA)] & PAGE_PA_MASK);
-	PDT = VA_OF(PDPT[pdt_index(GPA)] & PAGE_PA_MASK);
-	PT = VA_OF(PDT[pt_index(GPA)] & PAGE_PA_MASK);
-	PAGE = PT[page_index(GPA)];
-	HPA = PAGE & PAGE_PA_MASK;
+	eptp = read_eptp_from_current_vmcs;
+	pml4 = VA_OF(eptp & PAGE_PA_MASK);
+	pdpt = VA_OF(pml4[pdpt_index(gpa)] & PAGE_PA_MASK);
+	pdt = VA_OF(pdpt[pdt_index(gpa)] & PAGE_PA_MASK);
+	pt = VA_OF(pdt[pt_index(gpa)] & PAGE_PA_MASK);
+	page = pt[page_index(gpa)];
+	hpa = page & PAGE_PA_MASK;
 ```
 
 Pretty much repeating ourselves, but this is basically what happens.  An

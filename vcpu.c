@@ -153,7 +153,7 @@ static bool setup_pml4(struct ept *ept, int access, u16 eptp)
 		range = &ksm->ranges[i];
 		for (addr = range->start; addr < range->end; addr += PAGE_SIZE) {
 			int r = access;
-			if (mm_is_kernel_addr(__va(addr)))
+			if (access != EPT_ACCESS_ALL && mm_is_kernel_addr(__va(addr)))
 				r = EPT_ACCESS_ALL;
 
 			if (!ept_alloc_page(EPT4(ept, eptp), r, addr, addr))
@@ -310,38 +310,38 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
  * Note that we don't need to invalidate non existent entries, aka entries that
  * mostly have EPT_ACCESS_NONE which is usually not even allocated...
  */
-static bool do_ept_violation(struct vcpu *vcpu, u64 rip, int dpl, u64 gpa,
-			     u64 gva, u64 cr3, u16 eptp, u8 ar, u8 ac,
-			     bool *invd, u16 *eptp_switch)
+static bool do_ept_violation(struct ept_ve_around *ve)
 {
+	struct vcpu *vcpu = ve->vcpu;
 	struct ept *ept = &vcpu->ept;
 	struct ksm *k = vcpu_to_ksm(vcpu);
+	struct ve_except_info *info = ve->info;
 
-	if (ar == EPT_ACCESS_NONE) {
-		if (!ept_alloc_page(EPT4(ept, eptp), EPT_ACCESS_ALL, gpa, gpa))
+	if (((info->exit >> EPT_AR_SHIFT) & EPT_AR_MASK) == EPT_ACCESS_NONE) {
+		if (!ept_alloc_page(EPT4(ept, info->eptp), EPT_ACCESS_ALL, info->gpa, info->gpa))
 			return false;
 
 		return true;
 	}
 
 #ifdef EPAGE_HOOK
-	struct page_hook_info *phi = ksm_find_page(k, (void *)gva);
+	struct page_hook_info *phi = ksm_find_page(k, (void *)info->gla);
 	if (phi) {
-		*eptp_switch = phi->ops->select_eptp(phi, eptp, ar, ac);
-		KSM_DEBUG("Found hooked page, switching from %d to %d\n", eptp, *eptp_switch);
+		ve->eptp_next = phi->ops->select_eptp(phi, ve);
+		KSM_DEBUG("Found hooked page, switching from %d to %d\n",
+			  info->eptp, ve->eptp_next);
 		return true;
 	}
 #endif
 
 #ifdef PMEM_SANDBOX
-	if (ksm_sandbox_handle_ept(vcpu, dpl, gpa,
-				   gva, cr3, eptp, ar, ac,
-				   invd, eptp_switch)) {
-		if (*eptp_switch != eptp)
-			KSM_DEBUG("sandbox switch from %d to %d\n", eptp, *eptp_switch);
-
+	if (ksm_sandbox_handle_ept(ve))
 		return true;
-	}
+#endif
+
+#ifdef INTROSPECT_ENGINE
+	if (ksm_introspect_handle_ept(ve))
+		return true;
 #endif
 
 	return false;
@@ -353,39 +353,30 @@ static bool do_ept_violation(struct vcpu *vcpu, u64 rip, int dpl, u64 gpa,
  */
 bool ept_handle_violation(struct vcpu *vcpu)
 {
-	u64 exit, gpa, gva, cr3;
-	u16 eptp, eptp_switch;
-	u8 ar, ac;
-	char sar[4], sac[4];
-	int dpl;
-	bool invd = false;
+	struct ksm *k = vcpu_to_ksm(vcpu);
+	struct ve_except_info info = {
+		.exit = vmcs_read(EXIT_QUALIFICATION),
+		.gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS),
+		.gla = vmcs_read(GUEST_LINEAR_ADDRESS),
+		.eptp = vcpu_eptp_idx(vcpu),
+	};
+	struct ept_ve_around ve = {
+		.vcpu = vcpu,
+		.info = &info,
+		.rip = vcpu->ip,
+		.dpl = VMX_AR_DPL(vmcs_read(GUEST_SS_AR_BYTES)),
+		.cr3 = vmcs_read(GUEST_CR3),
+		.eptp_next = info.eptp,
+		.invalidate = false,
+	};
 
-	eptp = vcpu_eptp_idx(vcpu);
-	gpa = vmcs_read64(GUEST_PHYSICAL_ADDRESS);
-	cr3 = vmcs_read(GUEST_CR3);
-	dpl = VMX_AR_DPL(vmcs_read32(GUEST_SS_AR_BYTES));
-	gva = 0;
-	exit = vmcs_read(EXIT_QUALIFICATION);
-	ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
-	ac = exit & EPT_AR_MASK;
-	if (exit & EPT_VE_VALID_GLA)
-		gva = vmcs_read(GUEST_LINEAR_ADDRESS);
-
-	ar_get_bits(ar, sar);
-	ar_get_bits(ac, sac);
-	KSM_DEBUG("%d: PA %p VA %p (%d AR %s - %d AC %s)\n",
-		   eptp, gpa, gva, ar, sar, ac, sac);
-
-	eptp_switch = eptp;
-	if (!do_ept_violation(vcpu, vcpu->ip, dpl, gpa,
-			      gva, cr3, eptp, ar, ac,
-			      &invd, &eptp_switch))
+	if (!do_ept_violation(&ve))
 		return false;
 
-	if (eptp_switch != eptp)
-		vcpu_switch_root_eptp(vcpu, eptp_switch);
-	else if (invd)
-		__invept_all();
+	if (ve.eptp_next != info.eptp)
+		vcpu_switch_root_eptp(vcpu, ve.eptp_next);
+	else if (ve.invalidate)
+		cpu_invept(k, info.gpa, EPTP(&vcpu->ept, info.eptp));
 
 	return true;
 }
@@ -396,42 +387,32 @@ bool ept_handle_violation(struct vcpu *vcpu)
  */
 void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 {
-	struct vcpu *vcpu;
-	struct ve_except_info *info;
-	u64 exit, gpa, gva;
-	u16 eptp, eptp_switch;
-	u8 ar, ac;
-	char sar[4], sac[4];
-	bool invd = false;
+	struct vcpu *vcpu = ksm_current_cpu();
+	struct ve_except_info *info = vcpu->ve;
+	struct ept_ve_around ve = {
+		.vcpu = vcpu,
+		.info = info,
+		.rip = rip,
+		.cr3 = __readcr3(),
+		.dpl = cs & 3,
+		.eptp_next = info->eptp,
+		.invalidate = false,
+	};
 
-	vcpu = ksm_current_cpu();
-	info = vcpu->ve;
-	gpa = info->gpa;
-	gva = 0;
-	exit = info->exit;
-	eptp = info->eptp;
-	ar = (exit >> EPT_AR_SHIFT) & EPT_AR_MASK;
-	ac = exit & EPT_AR_MASK;
-	if (info->exit & EPT_VE_VALID_GLA)
-		gva = info->gla;
+	if (!do_ept_violation(&ve))
+		KSM_PANIC(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, rip, info->gpa);
 
-	ar_get_bits(ar, sar);
-	ar_get_bits(ac, sac);
-	KSM_DEBUG("0x%X:%p [%d]: PA %p VA %p (%d AR %s - %d AC %s)\n",
-		   cs, rip, eptp, gpa, gva, ar, sar, ac, sac);
-	info->except_mask = 0;
-
-	eptp_switch = eptp;
-	if (!do_ept_violation(vcpu, rip, cs & 3, gpa,
-			      gva, __readcr3(), eptp, ar, ac,
-			      &invd, &eptp_switch))
-		KSM_PANIC(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, rip, gpa);
-
-	if (eptp_switch != eptp)
-		vcpu_vmfunc(eptp, 0);
+	if (ve.eptp_next != info->eptp)
+		vcpu_vmfunc(ve.eptp_next, 0);
 }
 
 #ifndef _MSC_VER
+/*
+ * Under MinGW a function with the same name is exported, but
+ * I haven't been able to find which library exports it.
+ * Others are part of libmingwex, this one should've also been
+ * there, perhaps it's part of the Microsoft related libraries?
+ */
 unsigned long __segmentlimit(unsigned long selector)
 {
 	unsigned long limit;
@@ -675,10 +656,8 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write(CR0_READ_SHADOW, cr0 & ~vcpu->cr0_guest_host_mask);
 	err |= vmcs_write(CR4_READ_SHADOW, cr4 & ~vcpu->cr4_guest_host_mask);
 
-	/* Cache secondary ctl for emulation purposes  */
-	vcpu->vm_func_ctl = 0;
-
 	/* See if we need to emulate VMFUNC via a VMCALL  */
+	vcpu->vm_func_ctl = 0;
 	if (vm_2ndctl & SECONDARY_EXEC_ENABLE_VMFUNC) {
 		err |= vmcs_write64(VM_FUNCTION_CTRL, VM_FUNCTION_CTL_EPTP_SWITCHING);
 		err |= vmcs_write64(EPTP_LIST_ADDRESS, __pa(ept->ptr_list));

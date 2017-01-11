@@ -413,7 +413,7 @@ struct pmem_range {
 	u64 end;
 };
 
-#define MAX_RANGES	6
+#define MAX_RANGES	8
 extern int mm_cache_ram_ranges(struct pmem_range *ranges, int *count);
 
 #endif

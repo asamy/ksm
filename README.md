@@ -1,9 +1,8 @@
 # ksm v1.5-dev [![BountySource](https://www.bountysource.com/badge/team?team_id=189129&style=raised)](https://www.bountysource.com/teams/ksm?utm_source=ksm&utm_medium=shield&utm_campaign=raised) [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/project/asamy/ksm)
 
 A really simple and lightweight x64 hypervisor written in C for Intel processors.  
-KSM has a self-contained userspace physical memory virtualization which can be enabled at
-compiletime, it's quite a new feature but it'll be extended to be more of a
-generic sandboxer (fs, etc.) later on.
+KSM has a self-contained physical memory introspection engine and userspace physical
+memory virtualization which can be enabled at compiletime.
 
 Currently, KSM runs on Windows and Linux kernels natively, and aims to support
 macOS by 2017, if you want to port KSM see Documentation/SPEC.md for more information.
@@ -25,7 +24,8 @@ is not recommended.
 - IDT Shadowing
 - EPT violation #VE (enabled only when support is present)
 - EPTP switching VMFUNC (if not available natively, it will be emulated using a VMCALL)
-- Userspace physical memory sandboxer
+- Builtin Userspace physical memory sandboxer (Optional)
+- Builtin Introspection engine (Optional)
 - APIC virtualization (Experimental, do not use)
 - VMX Nesting (Experimental, do not use)
 

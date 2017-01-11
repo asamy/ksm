@@ -938,6 +938,11 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 		vcpu_adjust_rflags(vcpu, ksm_sandbox_handle_vmcall(vcpu, arg));
 		break;
 #endif
+#ifdef INTROSPECT_ENGINE
+	case HYPERCALL_INTROSPECT:
+		vcpu_adjust_rflags(vcpu, ksm_introspect_handle_vmcall(vcpu, arg));
+		break;
+#endif
 	default:
 		KSM_DEBUG("unsupported hypercall: %d\n", nr);
 		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
@@ -1585,6 +1590,7 @@ out:
 static bool vcpu_handle_invept(struct vcpu *vcpu)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	struct ksm *k = vcpu_to_ksm(vcpu);
 	u64 gva;
 	invept_t ept;
 
@@ -1599,8 +1605,7 @@ static bool vcpu_handle_invept(struct vcpu *vcpu)
 
 	u32 info = vmcs_read32(VMX_INSTRUCTION_INFO);
 	u32 type = ksm_read_reg32(vcpu, (info >> 28) & 15);
-	u32 avail = (__readmsr(MSR_IA32_VMX_EPT_VPID_CAP) >> VMX_EPT_EXTENT_SHIFT) & 6;
-	if (!(avail & (1 << type))) {
+	if (!cpu_supports_invepttype(k, type)) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
 		goto out;
 	}
@@ -1624,6 +1629,7 @@ out:
 static bool vcpu_handle_invvpid(struct vcpu *vcpu)
 {
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
+	struct ksm *k = vcpu_to_ksm(vcpu);
 	u64 gva;
 	invvpid_t vpid;
 
@@ -1638,8 +1644,7 @@ static bool vcpu_handle_invvpid(struct vcpu *vcpu)
 
 	u32 info = vmcs_read32(VMX_INSTRUCTION_INFO);
 	u32 type = ksm_read_reg32(vcpu, (info >> 28) & 15);
-	u32 avail = (__readmsr(MSR_IA32_VMX_EPT_VPID_CAP) >> VMX_VPID_EXTENT_SHIFT) & 7;
-	if (!(avail & (1 << type))) {
+	if (!cpu_supports_invvpidtype(k, type)) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
 		goto out;
 	}

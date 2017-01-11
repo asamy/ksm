@@ -42,6 +42,9 @@
 #ifdef PMEM_SANDBOX
 #define HYPERCALL_SA_TASK	6	/* Sandbox: free EPTPs */
 #endif
+#ifdef INTROSPECT_ENGINE
+#define HYPERCALL_INTROSPECT	7	/* Introspect: create eptp  */
+#endif
 
 /*
  * NOTE:
@@ -351,6 +354,16 @@ struct ve_except_info {
 	u16 eptp;		/* current EPTP index  */
 };
 
+struct ept_ve_around {
+	struct vcpu *vcpu;
+	struct ve_except_info *info;
+	uintptr_t rip;
+	uintptr_t cr3;
+	int dpl;
+	u16 eptp_next;
+	bool invalidate;
+};
+
 struct ept {
 	u64 *ptr_list;
 	u64 *pml4_list[EPT_MAX_EPTP_LIST];
@@ -378,7 +391,12 @@ struct vcpu {
 	/* Those are set during VM-exit only:  */
 	uintptr_t *hsp;		/* stack ptr when passed to vcpu_handle_exit()  */
 	uintptr_t eflags;	/* guest eflags  */
-	uintptr_t ip;		/* guest IP  */
+	uintptr_t ip;		/* guest IP  */	
+	u16 curr_handler;	/* Current VM exit handler  */
+#ifdef DBG
+	u16 prev_handler;	/* Previous VM exit handler  */
+#endif
+	/* These bits are also masked from CRx_READ_SHADOW.  */
 	uintptr_t cr0_guest_host_mask;
 	uintptr_t cr4_guest_host_mask;
 	/* Pending IRQ  */
@@ -391,8 +409,6 @@ struct vcpu {
 	struct gdtr idt;
 	/* Shadow entires we know about so we can restore them appropriately.  */
 	struct kidt_entry64 shadow_idt[256];
-	u16 curr_handler;
-	u16 prev_handler;
 #ifdef PMEM_SANDBOX
 	/* EPTP before switch to per-task eptp.  */
 	u16 eptp_before;
@@ -458,7 +474,7 @@ static inline uintptr_t *ksm_reg(struct vcpu *vcpu, int reg)
 struct page_hook_info;	/* avoid declared inside parameter list...  */
 struct phi_ops {
 	void(*init_eptp) (struct page_hook_info *phi, struct ept *ept);
-	u16(*select_eptp) (struct page_hook_info *phi, u16 cur, u8 ar, u8 ac);
+	u16(*select_eptp) (struct page_hook_info *phi, struct ept_ve_around *ve);
 };
 
 struct page_hook_info {
@@ -487,12 +503,17 @@ struct ksm {
 	struct pmem_range ranges[MAX_RANGES];
 	int range_count;
 	uintptr_t host_pgd;
+	u64 vpid_ept;
 #ifdef EPAGE_HOOK
 	struct htable ht;
 #endif
 #ifdef PMEM_SANDBOX
 	struct list_head task_list;
 	spinlock_t task_lock;
+#endif
+#ifdef INTROSPECT_ENGINE
+	struct list_head watch_list;
+	spinlock_t watch_lock;
 #endif
 	void *msr_bitmap;
 	void *io_bitmap_a;
@@ -586,6 +607,26 @@ static inline void vcpu_put_idt(struct vcpu *vcpu, u16 cs, unsigned n, void *h)
 	set_intr_gate(n, cs, vcpu->idt.base, (uintptr_t)h);
 }
 
+static inline bool cpu_supports_invvpidtype(const struct ksm *k, int type)
+{
+	int avail = (k->vpid_ept >> VMX_VPID_EXTENT_SHIFT) & 7;
+	return avail & (1 << type);
+}
+
+static inline bool cpu_supports_invepttype(const struct ksm *k, int type)
+{
+	int avail = (k->vpid_ept >> VMX_EPT_EXTENT_SHIFT) & 6;
+	return avail & (1 << type);
+}
+
+static inline u8 cpu_invept(struct ksm *k, u64 gpa, u64 ptr)
+{
+	if (cpu_supports_invepttype(k, VMX_EPT_EXTENT_CONTEXT))
+		return __invept_gpa(ptr, gpa);
+
+	return __invept_all();
+}
+
 #ifdef EPAGE_HOOK
 /* page.c  */
 extern int ksm_hook_epage(void *original, void *redirect);
@@ -595,6 +636,7 @@ extern struct page_hook_info *ksm_find_page(struct ksm *k, void *va);
 extern struct page_hook_info *ksm_find_page_pfn(struct ksm *k, uintptr_t pfn);
 #endif
 
+/* sandbox.c  */
 #ifdef PMEM_SANDBOX
 #ifndef __linux__
 typedef HANDLE pid_t;
@@ -602,13 +644,23 @@ typedef HANDLE pid_t;
 
 extern int ksm_sandbox_init(struct ksm *k);
 extern int ksm_sandbox_exit(struct ksm *k);
-extern bool ksm_sandbox_handle_ept(struct vcpu *vcpu, int dpl, u64 gpa,
-				   u64 gva, u64 cr3, u16 curr, u8 ar, u8 ac,
-				   bool *invd, u16 *eptp_switch);
+extern bool ksm_sandbox_handle_ept(struct ept_ve_around *ve);
 extern void ksm_sandbox_handle_cr3(struct vcpu *vcpu, u64 cr3);
 extern bool ksm_sandbox_handle_vmcall(struct vcpu *vcpu, uintptr_t arg);
 extern int ksm_sandbox(struct ksm *k, pid_t pid);
 extern int ksm_unbox(struct ksm *k, pid_t pid);
+#endif
+
+/* introspect.c  */
+#ifdef INTROSPECT_ENGINE
+extern int ksm_introspect_init(struct ksm *k);
+extern int ksm_introspect_exit(struct ksm *k);
+extern int ksm_introspect_start(struct ksm *k);
+extern int ksm_introspect_stop(struct ksm *k);
+extern bool ksm_introspect_handle_vmcall(struct vcpu *vcpu, uintptr_t arg);
+extern bool ksm_introspect_handle_ept(struct ept_ve_around *ve);
+extern int ksm_introspect_add_watch(struct ksm *k, struct watch_ioctl *watch);
+extern int ksm_introspect_rem_watch(struct ksm *k, struct watch_ioctl *watch);
 #endif
 
 /* vcpu.c  */

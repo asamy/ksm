@@ -8,18 +8,14 @@
  * entry can handle up to that and is determined via BITMAP_NBITS.
  *
  * For usage examples, see ksm.c: init_msr_bitmaps() / init_io_bitmaps().
- * Those initialize the MSR/IO bitmaps required for the VMM to run (e.g.
- * nested VMMs, etc.)
+ * Those initialize the MSR/IO bitmaps required for the VMM to run e.g.
+ * nested VMMs, etc.
  * 
  * Some functions from the Linux kernel bitmap implementation:
  *	lib/find_bit.c
  *
  *	Copyright (C) 2004 Red Hat, Inc. All Rights Reserved.
  *	Written by David Howells (dhowells@redhat.com)
- *
- *	Copyright (C) 2008 IBM Corporation
- *	'find_last_bit' is written by Rusty Russell <rusty@rustcorp.com.au>
- *	(Inspired by David Howell's find_next_bit implementation)
  *
  *	Rewritten by Yury Norov <yury.norov@gmail.com> to decrease
  *	size and improve performance, 2015.
