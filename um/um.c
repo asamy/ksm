@@ -58,7 +58,7 @@ static inline int do_ioctl(devfd_t device, unsigned int cmd, void *param, u32 le
 	IO_STATUS_BLOCK blk;
 	return ZwDeviceIoControlFile(device, NULL, NULL, NULL, &blk,
 				     cmd, param, len,
-				     0, 0);
+				     param, len);
 #else
 	return ioctl(device, cmd, param);
 #endif
@@ -83,6 +83,68 @@ static inline bool getchr(char *o)
 	}
 
 	return false;
+}
+
+static void print_hex_ascii_line(const uint8_t *payload, size_t len, size_t offset)
+{
+	size_t i, gap;
+	uint8_t ch;
+
+	printf("%05zd   ", offset);
+	/* hex  */
+	for (ch = *payload, i = 0; i < len; ch = payload[++i]) {
+		printf("%02X ", ch);
+		if (i == 7)
+			putchar(' ');
+	}
+	if (len < 8)
+		putchar(' ');
+
+	if (len < 16) {
+		gap = 16 - len;
+		for (i = 0; i < gap; ++i)
+			printf("   ");
+	}
+	printf("   ");
+
+	/* ascii (if printable)  */
+	for (ch = *payload, i = 0; i < len; ch = payload[++i]) {
+		if (isprint(ch))
+			putchar(ch);
+		else
+			putchar('.');
+	}
+
+	putchar('\n');
+}
+
+static void print_payload(const uint8_t *payload, size_t len)
+{
+	size_t len_rem = len;
+	size_t line_width = 16;
+	size_t line_len;
+	size_t offset = 0;
+	const uint8_t *ch = payload;
+
+	if (len <= 0)
+		return;
+
+	if (len <= line_width) {
+		print_hex_ascii_line(ch, len, offset);
+		return;
+	}
+
+	for (;;) {
+		line_len = line_width % len_rem;
+		print_hex_ascii_line(ch, line_len, offset);
+		len_rem -= line_len;
+		ch += line_len;
+		offset += line_width;
+		if (len_rem <= line_width) {
+			print_hex_ascii_line(ch, len_rem, offset);
+			break;
+		}
+	}
 }
 
 int main(int ac, char *av[])
@@ -118,7 +180,7 @@ int main(int ac, char *av[])
 			puts("Quit");
 			goto unsub;
 		case 'i':
-			printf("s = start, d = stop, a = add, r = remove\n");
+			printf("s = start, d = stop, a = add, r = remove, e = stats\n");
 			printf("Introspect> ");
 			if (!getchr(&c))
 				goto unsub;
@@ -150,6 +212,20 @@ int main(int ac, char *av[])
 
 				printf("Unwatching %I64X\n", w.addr);
 				ret = do_ioctl(dev, KSM_IOCTL_INTRO_UNWATCH, &w, sizeof(w));
+				break;
+			case 'e':
+				printf("Address> ");
+				if (!scanf("%I64X", &w.addr))
+					break;
+
+				ret = do_ioctl(dev, KSM_IOCTL_INTRO_STATS, &w, sizeof(w));
+				if (ret == 0) {
+					printf("Stats for %p\n", w.addr);
+					printf("\tHits: %d\n", w.hits);
+					printf("\tMisses: %d\n", w.miss);
+					printf("Buffer:\n");
+					print_payload((const uint8_t *)w.buf, 0x1000);
+				}
 				break;
 			default:
 				ret = -EINVAL;

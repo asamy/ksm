@@ -5,6 +5,20 @@
 #ifndef __UM_H
 #define __UM_H
 
+#ifndef __linux__
+#include <pshpack1.h>
+#endif
+struct watch_ioctl {
+	unsigned long long addr;
+	unsigned short access;
+	int hits;
+	int miss;
+	char buf[0x1000];
+} __packed;
+#ifndef __linux__
+#include <poppack.h>
+#endif
+
 #ifdef __linux__
 #include <linux/ioctl.h>
 #include <linux/kdev_t.h>
@@ -19,8 +33,9 @@
 #define KSM_IOCTL_UNSUBVERT	_IO(KSM_DEVICE_MAGIC, 3)
 #define KSM_IOCTL_INTRO_START	_IO(KSM_DEVICE_MAGIC, 4)
 #define KSM_IOCTL_INTRO_STOP	_IO(KSM_DEVICE_MAGIC, 5)
-#define KSM_IOCTL_INTRO_WATCH	_IOW(KSM_DEVICE_MAGIC, 6, int)
-#define KSM_IOCTL_INTRO_UNWATCH	_IOW(KSM_DEVICE_MAGIC, 7, int)
+#define KSM_IOCTL_INTRO_WATCH	_IOW(KSM_DEVICE_MAGIC, 6, struct watch_ioctl)
+#define KSM_IOCTL_INTRO_UNWATCH	_IOW(KSM_DEVICE_MAGIC, 7, struct watch_ioctl)
+#define KSM_IOCTL_INTRO_STATS	_IOWR(KSM_DEVICE_MAGIC, 8, struct watch_ioctl)
 #else
 #define UM_DEVICE_NAME		L"ksm"
 #define UM_DEVICE_PATH		L"\\\\.\\" UM_DEVICE_NAME
@@ -45,17 +60,7 @@
 						METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
 #define KSM_IOCTL_INTRO_UNWATCH	(ULONG)CTL_CODE(KSM_DEVICE_MAGIC, 0x807, \
 						METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
+#define KSM_IOCTL_INTRO_STATS	(ULONG)CTL_CODE(KSM_DEVICE_MAGIC, 0x808, \
+						METHOD_BUFFERED, FILE_READ_ACCESS | FILE_WRITE_ACCESS)
 #endif
-
-#ifndef __linux__
-#include <pshpack1.h>
-#endif
-struct watch_ioctl {
-	unsigned long long addr;
-	unsigned short access;
-} __packed;
-#ifndef __linux__
-#include <poppack.h>
-#endif
-
 #endif

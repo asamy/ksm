@@ -261,4 +261,25 @@ int ksm_introspect_rem_watch(struct ksm *k, struct watch_ioctl *watch)
 	return ret;
 }
 
+int ksm_introspect_collect(struct ksm *k, struct watch_ioctl *watch)
+{
+	struct introspect_addr *addr;
+	void *v;
+
+	addr = find_watched_addr(k, watch->addr);
+	if (!addr)
+		return ERR_INVAL;
+
+	v = mm_remap(watch->addr & (PAGE_SIZE - 1), PAGE_SIZE);
+	if (!v)
+		return ERR_NOMEM;
+
+	memcpy(watch->buf, v, PAGE_SIZE);
+	mm_unmap(v, PAGE_SIZE);
+
+	watch->hits = addr->hits;
+	watch->miss = addr->miss;
+	return 0;
+}
+
 #endif

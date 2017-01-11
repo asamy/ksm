@@ -181,6 +181,12 @@ static NTSTATUS DriverDispatch(PDEVICE_OBJECT deviceObject, PIRP irp)
 			else
 				status = ksm_introspect_rem_watch(ksm, (struct watch_ioctl *)buf);
 			break;
+		case KSM_IOCTL_INTRO_STATS:
+			if (inlen < sizeof(struct watch_ioctl))
+				status = STATUS_INFO_LENGTH_MISMATCH;
+			else if (NT_SUCCESS(status = ksm_introspect_collect(ksm, (struct watch_ioctl *)buf)))
+				irp->IoStatus.Information = sizeof(struct watch_ioctl);
+			break;
 #endif
 		default:
 			status = STATUS_NOT_SUPPORTED;
@@ -255,6 +261,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	RtlInitUnicodeString(&deviceLink, KSM_DOS_NAME);
 	if (NT_SUCCESS(status = IoCreateSymbolicLink(&deviceLink, &deviceName))) {
 		KSM_DEBUG_RAW("ready\n");
+		KSM_DEBUG("PA: %p\n", __pa(MmMapLockedPagesSpecifyCache));
 		ksm->host_pgd = __readcr3();
 		goto out;
 	}

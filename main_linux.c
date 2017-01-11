@@ -87,18 +87,30 @@ static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 		ret = ksm_introspect_stop(ksm);
 		break;
 	case KSM_IOCTL_INTRO_WATCH:
-		ret = copy_from_user(&watch, (const void __force *)args, sizeof(watch));
-		if (ret < 0)
+		ret = -EFAULT;
+		if (copy_from_user(&watch, (const void __force *)args, sizeof(watch)))
 			break;
 
 		ret = ksm_introspect_add_watch(ksm, &watch);
 		break;
 	case KSM_IOCTL_INTRO_UNWATCH:
-		ret = copy_from_user(&watch, (const void __force *)args, sizeof(watch));
-		if (ret < 0)
+		ret = -EFAULT;
+		if (copy_from_user(&watch, (const void __force *)args, sizeof(watch)))
 			break;
 
 		ret = ksm_introspect_rem_watch(ksm, &watch);
+		break;
+	case KSM_IOCTL_INTRO_STATS:
+		ret = -EFAULT;
+		if (copy_from_user(&watch, (const void __force *)args, sizeof(watch)))
+			break;
+
+		ret = ksm_introspect_collect(ksm, &watch);
+		if (ret < 0)
+			break;
+
+		if (copy_to_user((void __force *)args, &watch, sizeof(watch)))
+			ret = -EFAULT;
 		break;
 #endif
 	default:

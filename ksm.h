@@ -663,6 +663,7 @@ extern bool ksm_introspect_handle_vmcall(struct vcpu *vcpu, uintptr_t arg);
 extern bool ksm_introspect_handle_ept(struct ept_ve_around *ve);
 extern int ksm_introspect_add_watch(struct ksm *k, struct watch_ioctl *watch);
 extern int ksm_introspect_rem_watch(struct ksm *k, struct watch_ioctl *watch);
+extern int ksm_introspect_collect(struct ksm *k, struct watch_ioctl *watch);
 #endif
 
 /* vcpu.c  */
