@@ -52,7 +52,7 @@ DEPFLAGS = -MT $@ -MMD -MP -MF $(DEP_DIR)/$*.d
 DBGFLAGS = -DDBG -O2
 CFLAGS = -I$(CROSS_INC) $(DBGFLAGS) -D_WIN32_WINNT=$(WINVER) -DENABLE_DBGPRINT \
 	 -std=c99 -Wno-multichar -municode -fno-stack-protector -fms-extensions -fno-stack-check \
-	 -mno-stack-arg-probe -fno-asynchronous-unwind-tables
+	 -mno-stack-arg-probe -fno-asynchronous-unwind-tables -pipe
 AFLAGS = $(CFLAGS) -D__ASSEMBLY__
 LDFLAGS = -shared -Wl,--subsystem,native -Wl,--dynamicbase -Wl,--stack=0x6000 \
 	  -Wl,--file-alignment,0x1000 -Wl,--section-alignment,0x1000 \
@@ -65,7 +65,7 @@ UM_BIN = a.out
 UM_LIB = -lntdll
 
 SRC = exit.c htable.c hotplug.c introspect.c ksm.c sandbox.c mm.c \
-      main_nt.c page.c print.c resubv.c vcpu.c
+      main_nt.c epage.c print.c resubv.c vcpu.c
 ASM = vmx.S
 
 BIN_DIR ?= bin
