@@ -174,7 +174,7 @@ bool ksm_introspect_handle_ept(struct ept_ve_around *ve)
 		__set_epte_ar(epte, info->exit & EPT_AR_MASK);
 
 		/* It's a hit only if the offset matches...  */
-		if (addr_offset(addr->gpa) >= addr_offset(info->gpa)) {
+		if (addr_offset(info->gpa) >= addr_offset(addr->gpa)) {
 			addr->hits++;
 			KSM_DEBUG_RAW("Hit!\n");
 		} else {
