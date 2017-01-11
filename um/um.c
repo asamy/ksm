@@ -2,7 +2,6 @@
 #include <fcntl.h>
 #include <string.h>
 #include <stdlib.h>
-#include <stdint.h>
 #include <stddef.h>
 #include <ctype.h>
 
@@ -13,6 +12,8 @@
 #else
 #include <unistd.h>
 #include <sys/ioctl.h>
+
+typedef unsigned char u8;
 typedef unsigned int u32;
 #endif
 
