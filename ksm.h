@@ -653,6 +653,8 @@ extern int ksm_unbox(struct ksm *k, pid_t pid);
 
 /* introspect.c  */
 #ifdef INTROSPECT_ENGINE
+struct watch_ioctl;
+
 extern int ksm_introspect_init(struct ksm *k);
 extern int ksm_introspect_exit(struct ksm *k);
 extern int ksm_introspect_start(struct ksm *k);
