@@ -45,16 +45,16 @@ static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 	switch (cmd) {
 #ifdef PMEM_SANDBOX
 	case KSM_IOCTL_SANDBOX:
-		ret = copy_from_user(&pid, (const void __force *)args, sizeof(pid));
-		if (ret < 0)
+		ret = -EFAULT;
+		if (copy_from_user(&pid, (const void __force *)args, sizeof(pid)))	
 			break;
 
 		KSM_DEBUG("sandboxing %d\n", pid);
 		ret = ksm_sandbox(ksm, pid);
 		break;
 	case KSM_IOCTL_UNBOX:
-		ret = copy_from_user(&pid, (const void __force *)args, sizeof(pid));
-		if (ret < 0)
+		ret = -EFAULT;
+		if (copy_from_user(&pid, (const void __force *)args, sizeof(pid)))
 			break;
 
 		KSM_DEBUG("unsandboxing %d\n", pid);
