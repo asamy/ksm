@@ -197,12 +197,12 @@ int main(int ac, char *av[])
 				break;
 			case 'a':
 				printf("Type addr then access (i.e. 0x1000 0x2 to remove write-access): ");
-				if (scanf("%I64X %X", &w.addr, &w.access) != 2)
+				if (scanf("%llX %hX", &w.addr, &w.access) != 2)
 					break;
 
-				printf("Watching %I64X on %X access\n", w.addr, w.access);
+				printf("Watching 0x%016llX on %hX access\n", w.addr, w.access);
 				if (w.access & ~7) {
-					printf("invalid access bits: %X\n", w.access);
+					printf("invalid access bits: 0x%02hX\n", w.access);
 					break;
 				}
 
@@ -213,17 +213,17 @@ int main(int ac, char *av[])
 				if (!scanf("%I64X", &w.addr))
 					break;
 
-				printf("Unwatching %I64X\n", w.addr);
+				printf("Unwatching 0x%016llX\n", w.addr);
 				ret = do_ioctl(dev, KSM_IOCTL_INTRO_UNWATCH, &w, sizeof(w));
 				break;
 			case 'e':
 				printf("Address> ");
-				if (!scanf("%I64X", &w.addr))
+				if (!scanf("%llX", &w.addr))
 					break;
 
 				ret = do_ioctl(dev, KSM_IOCTL_INTRO_STATS, &w, sizeof(w));
 				if (ret == 0) {
-					printf("Stats for %p\n", w.addr);
+					printf("Stats for 0x%016llX\n", w.addr);
 					printf("\tHits: %d\n", w.hits);
 					printf("\tMisses: %d\n", w.miss);
 					printf("Buffer:\n");
