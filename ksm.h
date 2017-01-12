@@ -358,7 +358,7 @@ struct ept_ve_around {
 	struct vcpu *vcpu;
 	struct ve_except_info *info;
 	uintptr_t rip;
-	uintptr_t cr3;
+	uintptr_t pgd;
 	int dpl;
 	u16 eptp_next;
 	bool invalidate;
@@ -485,15 +485,15 @@ struct page_hook_info {
 	struct phi_ops *ops;
 };
 
-static inline size_t page_hash(u64 va)
+static inline size_t epage_hash(u64 va)
 {
 	/* Just take out the offset.  */
 	return va >> PAGE_SHIFT;
 }
 
-static inline size_t rehash(const void *e, void *unused)
+static inline size_t epage_rehash(const void *e, void *unused)
 {
-	return page_hash(((struct page_hook_info *)e)->origin);
+	return epage_hash(((struct page_hook_info *)e)->origin);
 }
 #endif
 
@@ -634,10 +634,9 @@ static inline u8 cpu_invept(struct ksm *k, u64 gpa, u64 ptr)
 #ifdef EPAGE_HOOK
 /* page.c  */
 extern int ksm_hook_epage(void *original, void *redirect);
-extern int ksm_unhook_page(struct ksm *k, void *original);
-extern int __ksm_unhook_page(struct page_hook_info *phi);
-extern struct page_hook_info *ksm_find_page(struct ksm *k, void *va);
-extern struct page_hook_info *ksm_find_page_pfn(struct ksm *k, uintptr_t pfn);
+extern int ksm_unhook_epage(struct ksm *k, void *original);
+extern int __ksm_unhook_epage(struct page_hook_info *phi);
+extern struct page_hook_info *ksm_find_epage(struct ksm *k, uintptr_t gpa);
 #endif
 
 /* sandbox.c  */

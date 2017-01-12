@@ -319,7 +319,7 @@ static bool do_ept_violation(struct ept_ve_around *ve)
 	}
 
 #ifdef EPAGE_HOOK
-	struct page_hook_info *phi = ksm_find_page(k, (void *)info->gla);
+	struct page_hook_info *phi = ksm_find_epage(k, info->gpa);
 	if (phi) {
 		ve->eptp_next = phi->ops->select_eptp(phi, ve);
 		KSM_DEBUG("Found hooked page, switching from %d to %d\n",
@@ -359,7 +359,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 		.info = &info,
 		.rip = vcpu->ip,
 		.dpl = VMX_AR_DPL(vmcs_read(GUEST_SS_AR_BYTES)),
-		.cr3 = vmcs_read(GUEST_CR3),
+		.pgd = vmcs_read(GUEST_CR3) & PAGE_PA_MASK,
 		.eptp_next = info.eptp,
 		.invalidate = false,
 	};
@@ -387,7 +387,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 		.vcpu = vcpu,
 		.info = info,
 		.rip = rip,
-		.cr3 = __readcr3(),
+		.pgd = __readcr3() & PAGE_PA_MASK,
 		.dpl = cs & 3,
 		.eptp_next = info->eptp,
 		.invalidate = false,

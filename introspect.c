@@ -269,7 +269,7 @@ int ksm_introspect_collect(struct ksm *k, struct watch_ioctl *watch)
 	if (!addr)
 		return ERR_INVAL;
 
-	v = mm_remap(watch->addr & ~(PAGE_SIZE - 1), PAGE_SIZE);
+	v = mm_remap(page_align(watch->addr), PAGE_SIZE);
 	if (!v)
 		return ERR_NOMEM;
 

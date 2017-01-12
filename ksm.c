@@ -31,37 +31,46 @@
 struct ksm *ksm = NULL;
 
 /*
- * This file manages CPUs initialization, for per-cpu initializaiton
- * see vcpu.c, for VM-exit handlers see exit.c
+ * This file mostly manages CPUs initialization and deinitialization
+ * but is not limited to that, it also initializes shared stuff and defines
+ * some shared functions such as ksm_read_virt()/ksm_write_virt(), which can
+ * be called from root mode to read/write to a guest virtual address.
  *
+ * For per-cpu initializaiton see vcpu.c.
+ * For VM-exit handlers see exit.c.
  * For the macro magic (aka DEFINE_DPC, etc.) see percpu.h.
  */
 static inline void init_msr_bitmap(struct ksm *k)
 {
 	/*
-	 * Setup the MSR bitmap, opt-in for VM-exit for some MSRs
-	 * Mostly the VMX msrs so we don't cause too much havoc.
-	 *
+	 * Setup the MSR bitmap.
 	 * There are 4 things here:
 	 *	- Read bitmap low (aka MSR indices of 0 to 1FFFH)
 	 *		offset: +0
 	 *	- Read bitmap high (aka MSR indices of 0xC0000000 to 0xC0001FFFH)
 	 *		offset; +1024
-	 *	- Write bitmap low (same thing as read)
+	 *	- Write bitmap low (same thing as read low)
 	 *		offset: +2048
-	 *	- Write bitmap high (same thing as read)
+	 *	- Write bitmap high (same thing as read high)
 	 *		offset: +3072
 	 *
 	 * To opt-in for an MSR vm-exit, simply set the bit of it.
 	 * Note: for high msrs, subtract it with 0xC0000000, e.g.:
 	 *	set_bit(MSR_STAR - 0xC0000000, write_hi);
 	 *
-	 * We currently opt in for MSRs that are VT-x related, so that we can
+	 * We currently opt in for reads to MSRs that are VT-x related, so that we can
 	 * emulate VT-x.
+	 *
+	 * Note: No real reason to opt-in for writes to VT-x MSRs, those are readonly
+	 * anyway and the CPU will throw #GP to any writes there.
+	 *
+	 * See also:
+	 *	vcpu_handle_rdmsr()  in exit.c
+	 *	vcpu_handle_wrmsr()  in exit.c
 	 */
 	unsigned long *read_lo = (unsigned long *)k->msr_bitmap;
-#ifdef NESTED_VMX
 	set_bit(MSR_IA32_FEATURE_CONTROL, read_lo);
+#ifdef NESTED_VMX
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		set_bit(msr, read_lo);
 #endif
@@ -69,13 +78,16 @@ static inline void init_msr_bitmap(struct ksm *k)
 	unsigned long *write_lo = (unsigned long *)((char *)k->msr_bitmap + 2048);
 #ifdef NESTED_VMX
 	set_bit(MSR_IA32_FEATURE_CONTROL, write_lo);
-	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
-		set_bit(msr, write_lo);
 #endif
 }
 
 static inline void init_io_bitmaps(struct ksm *k)
 {
+	/*
+	 * Setuo I/O bitmaps, see:
+	 *	vcpu_handle_io_instr() in exit.c
+	*/
+
 #if 0	/* This can be anonying  */
 	unsigned long *bitmap_a = (unsigned long *)(k->io_bitmap_a);
 	set_bit(0x60, bitmap_a);	/* PS/2 Mice  */
@@ -84,8 +96,7 @@ static inline void init_io_bitmaps(struct ksm *k)
 }
 
 /*
- * Virtualizes current CPU, shared stuff, i.e. MSR bitmap
- * and IO bitmaps must be initialized prior to this call.
+ * Virtualizes current CPU.
  */
 int __ksm_init_cpu(struct ksm *k)
 {
@@ -108,6 +119,9 @@ int __ksm_init_cpu(struct ksm *k)
 
 	feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
 	if ((feat_ctl & required_feat_bits) != required_feat_bits) {
+		if (feat_ctl & FEATURE_CONTROL_LOCKED)
+			return ERR_BUSY;
+
 		__writemsr(MSR_IA32_FEATURE_CONTROL, feat_ctl | required_feat_bits);
 		feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL);
 		if ((feat_ctl & required_feat_bits) != required_feat_bits)
@@ -147,8 +161,7 @@ int ksm_subvert(struct ksm *k)
 }
 
 /*
- * Only called once, initializes all shared stuff, MSR bitmap,
- * and IO bitmaps.
+ * Initialize and allocate the shared structure.
  */
 int ksm_init(struct ksm **kp)
 {
@@ -182,10 +195,10 @@ int ksm_init(struct ksm **kp)
 		return ret;
 
 	k->vpid_ept = vpid;
-	KSM_DEBUG("EPT/VPID available features: 0x%016X\n", vpid);
+	KSM_DEBUG("EPT/VPID caps: 0x%016X\n", vpid);
 
 #ifdef EPAGE_HOOK
-	htable_init(&k->ht, rehash, NULL);
+	htable_init(&k->ht, epage_rehash, NULL);
 	spin_lock_init(&k->epage_lock);
 #endif
 
@@ -319,7 +332,7 @@ int ksm_hook_idt(unsigned n, void *h)
 /*
  * Unhook an IDT entry at index @n, restoring last known one.
  * Note: if you call `ksm_hook_idt` on same entry twice, then this will
- * restore first call, not the original!
+ * restore the one from first call, not the original!
  *
  * IDT is always restored to the real one when devirtualization happens,
  * disregarding all entries that were set prior.

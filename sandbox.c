@@ -165,13 +165,9 @@ static inline struct cow_page *ksm_sandbox_copy_page(struct vcpu *vcpu,
 {
 	char *hva;
 	char *h;
-	u64 hpa;
 	struct cow_page *page;
 
-	if (!gpa_to_hpa(vcpu, gpa, &hpa))
-		return false;
-
-	h = mm_remap(hpa, PAGE_SIZE);
+	h = mm_remap(page_align(gpa), PAGE_SIZE);
 	if (!h)
 		return false;
 
@@ -202,8 +198,27 @@ err_page:
 	return NULL;
 }
 
+static struct sa_task *find_sa_task(struct ksm *k, pid_t pid)
+{
+	struct sa_task *task = NULL;
+	struct sa_task *ret = NULL;
+
+	spin_lock(&k->task_lock);
+	list_for_each_entry(task, &k->task_list, link) {
+		if (task->pid == pid) {
+			ret = task;
+			break;
+		}
+	}
+	spin_unlock(&k->task_lock);
+	return ret;
+}
+
 int ksm_sandbox(struct ksm *k, pid_t pid)
 {
+	if (find_sa_task(k, pid))
+		return ERR_EXIST;
+
 #ifdef __linux__
 	struct pid *tsk_pid = find_vpid(pid);
 	struct task_struct *tsk;
@@ -239,22 +254,6 @@ int ksm_sandbox(struct ksm *k, pid_t pid)
 #endif
 }
 
-static struct sa_task *find_sa_task(struct ksm *k, pid_t pid)
-{
-	struct sa_task *task = NULL;
-	struct sa_task *ret = NULL;
-
-	spin_lock(&k->task_lock);
-	list_for_each_entry(task, &k->task_list, link) {
-		if (task->pid == pid) {
-			ret = task;
-			break;
-		}
-	}
-	spin_unlock(&k->task_lock);
-	return ret;
-}
-
 int ksm_unbox(struct ksm *k, pid_t pid)
 {
 	struct sa_task *task = NULL;
@@ -272,36 +271,14 @@ int ksm_unbox(struct ksm *k, pid_t pid)
 	return ret;
 }
 
-static struct sa_task *find_sa_task_pgd(struct ksm *k, u64 pgd)
+static struct sa_task *__find_sa_task_pgd(struct ksm *k, u64 pgd)
 {
 	struct sa_task *task = NULL;
-	struct sa_task *ret = NULL;
 
-	spin_lock(&k->task_lock);
-	list_for_each_entry(task, &k->task_list, link) {
-		if (task->pgd == pgd) {
-			ret = task;
-			break;
-		}
-	}
-	spin_unlock(&k->task_lock);
-	return ret;
-}
-
-static struct sa_task *find_sa_task_pgd_pid(struct ksm *k, pid_t pid, u64 pgd)
-{
-	struct sa_task *task = NULL;
-	struct sa_task *ret = NULL;
-
-	spin_lock(&k->task_lock);
-	list_for_each_entry(task, &k->task_list, link) {
-		if (task->pgd == pgd || task->pid == pid) {
-			ret = task;
-			break;
-		}
-	}
-	spin_unlock(&k->task_lock);
-	return ret;
+	list_for_each_entry(task, &k->task_list, link)
+		if (task->pgd == pgd)
+			return task;
+	return NULL;
 }
 
 static struct sa_task *__find_sa_task_eptp(struct ksm *k, u16 eptp)
@@ -312,16 +289,6 @@ static struct sa_task *__find_sa_task_eptp(struct ksm *k, u16 eptp)
 		if (task_eptp(task) == eptp)
 			return task;
 	return NULL;
-}
-
-static struct sa_task *find_sa_task_eptp(struct ksm *k, u16 eptp)
-{
-	struct sa_task *task;
-
-	spin_lock(&k->task_lock);
-	task = __find_sa_task_eptp(k, eptp);
-	spin_unlock(&k->task_lock);
-	return task;
 }
 
 bool ksm_sandbox_handle_ept(struct ept_ve_around *ve)
@@ -338,7 +305,10 @@ bool ksm_sandbox_handle_ept(struct ept_ve_around *ve)
 	ept = &vcpu->ept;
 	info = ve->info;
 	k = vcpu_to_ksm(vcpu);
-	task = find_sa_task_eptp(k, info->eptp);
+
+	spin_lock(&k->task_lock);
+	task = __find_sa_task_eptp(k, info->eptp);
+	spin_unlock(&k->task_lock);
 	if (!task) {
 		ve->eptp_next = EPTP_DEFAULT;
 		BREAK_ON(1);
@@ -377,7 +347,9 @@ void ksm_sandbox_handle_cr3(struct vcpu *vcpu, u64 cr3)
 	u16 *eptp;
 
 	k = vcpu_to_ksm(vcpu);
-	task = find_sa_task_pgd(k, cr3 & PAGE_PA_MASK);
+	spin_lock(&k->task_lock);
+	task = __find_sa_task_pgd(k, cr3 & PAGE_PA_MASK);
+	spin_unlock(&k->task_lock);
 	if (task) {
 		eptp = &task->eptp[cpu_nr()];
 		if (*eptp == EPT_MAX_EPTP_LIST)

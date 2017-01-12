@@ -1831,7 +1831,7 @@ out:
 	return true;
 }
 
-static bool vcpu_handle_io_port(struct vcpu *vcpu)
+static bool vcpu_handle_io_instr(struct vcpu *vcpu)
 {
 	uintptr_t exit = vmcs_read(EXIT_QUALIFICATION);
 	uintptr_t *addr = ksm_reg(vcpu, STACK_REG_AX);
@@ -1920,7 +1920,8 @@ static bool vcpu_handle_rdmsr(struct vcpu *vcpu)
 #ifdef NESTED_VMX
 		val = vcpu->nested_vcpu.feat_ctl;
 #else
-		val = __readmsr(msr) & ~(FEATURE_CONTROL_LOCKED | FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX);
+		val = __readmsr(msr) & ~(FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX |
+					 FEATURE_CONTROL_VMXON_ENABLED_INSIDE_SMX);
 #endif
 		break;
 	default:
@@ -1976,6 +1977,14 @@ static bool vcpu_handle_wrmsr(struct vcpu *vcpu)
 			vmcs_write64(GUEST_IA32_DEBUGCTL, val);
 		break;
 	case MSR_IA32_FEATURE_CONTROL:
+		/*
+		 * We don't opt-in this msr-write unless nested is enabled.
+		 * Incase of non-nested, the CPU with throw #GP anyway because
+		 * it's locked and any writes are illegal.
+		 *
+		 * We always opt-in write for this MSR and fake out the VMXON bit only,
+		 * lock is not faked.
+		 */
 #ifdef NESTED_VMX
 		if (vcpu->nested_vcpu.feat_ctl & FEATURE_CONTROL_LOCKED)
 			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
@@ -1984,10 +1993,7 @@ static bool vcpu_handle_wrmsr(struct vcpu *vcpu)
 #endif
 		break;
 	default:
-		if (msr >= MSR_IA32_VMX_BASIC && msr <= MSR_IA32_VMX_VMFUNC) {
-			/* VMX MSRs are readonly.  */
-			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
-		} else if (msr >= 0x800 && msr <= 0x83F) {
+		if (msr >= 0x800 && msr <= 0x83F) {
 			/* x2APIC   */
 			u32 offset = (msr - 0x800) * 0x10;
 			switch (msr) {
@@ -2612,7 +2618,7 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 #endif
 	[EXIT_REASON_CR_ACCESS] = vcpu_handle_cr_access,
 	[EXIT_REASON_DR_ACCESS] = vcpu_handle_dr_access,
-	[EXIT_REASON_IO_INSTRUCTION] = vcpu_handle_io_port,
+	[EXIT_REASON_IO_INSTRUCTION] = vcpu_handle_io_instr,
 	[EXIT_REASON_MSR_READ] = vcpu_handle_rdmsr,
 	[EXIT_REASON_MSR_WRITE] = vcpu_handle_wrmsr,
 	[EXIT_REASON_INVALID_STATE] = vcpu_handle_invalid_state,

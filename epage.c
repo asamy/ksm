@@ -70,7 +70,7 @@ static struct phi_ops epage_ops = {
 static inline bool ht_cmp(const void *candidate, void *cmp)
 {
 	const struct page_hook_info *phi = candidate;
-	return phi->origin == (uintptr_t)cmp;
+	return phi->dpa >> PAGE_SHIFT == (uintptr_t)cmp >> PAGE_SHIFT;
 }
 
 #ifndef __linux__
@@ -139,10 +139,10 @@ static DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
  *
  *	Notes on hooking out-of-kernel pages (e.g. userspace pages or similar):
  *	
- * When hooking a userspace specific function, you should first attach to that
- * specific process (if not already), to make sure that the current CR3 is
- * updated.  Also do note that userspace pages tend to be paged out all the
- * time, so the above notes also apply.
+ *	When hooking a userspace specific function, you should first attach to that
+ *	specific process (if not already), to make sure that the current CR3 is
+ *	updated.  Also do note that userspace pages tend to be paged out all the
+ *	time, so the above notes also apply.
  *
  * Do also note the inline-code provided above is not tested, but should work.
  */
@@ -157,7 +157,7 @@ int ksm_hook_epage(void *original, void *redirect)
 	BUG_ON(!ksm);
 	epage_init_trampoline(&trampo, (uintptr_t)redirect);
 	
-	phi = ksm_find_page(ksm, original);
+	phi = ksm_find_epage(ksm, __pa(original));
 	if (phi) {
 		/*
 		 * Hooking another function in same page.
@@ -192,57 +192,39 @@ int ksm_hook_epage(void *original, void *redirect)
 
 	CALL_DPC(__do_hook_page, phi);
 	spin_lock(&ksm->epage_lock);
-	htable_add(&ksm->ht, page_hash(phi->origin), phi);
+	htable_add(&ksm->ht, epage_hash(phi->dpa), phi);
 	spin_unlock(&ksm->epage_lock);
 	return 0;
 }
 
-int ksm_unhook_page(struct ksm *k, void *va)
+int ksm_unhook_epage(struct ksm *k, void *va)
 {
-	struct page_hook_info *phi = ksm_find_page(k, va);
+	struct page_hook_info *phi = ksm_find_epage(k, __pa(va));
 	if (!phi)
 		return ERR_NOTH;
 
-	return __ksm_unhook_page(phi);
+	return __ksm_unhook_epage(phi);
 }
 
-int __ksm_unhook_page(struct page_hook_info *phi)
+int __ksm_unhook_epage(struct page_hook_info *phi)
 {
 	CALL_DPC(__do_unhook_page, (void *)phi->dpa);
 	spin_lock(&ksm->epage_lock);
-	htable_del(&ksm->ht, page_hash(phi->origin), phi);
+	htable_del(&ksm->ht, epage_hash(phi->origin), phi);
 	spin_unlock(&ksm->epage_lock);
 	mm_free_page(phi->c_va);
 	mm_free_pool(phi, sizeof(*phi));
 	return DPC_RET();
 }
 
-struct page_hook_info *ksm_find_page(struct ksm *k, void *va)
+struct page_hook_info *ksm_find_epage(struct ksm *k, uintptr_t gpa)
 {
-	const void *align = (const void *)page_align(va);
 	struct page_hook_info *phi;
-
 	spin_lock(&k->epage_lock);
-	phi = htable_get(&k->ht, page_hash((u64)align), ht_cmp, align);
+	phi = htable_get(&k->ht, epage_hash(gpa),
+			 ht_cmp, (const void *)gpa);
 	spin_unlock(&k->epage_lock);
 	return phi;
 }
 
-struct page_hook_info *ksm_find_page_pfn(struct ksm *k, uintptr_t pfn)
-{
-	struct htable_iter i;
-	struct page_hook_info *phi;
-	struct page_hook_info *ret = NULL;
-
-	spin_lock(&k->epage_lock);
-	for (phi = htable_first(&k->ht, &i); phi; phi = htable_next(&k->ht, &i)) {
-		if (phi->dpa >> PAGE_SHIFT == pfn) {
-			ret = phi;
-			break;
-		}
-	}
-	spin_unlock(&k->epage_lock);
-
-	return ret;
-}
 #endif
