@@ -25,17 +25,18 @@ ifeq ("$(origin C)", "command line")
 	CROSS_BUILD ?= x86_64-w64-mingw32-
 	CROSS_INC ?= /usr/x86_64-w64-mingw32/include/ddk
 	CROSS_LIB ?= /usr/x86_64-w64-mingw32/lib
-else
-	CROSS_BUILD ?=
-	CROSS_INC ?=
-	CROSS_LIB ?=
 endif
 
-ifeq ("$(origin V)", "command line")
-	VERBOSE=$(V)
-else
-	VERBOSE=1
-endif
+# Verbose?
+PREPEND.1 := @
+CEXTRA.1 := @echo "  CC   $@"
+AEXTRA.1 := @echo "  AS   $@"
+LEXTRA.1 := @echo "  LD   $@"
+
+PREPEND := $(PREPEND.$(Q))
+CEXTRA := $(CEXTRA.$(Q))
+AEXTRA := $(AEXTRA.$(Q))
+LEXTRA := $(LEXTRA.$(Q))
 
 CC = $(CROSS_BUILD)gcc
 STRIP = $(CROSS_BUILD)strip
@@ -77,18 +78,6 @@ OBJ += $(ASM:%.S=$(OBJ_DIR)/%.o)
 
 TARGET = $(BIN_DIR)/ksm.sys
 SYMBOL = $(BIN_DIR)/ksm.sym
-
-ifeq ($(VERBOSE), 1)
-	PREPEND ?=
-	CEXTRA ?=
-	AEXTRA ?=
-	LEXTRA ?=
-else
-	PREPEND ?= @
-	CEXTRA ?= @echo "  CC   $@"
-	AEXTRA ?= @echo "  AS   $@"
-	LEXTRA ?= @echo "  LD   $@"
-endif
 
 .PHONY: all clean
 .PRECIOUS: $(DEP_DIR)/%.d

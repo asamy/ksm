@@ -53,29 +53,14 @@ You can pass one or more of the following variables to your `make` command:
 
 - `WINVER=0x0602` - Explicility specify windows version to build for.
 - `C=1` - Prepare for cross-compiling.
-- `V=1` - Verbose output (the default, pass 0 for quiet.)
+- `Q=1` - Be quiet.
 - `BIN_DIR=arg` - Generate binary and symbols to this directory
 - `OBJ_DIR=arg` - Generate object files to this directory
 - `DEP_DIR=arg` - Generate dependency files to this directory
 - `CROSS_INC=arg` - Path to include directory if they reside in a special place
 - `CROSS_LIB=arg` - Path to library directory if they reside in a special place
 - `CROSS_BUILD=arg` - Prefix to toolchain binaries (e.g.
-						    `x86-_64-w64-mingw32-XXX`)
-- `PREPEND=arg` - Prepend something to the compiler/linker executable (e.g. if
-								       this is
-								       "c" and
-								       compiler
-								       is "gcc"
-								       then
-								       full
-								       command
-								       is going
-								       to be
-								       "cgcc")
-- `CEXTRA=arg` - Print something out after compiling a C file.
-- `AEXTRA=arg` - Print something out after compiling an Assembler file.
-- `LEXTRA=arg` - Print something out after linking
-
+						    `x86-_64-w64-mingw32-`)
 Targets:
 
 - `all` - Builds the driver and the usermode app
