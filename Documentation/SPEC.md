@@ -42,31 +42,42 @@ This is the flow:
 
 	__ksm_init_cpu:
 		set feature control MSR appropriately
-		set CR4.VMXE bit
+		call vcpu_init(current cpu ptr)
 
-		vcpu_create(vcpu) ->
-			__vmx_vminit(vcpu) ->
-				save guest state
-				call vcpu_run
+		vcpu_init(vcpu) ->
+			allocate needed stuff
+			return
 
-				vcpu_run(vcpu, stack_ptr, guest_start_point) ->
-					...
-					/* write important fields to VM Control
-						structure:  */
-						vmcs_write()
-						vmcs_write()
-						....
-					if not vmlaunch():
-						print error
-					else
-						/* CPU already jumped to start
-						point  */
-					endif
+	__ksm_init_cpu (contd.):
+		call __vmx_vminit(current cpu ptr)
 
-			__vmx_vminit(vcpu) (contd.)
-				guest_start_point:
-					restore guest state (registers incl rflags, etc.)
-					return to __ksm_init_cpu
+		__vmx_vminit(vcpu) ->
+			save guest state
+			call vcpu_run(vcpu, rsp, guest_start_pointer)
+
+			vcpu_run(vcpu, stack_ptr, guest_start_point) ->
+				enter vmx root mode (load vmxon pointer)
+				load vmcs
+				clear vmcs launch state
+				set cr0 fixed bits
+				set cr4 fixed bits (VMXE)
+				...
+				/* write important fields to VM Control
+					structure:  */
+					vmcs_write()
+					vmcs_write()
+					....
+				if not vmlaunch():
+					print error
+				else
+					/* CPU already jumped to start
+					point  */
+				endif
+
+		__vmx_vminit(vcpu) (contd.)
+			guest_start_point:
+				restore guest state (registers incl rflags, etc.)
+				return to __ksm_init_cpu
 
 	__ksm_init_cpu (contd.):
 		if __vmx_vminit failed:

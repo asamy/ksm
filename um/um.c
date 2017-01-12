@@ -31,7 +31,7 @@ typedef HANDLE devfd_t;
 typedef DWORD pidtype_t;
 #else
 typedef int devfd_t;
-typedef unsigned long pidtype_t;
+typedef int pidtype_t;
 #endif
 
 static inline devfd_t open_device(void)
@@ -210,7 +210,7 @@ int main(int ac, char *av[])
 				break;
 			case 'r':
 				printf("Address> ");
-				if (!scanf("%I64X", &w.addr))
+				if (!scanf("%llX", &w.addr))
 					break;
 
 				printf("Unwatching 0x%016llX\n", w.addr);
