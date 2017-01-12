@@ -19,7 +19,6 @@
 #
 # You should have received a copy of the GNU General Public License along with
 # this program; If not, see <http://www.gnu.org/licenses/>.
-
 # See if we are cross compiling.
 ifeq ("$(origin C)", "command line")
 	CROSS_BUILD ?= x86_64-w64-mingw32-
@@ -27,16 +26,8 @@ ifeq ("$(origin C)", "command line")
 	CROSS_LIB ?= /usr/x86_64-w64-mingw32/lib
 endif
 
-# Verbose?
 PREPEND.1 := @
-CEXTRA.1 := @echo "  CC   $@"
-AEXTRA.1 := @echo "  AS   $@"
-LEXTRA.1 := @echo "  LD   $@"
-
 PREPEND := $(PREPEND.$(Q))
-CEXTRA := $(CEXTRA.$(Q))
-AEXTRA := $(AEXTRA.$(Q))
-LEXTRA := $(LEXTRA.$(Q))
 
 CC = $(CROSS_BUILD)gcc
 STRIP = $(CROSS_BUILD)strip
@@ -92,18 +83,19 @@ $(TARGET): $(BIN_DIR) $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
 	$(PREPEND)$(CC) $(LDFLAGS) -o $@ $(OBJ) $(LIBS)
 	$(PREPEND)$(OBJCOPY) $@ $(SYMBOL)
 	$(PREPEND)$(STRIP) $@
-	$(LEXTRA)
+	@echo "  LD   $@"
 
 $(UM_BIN):
 	$(PREPEND)$(CC) $(UM_SRC) -o $(UM_BIN) $(UM_LIB)
+	@echo "  CC   $@"
 
 $(OBJ_DIR)/%.o: %.c $(DEP_DIR)/%.d
 	$(PREPEND)$(CC) -c $(CFLAGS) $(DEPFLAGS) -o $@ $<
-	$(CEXTRA)
+	@echo "  CC   $@"
 
 $(OBJ_DIR)/%.o: %.S
 	$(PREPEND)$(CC) -c $(AFLAGS) -o $@ $<
-	$(AEXTRA)
+	@echo "  AS   $@"
 
 -include $(DEP)
 $(DEP_DIR)/%.d: ;
@@ -116,4 +108,3 @@ $(OBJ_DIR):
 
 $(BIN_DIR):
 	@mkdir -p $(BIN_DIR)
-
