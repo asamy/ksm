@@ -261,7 +261,6 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 	RtlInitUnicodeString(&deviceLink, KSM_DOS_NAME);
 	if (NT_SUCCESS(status = IoCreateSymbolicLink(&deviceLink, &deviceName))) {
 		KSM_DEBUG_RAW("ready\n");
-		KSM_DEBUG("PA: %p\n", __pa(MmMapLockedPagesSpecifyCache));
 		ksm->host_pgd = __readcr3();
 		goto out;
 	}

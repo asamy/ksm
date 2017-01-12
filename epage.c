@@ -191,7 +191,9 @@ int ksm_hook_epage(void *original, void *redirect)
 	phi->ops = &epage_ops;
 
 	CALL_DPC(__do_hook_page, phi);
+	spin_lock(&ksm->epage_lock);
 	htable_add(&ksm->ht, page_hash(phi->origin), phi);
+	spin_unlock(&ksm->epage_lock);
 	return 0;
 }
 
@@ -207,7 +209,9 @@ int ksm_unhook_page(struct ksm *k, void *va)
 int __ksm_unhook_page(struct page_hook_info *phi)
 {
 	CALL_DPC(__do_unhook_page, (void *)phi->dpa);
+	spin_lock(&ksm->epage_lock);
 	htable_del(&ksm->ht, page_hash(phi->origin), phi);
+	spin_unlock(&ksm->epage_lock);
 	mm_free_page(phi->c_va);
 	mm_free_pool(phi, sizeof(*phi));
 	return DPC_RET();
@@ -216,17 +220,29 @@ int __ksm_unhook_page(struct page_hook_info *phi)
 struct page_hook_info *ksm_find_page(struct ksm *k, void *va)
 {
 	const void *align = (const void *)page_align(va);
-	return htable_get(&k->ht, page_hash((u64)align), ht_cmp, align);
+	struct page_hook_info *phi;
+
+	spin_lock(&k->epage_lock);
+	phi = htable_get(&k->ht, page_hash((u64)align), ht_cmp, align);
+	spin_unlock(&k->epage_lock);
+	return phi;
 }
 
 struct page_hook_info *ksm_find_page_pfn(struct ksm *k, uintptr_t pfn)
 {
 	struct htable_iter i;
 	struct page_hook_info *phi;
+	struct page_hook_info *ret = NULL;
 
-	for (phi = htable_first(&k->ht, &i); phi; phi = htable_next(&k->ht, &i))
-		if (phi->dpa >> PAGE_SHIFT == pfn)
-			return phi;
-	return NULL;
+	spin_lock(&k->epage_lock);
+	for (phi = htable_first(&k->ht, &i); phi; phi = htable_next(&k->ht, &i)) {
+		if (phi->dpa >> PAGE_SHIFT == pfn) {
+			ret = phi;
+			break;
+		}
+	}
+	spin_unlock(&k->epage_lock);
+
+	return ret;
 }
 #endif

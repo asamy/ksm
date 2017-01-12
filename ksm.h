@@ -173,7 +173,7 @@
 #define EPT_VE_WRITABLE			0x10			/* EPTE is writable  */
 #define EPT_VE_EXECUTABLE		0x20			/* EPTE is executable  */
 #define EPT_VE_RWX			0x38			/* All of the above OR'd  */
-#define EPT_AR_SHIFT			0x3
+#define EPT_VE_AR_SHIFT			0x3
 #define EPT_AR_MASK			0x7
 #define EPT_VE_VALID_GLA		0x80			/* Valid guest linear address */
 #define EPT_VE_TRANSLATION		0x100			/* Translation fault  */
@@ -506,6 +506,7 @@ struct ksm {
 	u64 vpid_ept;
 #ifdef EPAGE_HOOK
 	struct htable ht;
+	spinlock_t epage_lock;
 #endif
 #ifdef PMEM_SANDBOX
 	struct list_head task_list;
@@ -690,7 +691,7 @@ static inline void __set_epte_ar(u64 *epte, int ar)
 
 static inline void __set_epte_ar_inplace(u64 *epte, int ar)
 {
-	__set_epte_ar(epte, ar | (*epte & EPT_AR_MASK));
+	*epte |= ar & EPT_AR_MASK;
 }
 
 static inline void __set_epte_ar_pfn(u64 *epte, int ar, u64 pfn)

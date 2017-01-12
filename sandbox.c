@@ -66,6 +66,7 @@ struct sa_task {
 	pid_t pid;
 	u64 pgd;
 	u16 eptp[KSM_MAX_VCPUS];
+	spinlock_t lock;
 	struct list_head pages;
 	struct list_head link;
 };
@@ -148,6 +149,7 @@ static inline int create_sa_task(struct ksm *k, pid_t pid, u64 pgd)
 	task->pgd = pgd;
 	task->pid = pid;
 	INIT_LIST_HEAD(&task->pages);
+	spin_lock_init(&task->lock);
 	for (i = 0; i < KSM_MAX_VCPUS; ++i)
 		task->eptp[i] = EPT_MAX_EPTP_LIST;
 
@@ -187,7 +189,10 @@ static inline struct cow_page *ksm_sandbox_copy_page(struct vcpu *vcpu,
 	page->gpa = gpa;
 	page->hpa = __pa(hva);
 	page->hva = hva;
+
+	spin_lock(&task->lock);
 	list_add(&page->link, &task->pages);
+	spin_unlock(&task->lock);
 	return page;
 
 err_cow:
@@ -309,6 +314,16 @@ static struct sa_task *__find_sa_task_eptp(struct ksm *k, u16 eptp)
 	return NULL;
 }
 
+static struct sa_task *find_sa_task_eptp(struct ksm *k, u16 eptp)
+{
+	struct sa_task *task;
+
+	spin_lock(&k->task_lock);
+	task = __find_sa_task_eptp(k, eptp);
+	spin_unlock(&k->task_lock);
+	return task;
+}
+
 bool ksm_sandbox_handle_ept(struct ept_ve_around *ve)
 {
 	struct sa_task *task;
@@ -318,55 +333,25 @@ bool ksm_sandbox_handle_ept(struct ept_ve_around *ve)
 	struct ept *ept;
 	struct ksm *k;
 	u64 *epte;
-	u16 eptp;
-	pid_t pid;
-	int i;
 
 	vcpu = ve->vcpu;
 	ept = &vcpu->ept;
 	info = ve->info;
 	k = vcpu_to_ksm(vcpu);
-
-	pid = proc_id();
-	task = find_sa_task_pgd_pid(k, pid, ve->cr3 & PAGE_PA_MASK);
+	task = find_sa_task_eptp(k, info->eptp);
 	if (!task) {
-		/*
-		 * Crashed maybe...
-		 * Probably not a good way to detect this...  lazyness.
-		 */
-		bool ret = info->eptp > EPTP_NORMAL;
-		if (ret)
-			ve->eptp_next = EPTP_DEFAULT;
-
-		/* Free it  */
-		spin_lock(&k->task_lock);
-		task = __find_sa_task_eptp(k, info->eptp);
-		if (task) {
-			/* Free per-cpu EPTP for this task  */
-			KSM_DEBUG("Task %p died, cleaning up\n", task);
-			for (i = 0; i < KSM_MAX_VCPUS; ++i) {
-				if (task->eptp[i] != EPT_MAX_EPTP_LIST) {
-					vcpu = ksm_cpu_at(k, i);
-					ept = &vcpu->ept;
-					ept_free_ptr(ept, task->eptp[i]);
-				}
-			}
-
-			__free_sa_task(k, task);
-		}
-
-		spin_unlock(&k->task_lock);
-		return ret;
+		ve->eptp_next = EPTP_DEFAULT;
+		BREAK_ON(1);
+		return true;
 	}
 
-	eptp = task_eptp(task);
-	BUG_ON(eptp == EPT_MAX_EPTP_LIST);
-
 	epte = ept_pte(EPT4(ept, info->eptp), info->gpa);
-	BUG_ON(eptp != info->eptp);
+	BUG_ON(!epte);
 
 	if (info->exit & EPT_ACCESS_WRITE) {
-		KSM_DEBUG("allocating cow page for %p\n", info->gpa);
+		KSM_DEBUG("allocating cow page for GPA %p GVA %p AC %X)\n",
+			  info->gpa, info->gla, info->exit & EPT_AR_MASK);
+
 		page = ksm_sandbox_copy_page(vcpu, task, info->gpa);
 		WARN_ON(!page);
 		if (!page)
@@ -376,6 +361,7 @@ bool ksm_sandbox_handle_ept(struct ept_ve_around *ve)
 		__set_epte_pfn(epte, page->hpa >> PAGE_SHIFT);
 	} else {
 manually_fix:
+		BREAK_ON(1);
 		KSM_DEBUG("Manually fixing AR for %p (0x%X)\n", info->gpa, info->exit & EPT_AR_MASK);
 		__set_epte_ar_inplace(epte, info->exit & EPT_AR_MASK);
 	}

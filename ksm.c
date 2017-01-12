@@ -64,15 +64,15 @@ static inline int init_msr_bitmap(struct ksm *k)
 	 * emulate VT-x.
 	 */
 	unsigned long *read_lo = (unsigned long *)k->msr_bitmap;
-	set_bit(MSR_IA32_FEATURE_CONTROL, read_lo);
 #ifdef NESTED_VMX
+	set_bit(MSR_IA32_FEATURE_CONTROL, read_lo);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		set_bit(msr, read_lo);
 #endif
 
 	unsigned long *write_lo = (unsigned long *)((char *)k->msr_bitmap + 2048);
-	set_bit(MSR_IA32_FEATURE_CONTROL, write_lo);
 #ifdef NESTED_VMX
+	set_bit(MSR_IA32_FEATURE_CONTROL, write_lo);
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		set_bit(msr, write_lo);
 #endif
@@ -219,6 +219,7 @@ int ksm_init(struct ksm **kp)
 
 #ifdef EPAGE_HOOK
 	htable_init(&k->ht, rehash, NULL);
+	spin_lock_init(&k->epage_lock);
 #endif
 
 	ret = mm_cache_ram_ranges(&k->ranges[0], &k->range_count);

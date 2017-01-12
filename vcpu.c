@@ -71,9 +71,11 @@ static inline u64 *ept_page_addr(u64 *pte)
  * And since each of those entries contain a physical address, we need to use
  * ept_page_addr() to obtain the virtual address for that specific table.
  *
- * We currently just do a 1:1 mapping, except for the executable page
- * redirection case, see:
- *	page.c.
+ * We currently just do a 1:1 mapping by default, but some APIs redirect to
+ * "a shadow" physical page, and those are in the following files:
+ *	- introspect.c
+ *	- epage.c
+ *	- sandbox.c
  */
 u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 {
@@ -144,6 +146,10 @@ static void free_entries(u64 *table, int lvl)
 
 static bool setup_pml4(struct ept *ept, int access, u16 eptp)
 {
+	/*
+	 * On Linux, this doesn't have to be done, and we can get each
+	 * one as a violation, on Windows, the kernel screams and hangs.
+	 */
 	int i;
 	u64 addr;
 	u64 apic;
@@ -317,8 +323,9 @@ static bool do_ept_violation(struct ept_ve_around *ve)
 	struct ksm *k = vcpu_to_ksm(vcpu);
 	struct ve_except_info *info = ve->info;
 
-	if (((info->exit >> EPT_AR_SHIFT) & EPT_AR_MASK) == EPT_ACCESS_NONE) {
-		if (!ept_alloc_page(EPT4(ept, info->eptp), EPT_ACCESS_ALL, info->gpa, info->gpa))
+	if ((info->exit & EPT_VE_RWX) == 0) {	/* no access  */
+		if (!ept_alloc_page(EPT4(ept, info->eptp),
+				    EPT_ACCESS_ALL, info->gpa, info->gpa))
 			return false;
 
 		return true;
@@ -399,6 +406,7 @@ void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 		.invalidate = false,
 	};
 
+	info->except_mask = 0;
 	if (!do_ept_violation(&ve))
 		KSM_PANIC(EPT_BUGCHECK_CODE, EPT_UNHANDLED_VIOLATION, rip, info->gpa);
 

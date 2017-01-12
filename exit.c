@@ -1506,7 +1506,6 @@ static bool vcpu_handle_vmoff(struct vcpu *vcpu)
 	nested->vmcs_region = 0;
 	nested->vmxon_region = 0;
 	nested->launch_state = VMCS_LAUNCH_STATE_NONE;
-	nested->feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
 	nested_free_vmcs(nested);
 	nested_leave(nested);
 
@@ -1978,12 +1977,10 @@ static bool vcpu_handle_wrmsr(struct vcpu *vcpu)
 		break;
 	case MSR_IA32_FEATURE_CONTROL:
 #ifdef NESTED_VMX
-		vcpu->nested_vcpu.feat_ctl = val;
-#else
-		if (val & ~(FEATURE_CONTROL_LOCKED |
-			    FEATURE_CONTROL_VMXON_ENABLED_INSIDE_SMX |
-			    FEATURE_CONTROL_VMXON_ENABLED_OUTSIDE_SMX))
-			__writemsr(MSR_IA32_FEATURE_CONTROL, val);
+		if (vcpu->nested_vcpu.feat_ctl & FEATURE_CONTROL_LOCKED)
+			vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
+		else
+			vcpu->nested_vcpu.feat_ctl = val;
 #endif
 		break;
 	default:

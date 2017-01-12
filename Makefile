@@ -17,7 +17,7 @@
 # this program; If not, see <http://www.gnu.org/licenses/>.
 obj-m += ksmlinux.o
 ksmlinux-objs := exit.o htable.o hotplug.o introspect.o ksm.o sandbox.o \
-		page.o resubv.o vcpu.o mm.o main_linux.o vmx.o
+		epage.o resubv.o vcpu.o mm.o main_linux.o vmx.o
 ccflags-y := -Wno-format -Wno-declaration-after-statement -Wno-unused-function \
 	-DDBG -DENABLE_PRINT -DPMEM_SANDBOX -std=gnu99
 

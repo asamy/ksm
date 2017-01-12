@@ -91,6 +91,7 @@
     <FilesToPackage Include="$(TargetPath)" />
   </ItemGroup>
   <ItemGroup>
+    <ClCompile Include="..\..\epage.c" />
     <ClCompile Include="..\..\exit.c" />
     <ClCompile Include="..\..\hotplug.c" />
     <ClCompile Include="..\..\htable.c" />
@@ -98,7 +99,6 @@
     <ClCompile Include="..\..\ksm.c" />
     <ClCompile Include="..\..\main_nt.c" />
     <ClCompile Include="..\..\mm.c" />
-    <ClCompile Include="..\..\page.c" />
     <ClCompile Include="..\..\print.c" />
     <ClCompile Include="..\..\resubv.c" />
     <ClCompile Include="..\..\sandbox.c" />
