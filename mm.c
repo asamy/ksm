@@ -35,27 +35,6 @@
 #ifdef __linux__
 extern struct resource iomem_resource;
 
-/*
- * find_vm_area() isn't exported, so
- * we will need to track remappings on our own...
- */
-struct remap_region {
-	struct vm_struct *area;
-	struct list_head link;
-};
-static LIST_HEAD(remap_list);
-
-static inline struct remap_region *find_remap_region(void *addr)
-{
-	struct remap_region *r;
-
-	list_for_each_entry(r, &remap_list, link)
-		if (r->area->addr == addr)
-			return r;
-
-	return NULL;
-}
-
 void *mm_remap(u64 phys, size_t size)
 {
 	/*
@@ -64,57 +43,33 @@ void *mm_remap(u64 phys, size_t size)
 	 * ioremap()...
 	 */
 	unsigned long vaddr;
-	unsigned long last;
 	unsigned long offset;
 	struct vm_struct *area;
-	struct remap_region *region;
-
-	region = mm_alloc_pool(sizeof(*region));
-	if (!region)
-		return NULL;
 
 	area = __get_vm_area(size, VM_IOREMAP | VM_LOCKED, VMALLOC_START, VMALLOC_END);
 	if (!area)
-		goto err_region;
+		return NULL;
 
 	offset = phys & ~PAGE_MASK;
 	phys &= PHYSICAL_PAGE_MASK;
-	last = phys + size - 1;
-	size = PAGE_ALIGN(last + 1) - phys;
+	size = PAGE_ALIGN(phys + size) - phys;
 
 	area->phys_addr = phys;
 	vaddr = (unsigned long)area->addr;
 
 	/* Just assume RW mapping.  */
-	if (ioremap_page_range(vaddr, vaddr + size, phys, PAGE_KERNEL_IO))
-		goto err_area;
+	if (ioremap_page_range(vaddr, vaddr + size, phys, PAGE_KERNEL_IO)) {
+		free_vm_area(area);
+		return NULL;
+	}
 
-	region->area = area;
-	list_add(&region->link, &remap_list);
 	return (void *)(vaddr + offset);
-
-err_area:
-	free_vm_area(area);
-err_region:
-	mm_free_pool(region, sizeof(*region));
-	return NULL;
 }
 
 void mm_unmap(void *vaddr, size_t size)
 {
-	struct remap_region *region;
 	void *addr = (void *)((unsigned long)vaddr & PAGE_MASK);
-
-	region = find_remap_region(addr);
-	if (!region) {
-		printk(KERN_ERR "mm_unmap(): bad address %p\n", addr);
-		dump_stack();
-		return;
-	}
-
-	free_vm_area(region->area);
-	list_del(&region->link);
-	mm_free_pool(region, sizeof(*region));
+	vunmap(addr);
 }
 
 /*
