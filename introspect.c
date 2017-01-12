@@ -256,8 +256,8 @@ int ksm_introspect_rem_watch(struct ksm *k, struct watch_ioctl *watch)
 
 	spin_lock(&k->watch_lock);
 	list_del(&addr->link);
-	spin_unlock(&k->watch_lock);
 	__mm_free_pool(addr);
+	spin_unlock(&k->watch_lock);
 	return ret;
 }
 

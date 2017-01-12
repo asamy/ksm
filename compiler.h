@@ -76,7 +76,7 @@ typedef signed long long intptr_t;
 #endif
 
 #ifndef _bool_true_false_are_defined
-#define bool	_Bool
+typedef _Bool bool;
 #define true	1
 #define false	0
 #define _bool_true_false_are_defined
