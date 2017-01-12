@@ -27,7 +27,7 @@ static inline void init_epte(u64 *entry, int access, u64 hpa)
 {
 	*entry ^= *entry;
 	*entry |= access & EPT_AR_MASK;
-	*entry |= (hpa >> PAGE_SHIFT) << PAGE_SHIFT;
+	*entry |= hpa & PAGE_PA_MASK;
 #ifdef EPT_SUPPRESS_VE
 	*entry |= EPT_SUPPRESS_VE_BIT;
 #endif
@@ -183,7 +183,7 @@ static inline void setup_eptp(u64 *ptr, u64 pml4)
 #ifdef ENABLE_PML
 	*ptr |= VMX_EPT_AD_ENABLE_BIT;
 #endif
-	*ptr |= (pml4 >> PAGE_SHIFT) << PAGE_SHIFT;
+	*ptr |= pml4 & PAGE_PA_MASK;
 }
 
 bool ept_create_ptr(struct ept *ept, int access, u16 *out)
@@ -227,32 +227,19 @@ static inline bool init_ept(struct ept *ept)
 	int i;
 	u16 dontcare;
 
-	ept->ptr_list = (u64 *)mm_alloc_page();
-	if (!ept->ptr_list)
-		return false;
-
-	memset(ept->ptr_bitmap, 0, sizeof(ept->ptr_bitmap));
-	for (i = 0; i < EPTP_INIT_USED; ++i)
-		if (!ept_create_ptr(ept, EPT_ACCESS_ALL, &dontcare))
-			goto err_pml4_list;
-
-	return true;
-
-err_pml4_list:
-	free_pml4_list(ept);
-	if (ept->ptr_list) {
-		mm_free_page(ept->ptr_list);
-		ept->ptr_list = NULL;
+	for (i = 0; i < EPTP_INIT_USED; ++i) {
+		if (!ept_create_ptr(ept, EPT_ACCESS_ALL, &dontcare)) {
+			free_pml4_list(ept);
+			return false;
+		}
 	}
 
-	return false;
+	return true;
 }
 
 static inline void free_ept(struct ept *ept)
 {
 	free_pml4_list(ept);
-	if (ept->ptr_list)
-		mm_free_page(ept->ptr_list);
 }
 
 /*
@@ -395,7 +382,7 @@ bool ept_handle_violation(struct vcpu *vcpu)
 void __ept_handle_violation(uintptr_t cs, uintptr_t rip)
 {
 	struct vcpu *vcpu = ksm_current_cpu();
-	struct ve_except_info *info = vcpu->ve;
+	struct ve_except_info *info = &vcpu->ve;
 	struct ept_ve_around ve = {
 		.vcpu = vcpu,
 		.info = info,
@@ -485,7 +472,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	__sidt(idtr);
 	memcpy((void *)vcpu->idt.base, (void *)idtr->base, idtr->limit);
 
-	vmxon = vcpu->vmxon;
+	vmxon = &vcpu->vmxon;
 	vmxon->revision_id = (u32)vmx;
 
 	cr0 &= __readmsr(MSR_IA32_VMX_CR0_FIXED1);
@@ -504,7 +491,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		return;
 	}
 
-	vmcs = vcpu->vmcs;
+	vmcs = &vcpu->vmcs;
 	vmcs->revision_id = (u32)vmx;
 
 	pa = __pa(vmcs);
@@ -548,7 +535,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	adjust_ctl_val(MSR_IA32_VMX_EXIT_CTLS + msr_off, &vm_exit);
 	vcpu->exit_ctl = vm_exit;
 
-	u32 vm_pinctl = 0;// PIN_BASED_POSTED_INTR;
+	u32 vm_pinctl = PIN_BASED_POSTED_INTR;
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 	vcpu->pin_ctl = vm_pinctl;
 
@@ -630,13 +617,13 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write64(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
 	err |= vmcs_write64(VMCS_LINK_POINTER, -1ULL);
 
-#if 0
 	/* Posted interrupts if available.  */
 	if (vm_pinctl & PIN_BASED_POSTED_INTR) {
 		err |= vmcs_write16(POSTED_INTR_NV, 0);
 		err |= vmcs_write64(POSTED_INTR_DESC_ADDR, __pa(&vcpu->pi_desc));
 	}
 
+#if 0
 	/* Full APIC virtualization if any available.  */
 	if (vm_2ndctl & apicv) {
 		if (vm_2ndctl & SECONDARY_EXEC_VIRTUAL_INTR_DELIVERY) {
@@ -680,11 +667,11 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	 */
 	if (vm_2ndctl & SECONDARY_EXEC_ENABLE_VE) {
 		err |= vmcs_write16(EPTP_INDEX, EPTP_DEFAULT);
-		err |= vmcs_write64(VE_INFO_ADDRESS, __pa(vcpu->ve));
+		err |= vmcs_write64(VE_INFO_ADDRESS, __pa(&vcpu->ve));
 		vcpu_put_idt(vcpu, cs, X86_TRAP_VE, __ept_violation);
 	} else {
 		/* Emulate EPTP Index  */
-		struct ve_except_info *ve = vcpu->ve;
+		struct ve_except_info *ve = &vcpu->ve;
 		ve->eptp = EPTP_DEFAULT;
 	}
 
@@ -786,7 +773,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	}
 
 	/*
-	 * __vmx_vmwrite/__vmx_vmlaunch() failed if we got here,
+	 * vmwrite/vmlaunch failed if we got here,
 	 * we had already overwritten the IDT entry for #VE (X86_TRAP_VE),
 	 * restore it now otherwise on Windows, PatchGuard is gonna
 	 * notice and crash the system.
@@ -801,6 +788,16 @@ off:
 
 int vcpu_init(struct vcpu *vcpu)
 {
+	vcpu->idt.limit = PAGE_SIZE - 1;
+	vcpu->idt.base = (uintptr_t)mm_alloc_page();
+	if (!vcpu->idt.base)
+		return ERR_NOMEM;
+
+	if (!init_ept(&vcpu->ept)) {
+		mm_free_page((void *)vcpu->idt.base);
+		return ERR_NOMEM;
+	}
+
 #ifdef NESTED_VMX
 	vcpu->nested_vcpu.feat_ctl = __readmsr(MSR_IA32_FEATURE_CONTROL) & ~FEATURE_CONTROL_LOCKED;
 #endif
@@ -819,70 +816,13 @@ int vcpu_init(struct vcpu *vcpu)
 	vcpu->cr0_guest_host_mask = 0;
 	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;
 
-	if (!init_ept(&vcpu->ept))
-		return ERR_NOMEM;
-
-	vcpu->idt.limit = PAGE_SIZE - 1;
-	vcpu->idt.base = (uintptr_t)mm_alloc_page();
-	if (!vcpu->idt.base)
-		goto out_ept;
-
-	vcpu->vmxon = mm_alloc_page();
-	if (!vcpu->vmxon)
-		goto out_idt;
-
-	vcpu->vmcs = mm_alloc_page();
-	if (!vcpu->vmcs)
-		goto out_vmxon;
-
-	vcpu->ve = mm_alloc_page();
-	if (!vcpu->ve)
-		goto out_vmcs;
-
-#ifdef ENABLE_PML
-	vcpu->pml = mm_alloc_page();
-	if (!vcpu->pml)
-		goto out_ve;
-#endif
-
-	vcpu->vapic_page = mm_alloc_page();
-	if (!vcpu->vapic_page)
-		goto out_pml;
-
-	vcpu->stack = mm_alloc_pool(KERNEL_STACK_SIZE);
-	if (vcpu->stack) {
-		*(struct vcpu **)((uintptr_t)vcpu->stack + KERNEL_STACK_SIZE - 8) = vcpu;
-		return 0;
-	}
-
-out_pml:
-#ifdef ENABLE_PML
-	mm_free_page(vcpu->pml);
-out_ve:
-#endif
-	mm_free_page(vcpu->ve);
-out_vmcs:
-	mm_free_page(vcpu->vmcs);
-out_vmxon:
-	mm_free_page(vcpu->vmxon);
-out_idt:
-	mm_free_page((void *)vcpu->idt.base);
-out_ept:
-	free_ept(&vcpu->ept);
-	return ERR_NOMEM;
+	*(struct vcpu **)((uintptr_t)vcpu->stack + KERNEL_STACK_SIZE - 8) = vcpu;
+	return 0;
 }
 
 void vcpu_free(struct vcpu *vcpu)
 {
 	mm_free_page((void *)vcpu->idt.base);
-	mm_free_page(vcpu->vmxon);
-	mm_free_page(vcpu->vmcs);
-	mm_free_page(vcpu->ve);
-#ifdef ENABLE_PML
-	mm_free_page(vcpu->pml);
-#endif
-	mm_free_page(vcpu->vapic_page);
-	mm_free_pool(vcpu->stack, KERNEL_STACK_SIZE);
 	free_ept(&vcpu->ept);
 }
 
@@ -900,7 +840,7 @@ void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index)
 		vmcs_write16(EPTP_INDEX, index);
 	} else {
 		/* Emulated  */
-		struct ve_except_info *ve = vcpu->ve;
+		struct ve_except_info *ve = &vcpu->ve;
 		if (ve->eptp == index)
 			return;
 

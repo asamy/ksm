@@ -365,21 +365,21 @@ struct ept_ve_around {
 };
 
 struct ept {
-	u64 *ptr_list;
+	__align(PAGE_SIZE) u64 ptr_list[EPT_MAX_EPTP_LIST];
 	u64 *pml4_list[EPT_MAX_EPTP_LIST];
 	unsigned long
 		ptr_bitmap[EPT_MAX_EPTP_LIST / sizeof(unsigned long)];
 };
 
 struct vcpu {
-	void *stack;
-	void *vapic_page;
+	__align(PAGE_SIZE) u8 stack[KERNEL_STACK_SIZE];
+	__align(PAGE_SIZE) u8 vapic_page[PAGE_SIZE];
 #ifdef ENABLE_PML
-	void *pml;
+	__align(PAGE_SIZE) u64 pml[PML_MAX_ENTRIES];
 #endif
-	struct vmcs *vmxon;
-	struct vmcs *vmcs;
-	struct ve_except_info *ve;
+	__align(PAGE_SIZE) struct vmcs vmxon;
+	__align(PAGE_SIZE) struct vmcs vmcs;
+	__align(PAGE_SIZE) struct ve_except_info ve;
 	struct pi_desc pi_desc;
 	u32 entry_ctl;
 	u32 exit_ctl;
@@ -516,9 +516,12 @@ struct ksm {
 	struct list_head watch_list;
 	spinlock_t watch_lock;
 #endif
-	void *msr_bitmap;
-	void *io_bitmap_a;
-	void *io_bitmap_b;
+	/* see ksm.c  */
+	__align(PAGE_SIZE) u8 msr_bitmap[PAGE_SIZE];
+	/* IO bitmap A: ports 0000H through 7FFFH  */
+	__align(PAGE_SIZE) u8 io_bitmap_a[PAGE_SIZE];	
+	/* IO bitmap B: ports 8000H through FFFFh  */
+	__align(PAGE_SIZE) u8 io_bitmap_b[PAGE_SIZE];
 };
 
 /*
@@ -585,7 +588,7 @@ static inline u16 vcpu_eptp_idx(const struct vcpu *vcpu)
 	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VE)
 		return vmcs_read16(EPTP_INDEX);
 
-	const struct ve_except_info *ve = vcpu->ve;
+	const struct ve_except_info *ve = &vcpu->ve;
 	return ve->eptp;
 }
 

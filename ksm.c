@@ -36,12 +36,8 @@ struct ksm *ksm = NULL;
  *
  * For the macro magic (aka DEFINE_DPC, etc.) see percpu.h.
  */
-static inline int init_msr_bitmap(struct ksm *k)
+static inline void init_msr_bitmap(struct ksm *k)
 {
-	k->msr_bitmap = mm_alloc_page();
-	if (!k->msr_bitmap)
-		return ERR_NOMEM;
-
 	/*
 	 * Setup the MSR bitmap, opt-in for VM-exit for some MSRs
 	 * Mostly the VMX msrs so we don't cause too much havoc.
@@ -76,44 +72,15 @@ static inline int init_msr_bitmap(struct ksm *k)
 	for (u32 msr = MSR_IA32_VMX_BASIC; msr <= MSR_IA32_VMX_VMFUNC; ++msr)
 		set_bit(msr, write_lo);
 #endif
-
-	return 0;
 }
 
-static inline int init_io_bitmaps(struct ksm *k)
+static inline void init_io_bitmaps(struct ksm *k)
 {
-	/* IO bitmap A: ports 0000H through 7FFFH  */
-	k->io_bitmap_a = mm_alloc_page();
-	if (!k->io_bitmap_a)
-		return ERR_NOMEM;
-
-	/* IO bitmap B: ports 8000H through FFFFh  */
-	k->io_bitmap_b = mm_alloc_page();
-	if (!k->io_bitmap_b) {
-		mm_free_page(k->io_bitmap_a);
-		return ERR_NOMEM;
-	}
-
 #if 0	/* This can be anonying  */
 	unsigned long *bitmap_a = (unsigned long *)(k->io_bitmap_a);
 	set_bit(0x60, bitmap_a);	/* PS/2 Mice  */
 	set_bit(0x64, bitmap_a);	/* PS/2 Mice and keyboard  */
 #endif
-	return 0;
-}
-
-static inline void free_msr_bitmap(struct ksm *k)
-{
-	if (k->msr_bitmap)
-		mm_free_page(k->msr_bitmap);
-}
-
-static inline void free_io_bitmaps(struct ksm *k)
-{
-	if (k->io_bitmap_a)
-		mm_free_page(k->io_bitmap_a);
-	if (k->io_bitmap_b)
-		mm_free_page(k->io_bitmap_b);
 }
 
 /*
@@ -242,29 +209,19 @@ int ksm_init(struct ksm **kp)
 		goto out_sbox;
 #endif
 
-	ret = init_msr_bitmap(k);
+	ret = register_power_callback();
 	if (ret < 0)
 		goto out_intro;
 
-	ret = init_io_bitmaps(k);
-	if (ret < 0)
-		goto out_msr;
-
-	ret = register_power_callback();
-	if (ret < 0)
-		goto out_io;
-
 	ret = register_cpu_callback();
 	if (ret == 0) {
+		init_msr_bitmap(k);
+		init_io_bitmaps(k);
 		*kp = k;
 		return ret;
 	}
 
 	unregister_power_callback();
-out_io:
-	free_io_bitmaps(k);
-out_msr:
-	free_msr_bitmap(k);
 out_intro:
 #ifdef INTROSPECT_ENGINE
 	ksm_introspect_exit(k);
@@ -332,10 +289,6 @@ int ksm_free(struct ksm *k)
 
 	/* Desubvert all:  */
 	ret = ksm_unsubvert(k);
-
-	/* Free shaved stuff:  */
-	free_msr_bitmap(k);
-	free_io_bitmaps(k);
 
 	/* Clear page hook table  */
 #ifdef EPAGE_HOOK
@@ -409,7 +362,7 @@ bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len)
 		if (!tmp)
 			return false;
 
-		/* Write up to remaining data in the page, not in len.  */
+		/* Write up to remaining in the page, not in len.  */
 		off = addr_offset(gva);
 		copy = min(len, PAGE_SIZE - off);
 		memcpy(tmp + off, data, copy);
@@ -451,7 +404,7 @@ bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len)
 		if (!tmp)
 			return false;
 
-		/* Read up to remaining data in the page, not in len.  */
+		/* Read up to remaining in the page, not in len.  */
 		off = addr_offset(gva);
 		copy = min(len, PAGE_SIZE - off);
 		memcpy(d, tmp + off, copy);

@@ -61,13 +61,6 @@ int ksm_introspect_exit(struct ksm *k)
 	struct introspect_addr *addr = NULL;
 	struct introspect_addr *next = NULL;
 
-	if (k->active_vcpus > 0) {
-		CALL_DPC(__call_introspect, &(struct introspect_call) {
-			.type = INTROSPECT_STOP
-		});
-		r = DPC_RET();
-	}
-
 	list_for_each_entry_safe(addr, next, &k->watch_list, link) {
 		list_del(&addr->link);
 		__mm_free_pool(addr);
@@ -194,6 +187,9 @@ bool ksm_introspect_handle_ept(struct ept_ve_around *ve)
 
 int ksm_introspect_start(struct ksm *k)
 {
+	if (k->active_vcpus == 0)
+		return ERR_NOTH;
+
 	CALL_DPC(__call_introspect, &(struct introspect_call) {
 		.type = INTROSPECT_START,
 	});
@@ -202,6 +198,9 @@ int ksm_introspect_start(struct ksm *k)
 
 int ksm_introspect_stop(struct ksm *k)
 {
+	if (k->active_vcpus == 0)
+		return ERR_NOTH;
+
 	CALL_DPC(__call_introspect, &(struct introspect_call) {
 		.type = INTROSPECT_STOP,
 	});
