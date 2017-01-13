@@ -78,26 +78,24 @@
  * To sync this, we just use linux convention because it's more
  * convenient.
  */
-#define PAGE_PRESENT		0x1
-#define PAGE_WRITE		0x2
-#define PAGE_USER		0x4
-#define PAGE_WRITETHRU		0x8
-#define PAGE_CACHEDISABLE	0x10
-#define PAGE_ACCESSED		0x20
-#define PAGE_DIRTY		0x40
-#define PAGE_LARGE		0x80
-#define PAGE_GLOBAL		0x100
-#define PAGE_COPYONWRITE	0x200
-#define PAGE_PROTOTYPE		0x400
-#define PAGE_TRANSIT		0x800
+#define PAGE_PRESENT		0x1	/* Present and locked in the lock position  */
+#define PAGE_WRITE		0x2	/* Writable  */
+#define PAGE_USER		0x4	/* User page  */
+#define PAGE_WRITETHRU		0x8	/* Write through  */
+#define PAGE_CACHEDISABLE	0x10	/* No caching  */
+#define PAGE_ACCESSED		0x20	/* Processor: Set when accessed  */
+#define PAGE_DIRTY		0x40	/* Processor: Set when wrote to  */
+#define PAGE_LARGE		0x80	/* Large page  */
+#define PAGE_GLOBAL		0x100	/* Global page, see CR4.PGE  */
+#define PAGE_COPYONWRITE	0x200	/* CoW mapping  */
+#define PAGE_PROTOTYPE		0x400	/* Linux: Used for I/O mapping  */
+#define PAGE_TRANSIT		0x800	/* Linux: Hidden by kmemcheck  */
 #define PAGE_PA_MASK		(0xFFFFFFFFFULL << PAGE_SHIFT)
 #define PAGE_PA(page)		((page) & PAGE_PA_MASK)
 #define PAGE_FN(page)		(((page) >> PTI_SHIFT) & PTI_MASK)
 #define PAGE_PPA(pte)		(PAGE_PA(pte->pte))
 #define PAGE_PFN(pte)		(PAGE_FN(pte->pte))
-#define PAGE_SOFT_WS_IDX_SHIFT	52
-#define PAGE_SOFT_WS_IDX_MASK	0xFFF
-#define PAGE_NX			0x8000000000000000
+#define PAGE_NX			0x8000000000000000	/* No execute  */
 #define PAGE_LPRESENT		(PAGE_PRESENT | PAGE_LARGE)
 
 #define PGF_PRESENT		0x1	/* present fault  */
@@ -120,6 +118,7 @@ typedef struct { unsigned long long pud; } pud_t;
 typedef struct { unsigned long long pmd; } pmd_t;
 typedef struct { unsigned long long pte; } pte_t;
 
+/* Determined at runtime (on Windows 10 these are not static.)  */
 extern uintptr_t pxe_base;
 extern uintptr_t ppe_base;
 extern uintptr_t pde_base;
@@ -130,10 +129,10 @@ extern uintptr_t pte_base;
 #define __va(pa)	\
 	(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (uintptr_t)(pa) })
 
-#define pte_present(p)	((((pte_t *)(&(p)))->pte) & (PAGE_PRESENT | PAGE_GLOBAL))
+#define pte_present(p)		((((pte_t *)(&(p)))->pte) & (PAGE_PRESENT | PAGE_GLOBAL))
 #endif
 
-#define pte_large(p)	((((pte_t *)(&(p)))->pte) & PAGE_LARGE)
+#define pte_large(p)		((((pte_t *)(&(p)))->pte) & PAGE_LARGE)
 #define page_align(addr)	((uintptr_t)(addr) & ~(PAGE_SIZE - 1))
 
 static inline bool page_aligned(uintptr_t addr)
@@ -148,7 +147,6 @@ static inline size_t round_to_pages(size_t size)
 
 static inline u16 addr_offset(uintptr_t addr)
 {
-	/* Get the lower 12 bits which represent the offset  */
 	return addr & (PAGE_SIZE - 1);
 }
 
@@ -289,7 +287,8 @@ static inline pte_t *va_to_pte(uintptr_t va)
 
 static inline uintptr_t __pte_to_va(pte_t *pte)
 {
-	return ((((uintptr_t)pte - pte_base) << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
+	return ((((uintptr_t)pte - pte_base)
+		 << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
 }
 
 static inline pgd_t *pgd_offset(uintptr_t cr3, uintptr_t va)
@@ -335,7 +334,8 @@ static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
 
 static inline void *mm_remap(u64 phys, size_t size)
 {
-	return MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = phys }, size, MmNonCached);
+	return MmMapIoSpace((PHYSICAL_ADDRESS) { .QuadPart = phys },
+			    size, MmNonCached);
 }
 
 static inline void mm_unmap(void *addr, size_t size)
