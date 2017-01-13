@@ -138,12 +138,12 @@ Loading the driver
 
 	In commandline as administrator:
 
-	1. `sc create ksm type= kernel binPath= C:\path\to\your\ksm.sys`
-	2. `sc start ksm`
+		1. `sc create ksm type= kernel binPath= C:\path\to\your\ksm.sys`
+		2. `sc start ksm`
 
 	Unloading:
 
-	- `sc stop ksm`
+		`sc stop ksm`
 
 	Output can be seen via DebugView or WinDBG if live debugging
 	Note: You might want to execute `ed Kd_DEFAULT_Mask 8` to see any output.
