@@ -221,12 +221,6 @@ static inline void __mm_free_page(void *v)
 	free_page((unsigned long)v);
 }
 
-static inline void mm_free_page(void *v)
-{
-	memset(v, 0, PAGE_SIZE);
-	__mm_free_page(v);
-}
-
 static inline void *mm_alloc_pool(size_t size)
 {
 	return kmalloc(size, GFP_KERNEL | __GFP_ZERO);
@@ -357,12 +351,6 @@ static inline void __mm_free_page(void *v)
 	ExFreePoolWithTag(v, 0);
 }
 
-static inline void mm_free_page(void *v)
-{
-	memset(v, 0, PAGE_SIZE);
-	__mm_free_page(v);
-}
-
 static inline void *mm_alloc_pool(size_t size)
 {
 	void *v = ExAllocatePoolWithTag(NonPagedPool, size, 0);
@@ -385,10 +373,14 @@ static inline bool mm_is_kernel_addr(void *va)
 
 static inline void mm_free_pool(void *v, size_t size)
 {
-	if (size)
-		memset(v, 0, size);
-
+	memset(v, 0, size);
 	__mm_free_pool(v);
+}
+
+static inline void mm_free_page(void *v)
+{
+	memset(v, 0, PAGE_SIZE);
+	__mm_free_page(v);
 }
 
 static inline void *pte_to_va(pte_t *pte)

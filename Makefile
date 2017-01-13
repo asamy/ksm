@@ -37,7 +37,8 @@ all:
 	@echo "  CC 	  $(UM_SRC)"
 
 umk:
-	$(CC) $(UM_SRC) -o $(UM_BIN)
+	@$(CC) $(UM_SRC) -o $(UM_BIN)
+	@echo "  CC 	  $(UM_SRC)"
 
 dri:
 	@make -C $(KBUILD) M=$(PWD) modules

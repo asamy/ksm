@@ -70,7 +70,7 @@ OBJ += $(ASM:%.S=$(OBJ_DIR)/%.o)
 TARGET = $(BIN_DIR)/ksm.sys
 SYMBOL = $(BIN_DIR)/ksm.sym
 
-.PHONY: all clean
+.PHONY: all clean umk dri
 .PRECIOUS: $(DEP_DIR)/%.d
 
 all: $(TARGET) $(UM_BIN)
@@ -87,7 +87,7 @@ $(TARGET): $(BIN_DIR) $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
 
 $(UM_BIN):
 	$(PREPEND)$(CC) $(UM_SRC) -o $(UM_BIN) $(UM_LIB)
-	@echo "  CC   $@"
+	@echo "  LD   $@"
 
 $(OBJ_DIR)/%.o: %.c $(DEP_DIR)/%.d
 	$(PREPEND)$(CC) -c $(CFLAGS) $(DEPFLAGS) -o $@ $<

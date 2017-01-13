@@ -598,14 +598,14 @@
 #endif
 
 #ifndef _MSC_VER
-#define __writedr(dr, val)					\
-	__asm __volatile("movq	%[Val], %%dr" #dr		\
-			 : : [Val] "r" ((val)))
+#define __writedr(dr, val)				\
+	__asm __volatile("movq %0, %%dr" #dr		\
+			 :: "r" ((val)))
 
 #define __readdr(dr) __extension__ ({			\
 	unsigned long long val;				\
-	__asm __volatile("movq	%%dr" #dr ", %[Val]"	\
-			 : [Val] "=r" (val));		\
+	__asm __volatile("movq %%dr" #dr ", %0"		\
+			 : "=r" (val));			\
 	val;						\
 })
 

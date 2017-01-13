@@ -26,7 +26,7 @@
 #include "um/um.h"
 
 static struct mm_struct *mm = NULL;
-static int major_no = 0;
+static int major_no;
 static struct class *class;
 
 static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
@@ -166,7 +166,7 @@ static int __init ksm_start(void)
 	if (major_no < 0)
 		goto out_exit;
 
-	ret = -EINVAL;
+	ret = -ENODEV;
 	KSM_DEBUG("Major: %d\n", major_no);
 
 	class = class_create(THIS_MODULE, UM_DEVICE_NAME);

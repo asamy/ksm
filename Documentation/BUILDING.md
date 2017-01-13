@@ -59,8 +59,8 @@ You can pass one or more of the following variables to your `make` command:
 - `DEP_DIR=arg` - Generate dependency files to this directory
 - `CROSS_INC=arg` - Path to include directory if they reside in a special place
 - `CROSS_LIB=arg` - Path to library directory if they reside in a special place
-- `CROSS_BUILD=arg` - Prefix to toolchain binaries (e.g.
-						    `x86-_64-w64-mingw32-`)
+- `CROSS_BUILD=arg` - Prefix to toolchain binaries (e.g. `x86-_64-w64-mingw32-`)
+
 Targets:
 
 - `all` - Builds the driver and the usermode app
