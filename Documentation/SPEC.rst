@@ -356,13 +356,11 @@ IDT shadowing
 #VE setup and handling
 ----------------------
 
-We use 3 EPT pointers, one for executable pages, one for readwrite pages, and last one for normal usage. (see next section)
-
-- `vcpu.c`: in `setup_vmcs()` where we initially setup the VMCS fields, we then set the relevant fields (`VE_INFO_ADDRESS`, `EPTP_LIST_ADDRESS`, `VM_FUNCTION_CTL`) and enable relevant bits VE and VMFUNC in secondary processor control.
-- `vmx.asm` (or `vmx.S` for GCC): which contains the `#VE` handler (`__ept_violation`) then does the usual interrupt handling and then calls the C handler `__ept_handle_violation` (`vcpu.c`).
-- `vcpu.c`: in `__ept_handle_violation` (`#VE` handler *not* `VM-exit`), usually the processor will do the `#VE` handler instead of the VM-exit route, but sometimes it won't do so if it's delivering another exception.  This is very rare.
-- `vcpu.c`: while handling the violation via `#VE`, we call `vmfunc` only when we detect that the faulting address is one of
-	our interest (e.g. a hooked page), then we determine which `EPTP` we want and execute `VMFUNC` with that EPTP index.
+	- `vcpu.c`: in `setup_vmcs()` where we initially setup the VMCS fields, we then set the relevant fields (`VE_INFO_ADDRESS`, `EPTP_LIST_ADDRESS`, `VM_FUNCTION_CTL`) and enable relevant bits VE and VMFUNC in secondary processor control.
+	- `vmx.asm` (or `vmx.S` for GCC): which contains the `#VE` handler (`__ept_violation`) then does the usual interrupt handling and then calls the C handler `__ept_handle_violation` (`vcpu.c`).
+	- `vcpu.c`: in `__ept_handle_violation` (`#VE` handler *not* `VM-exit`), usually the processor will do the `#VE` handler instead of the VM-exit route, but sometimes it won't do so if it's delivering another exception.  This is very rare.
+	- `vcpu.c`: while handling the violation via `#VE`, we call `vmfunc` only when we detect that the faulting address is one of
+		our interest (e.g. a hooked page), then we determine which `EPTP` we want and execute `VMFUNC` with that EPTP index.
 
 Hooking executable pages
 -------------------------
