@@ -119,11 +119,11 @@ Compiling under MSVC
 		Then you can build it via either the VS interface (right click the project then build),
 		or the hardway if you prefer, from VS command line, simply cd to where `ksm` is and:
 
-		msbuild ksm\ksm.sln
+			msbuild ksm\ksm.sln
 
-	Or:
+		Or:
 
-		msbuild ksm\ksm\ksm.vcxproj
+			msbuild ksm\ksm\ksm.vcxproj
 
 Loading the driver
 ------------------

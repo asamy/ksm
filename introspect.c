@@ -28,10 +28,8 @@
 #include "percpu.h"
 #include "um/um.h"
 
-#define INTROSPECT_START	0
-#define INTROSPECT_STOP		1
-#define INTROSPECT_WATCH	2
-#define INTROSPECT_UNWATCH	3
+#define INTROSPECT_WATCH	1
+#define INTROSPECT_UNWATCH	2
 
 struct introspect_addr {
 	u64 gpa;
@@ -104,12 +102,6 @@ bool ksm_introspect_handle_vmcall(struct vcpu *vcpu, uintptr_t arg)
 	call = (struct introspect_call *)arg;
 	addr = call->addr;
 	switch (call->type) {
-	case INTROSPECT_START:
-		vcpu_switch_root_eptp(vcpu, EPTP_DEFAULT);
-		return true;
-	case INTROSPECT_STOP:
-		vcpu_switch_root_eptp(vcpu, EPTP_NORMAL);
-		return true;
 	case INTROSPECT_WATCH:
 		/*
 		 * ->access is what they want to monitor, so take those bits
@@ -190,10 +182,7 @@ int ksm_introspect_start(struct ksm *k)
 	if (k->active_vcpus == 0)
 		return ERR_NOTH;
 
-	CALL_DPC(__call_introspect, &(struct introspect_call) {
-		.type = INTROSPECT_START,
-	});
-	return DPC_RET();
+	return vcpu_vmfunc(EPTP_DEFAULT, 0);
 }
 
 int ksm_introspect_stop(struct ksm *k)
@@ -201,10 +190,7 @@ int ksm_introspect_stop(struct ksm *k)
 	if (k->active_vcpus == 0)
 		return ERR_NOTH;
 
-	CALL_DPC(__call_introspect, &(struct introspect_call) {
-		.type = INTROSPECT_STOP,
-	});
-	return DPC_RET();
+	return vcpu_vmfunc(EPTP_NORMAL, 0);
 }
 
 int ksm_introspect_add_watch(struct ksm *k, struct watch_ioctl *watch)
