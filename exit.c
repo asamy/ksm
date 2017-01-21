@@ -908,39 +908,39 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 
 	/* VMFUNC does not have CPL checks, so emulator shouldn't have too...  */
 	uint8_t nr = ksm_read_reg32(vcpu, STACK_REG_CX);
-	if (nr != HYPERCALL_VMFUNC && vcpu_inject_gp_if(vcpu, !vcpu_probe_cpl(0)))
+	if (nr != HCALL_VMFUNC && vcpu_inject_gp_if(vcpu, !vcpu_probe_cpl(0)))
 		goto out;
 
 	uintptr_t arg = ksm_read_reg(vcpu, STACK_REG_DX);
 	switch (nr) {
-	case HYPERCALL_STOP:
+	case HCALL_STOP:
 		vcpu_do_exit(vcpu);
 		VCPU_TRACER_END();
 		return false;
-	case HYPERCALL_IDT:
+	case HCALL_IDT:
 		vcpu_adjust_rflags(vcpu, vcpu_hook_idte(vcpu, (struct shadow_idt_entry *)arg));
 		break;
-	case HYPERCALL_UIDT:
+	case HCALL_UIDT:
 		vcpu_adjust_rflags(vcpu, vcpu_unhook_idte(vcpu, (struct shadow_idt_entry *)arg));
 		break;
 #ifdef EPAGE_HOOK
-	case HYPERCALL_HOOK:
+	case HCALL_HOOK:
 		vcpu_adjust_rflags(vcpu, vcpu_handle_hook(vcpu, (struct epage_info *)arg));
 		break;
-	case HYPERCALL_UNHOOK:
+	case HCALL_UNHOOK:
 		vcpu_adjust_rflags(vcpu, vcpu_handle_unhook(vcpu, arg));
 		break;
 #endif
-	case HYPERCALL_VMFUNC:
+	case HCALL_VMFUNC:
 		vcpu_adjust_rflags(vcpu, vcpu_emulate_vmfunc(vcpu, (struct h_vmfunc *)arg));
 		break;
 #ifdef PMEM_SANDBOX
-	case HYPERCALL_SA_TASK:
+	case HCALL_SA_TASK:
 		vcpu_adjust_rflags(vcpu, ksm_sandbox_handle_vmcall(vcpu, arg));
 		break;
 #endif
 #ifdef INTROSPECT_ENGINE
-	case HYPERCALL_INTROSPECT:
+	case HCALL_INTROSPECT:
 		vcpu_adjust_rflags(vcpu, ksm_introspect_handle_vmcall(vcpu, arg));
 		break;
 #endif

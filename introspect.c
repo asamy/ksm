@@ -44,7 +44,7 @@ struct introspect_call {
 	int type;
 	struct introspect_addr *addr;
 };
-static DEFINE_DPC(__call_introspect, __vmx_vmcall, HYPERCALL_INTROSPECT, ctx);
+static DEFINE_DPC(__call_introspect, __vmx_vmcall, HCALL_INTROSPECT, ctx);
 
 int ksm_introspect_init(struct ksm *k)
 {

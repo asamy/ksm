@@ -31,19 +31,19 @@
 #define KSM_MAX_VCPUS		32
 #define __EXCEPTION_BITMAP	0
 
-#define HYPERCALL_STOP		0	/* Stop virtualization on this CPU  */
-#define HYPERCALL_IDT		1	/* Hook IDT entry (see vcpu_put_idt())  */
-#define HYPERCALL_UIDT		2	/* Unhook IDT entry */
+#define HCALL_STOP		0	/* Stop virtualization on this CPU  */
+#define HCALL_IDT		1	/* Hook IDT entry (see vcpu_put_idt())  */
+#define HCALL_UIDT		2	/* Unhook IDT entry */
 #ifdef EPAGE_HOOK
-#define HYPERCALL_HOOK		3	/* Hook page  */
-#define HYPERCALL_UNHOOK	4	/* Unhook page  */
+#define HCALL_HOOK		3	/* Hook page  */
+#define HCALL_UNHOOK		4	/* Unhook page  */
 #endif
-#define HYPERCALL_VMFUNC	5	/* Emulate VMFunc  */
+#define HCALL_VMFUNC		5	/* Emulate VMFunc  */
 #ifdef PMEM_SANDBOX
-#define HYPERCALL_SA_TASK	6	/* Sandbox: free EPTPs */
+#define HCALL_SA_TASK		6	/* Sandbox: free EPTPs */
 #endif
 #ifdef INTROSPECT_ENGINE
-#define HYPERCALL_INTROSPECT	7	/* Introspect: create eptp  */
+#define HCALL_INTROSPECT	7	/* Introspect: create eptp  */
 #endif
 
 /*
@@ -593,7 +593,7 @@ static inline u8 vcpu_vmfunc(u32 eptp, u32 func)
 	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VMFUNC)
 		return __vmx_vmfunc(eptp, func);
 
-	return __vmx_vmcall(HYPERCALL_VMFUNC, &(struct h_vmfunc) {
+	return __vmx_vmcall(HCALL_VMFUNC, &(struct h_vmfunc) {
 		.eptp = eptp,
 		.func = func,
 	});

@@ -101,7 +101,7 @@ bool ksm_sandbox_handle_vmcall(struct vcpu *vcpu, uintptr_t arg)
 	return true;
 }
 
-static DEFINE_DPC(__free_sa_task, __vmx_vmcall, HYPERCALL_SA_TASK, ctx);
+static DEFINE_DPC(__free_sa_task, __vmx_vmcall, HCALL_SA_TASK, ctx);
 static inline void __free_sa_task(struct ksm *k, struct sa_task *task)
 {
 	struct cow_page *page = NULL;

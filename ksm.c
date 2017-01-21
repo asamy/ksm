@@ -271,7 +271,7 @@ int __ksm_exit_cpu(struct ksm *k)
 	if (!vcpu->subverted)
 		return ret;
 
-	ret = __vmx_vmcall(HYPERCALL_STOP, NULL);
+	ret = __vmx_vmcall(HCALL_STOP, NULL);
 	if (ret == 0) {
 		k->active_vcpus--;
 		vcpu->subverted = false;
@@ -330,7 +330,7 @@ int ksm_free(struct ksm *k)
  * virtualized, may throw an exception since it does __vmx_vmcall
  * without checking.
  */
-static DEFINE_DPC(__call_idt_hook, __vmx_vmcall, HYPERCALL_IDT, ctx);
+static DEFINE_DPC(__call_idt_hook, __vmx_vmcall, HCALL_IDT, ctx);
 int ksm_hook_idt(unsigned n, void *h)
 {
 	CALL_DPC(__call_idt_hook, &(struct shadow_idt_entry) {
@@ -348,7 +348,7 @@ int ksm_hook_idt(unsigned n, void *h)
  * IDT is always restored to the real one when devirtualization happens,
  * disregarding all entries that were set prior.
  */
-static DEFINE_DPC(__call_idt_unhook, __vmx_vmcall, HYPERCALL_UIDT, ctx);
+static DEFINE_DPC(__call_idt_unhook, __vmx_vmcall, HCALL_UIDT, ctx);
 int ksm_free_idt(unsigned n)
 {
 	CALL_DPC(__call_idt_unhook, &(struct shadow_idt_entry) {
