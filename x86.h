@@ -623,7 +623,7 @@ static inline void __cpuidex(int *ret, int func, int subf)
 	__asm __volatile("cpuid\n\t"
 			 : "=a" (ret[0]), "=b" (ret[1]), "=c" (ret[2]), "=d"(ret[3])
 			 : "a" (func), "c" (subf)
-			 : "cc", "%rbx");
+			 : "%rbx");
 }
 
 static inline u64 __lar(u64 sel)
