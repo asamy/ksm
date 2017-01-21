@@ -125,124 +125,6 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 }
 
 /*
- * Recursively free each table entries, see comments above
- * ept_alloc_page() for an explanation.
- */
-static void free_entries(u64 *table, int lvl)
-{
-	for (int i = 0; i < 512; ++i) {
-		u64 entry = table[i];
-		if (entry) {
-			u64 *sub_table = __va(PAGE_PA(entry));
-			if (lvl > 2)
-				free_entries(sub_table, lvl - 1);
-			else
-				mm_free_page(sub_table);
-		}
-	}
-
-	mm_free_page(table);
-}
-
-static bool setup_pml4(struct ept *ept, int access, u16 eptp)
-{
-	/*
-	 * On Linux, this doesn't have to be done, and we can get each
-	 * one as a violation, on Windows, the kernel screams and hangs.
-	 */
-	int i;
-	u64 addr;
-	u64 apic;
-	struct pmem_range *range;
-
-	for (i = 0; i < ksm->range_count; ++i) {
-		range = &ksm->ranges[i];
-		for (addr = range->start; addr < range->end; addr += PAGE_SIZE) {
-			int r = access;
-			if (access != EPT_ACCESS_ALL && mm_is_kernel_addr(__va(addr)))
-				r = EPT_ACCESS_ALL;
-
-			if (!ept_alloc_page(EPT4(ept, eptp), r, addr, addr))
-				return false;
-		}
-	}
-
-	/* Allocate APIC page  */
-	apic = __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE;
-	if (!ept_alloc_page(EPT4(ept, eptp), EPT_ACCESS_ALL, apic, apic))
-		return false;
-
-	return true;
-}
-
-static inline void setup_eptp(u64 *ptr, u64 pml4)
-{
-	*ptr ^= *ptr;
-	*ptr |= VMX_EPT_DEFAULT_MT;
-	*ptr |= VMX_EPT_DEFAULT_GAW << VMX_EPT_GAW_EPTP_SHIFT;
-#ifdef ENABLE_PML
-	*ptr |= VMX_EPT_AD_ENABLE_BIT;
-#endif
-	*ptr |= pml4 & PAGE_PA_MASK;
-}
-
-bool ept_create_ptr(struct ept *ept, int access, u16 *out)
-{
-	u64 **pml4;
-	u16 eptp;
-
-	eptp = find_first_zero_bit(ept->ptr_bitmap, sizeof(ept->ptr_bitmap));
-	if (eptp == sizeof(ept->ptr_bitmap))
-		return false;
-
-	pml4 = &EPT4(ept, eptp);
-	if (!(*pml4 = mm_alloc_page()))
-		return false;
-
-	if (!setup_pml4(ept, access, eptp)) {
-		__mm_free_page(*pml4);
-		return false;
-	}
-
-	setup_eptp(&EPTP(ept, eptp), __pa(*pml4));
-	set_bit(eptp, ept->ptr_bitmap);
-	*out = eptp;
-	return true;
-}
-
-void ept_free_ptr(struct ept *ept, u16 eptp)
-{
-	free_entries(EPT4(ept, eptp), 4);
-	clear_bit(eptp, ept->ptr_bitmap);
-}
-
-static void free_pml4_list(struct ept *ept)
-{
-	for_each_eptp(ept, i)
-		ept_free_ptr(ept, i);
-}
-
-static inline bool init_ept(struct ept *ept)
-{
-	int i;
-	u16 dontcare;
-
-	for (i = 0; i < EPTP_INIT_USED; ++i) {
-		if (!ept_create_ptr(ept, EPT_ACCESS_ALL, &dontcare)) {
-			free_pml4_list(ept);
-			return false;
-		}
-	}
-
-	return true;
-}
-
-static inline void free_ept(struct ept *ept)
-{
-	free_pml4_list(ept);
-}
-
-/*
  * Get a PTE for the specified guest physical address, this can be used
  * to get the host physical address it redirects to or redirect to it.
  *
@@ -290,6 +172,135 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
 	return &pd[__pte_idx(gpa)];	/* 4 KB  */
 }
 
+static bool setup_pml4(struct ept *ept, int access, u16 eptp)
+{
+	/*
+	 * On Linux, this doesn't have to be done, and we can get each
+	 * one as a violation, on Windows, the kernel screams and hangs.
+	 *
+	 * See mm_cache_ram_ranges() in mm.c for how this is optained.
+	 */
+	int i;
+	u64 addr;
+	u64 apic;
+	struct pmem_range *range;
+
+	for (i = 0; i < ksm->range_count; ++i) {
+		range = &ksm->ranges[i];
+		for (addr = range->start; addr < range->end; addr += PAGE_SIZE) {
+			int r = access;
+			if (access != EPT_ACCESS_ALL && mm_is_kernel_addr(__va(addr)))
+				r = EPT_ACCESS_ALL;
+
+			if (!ept_alloc_page(EPT4(ept, eptp), r, addr, addr))
+				return false;
+		}
+	}
+
+	/* Allocate APIC page  */
+	apic = __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE;
+	if (!ept_alloc_page(EPT4(ept, eptp), EPT_ACCESS_ALL, apic, apic))
+		return false;
+
+	return true;
+}
+
+static inline void setup_eptp(u64 *ptr, u64 pml4)
+{
+	/*
+	 * You can think of the EPT pointer like CR3, but it does not have to
+	 * be changed during a task switch, however, EPT manages physical-addr
+	 * to physical-addr translation, unlike CR3, which manages virtual-addr
+	 * to physical-addr translation.
+	 *
+	 * The pml4 parameter is the physical address of the PML4 table which
+	 * we allocate down below in ept_create_ptr().
+	 */
+	*ptr ^= *ptr;
+	*ptr |= VMX_EPT_DEFAULT_MT;
+	*ptr |= VMX_EPT_DEFAULT_GAW << VMX_EPT_GAW_EPTP_SHIFT;
+#ifdef ENABLE_PML
+	*ptr |= VMX_EPT_AD_ENABLE_BIT;
+#endif
+	*ptr |= pml4 & PAGE_PA_MASK;
+}
+
+bool ept_create_ptr(struct ept *ept, int access, u16 *out)
+{
+	u64 **pml4;
+	u16 eptp;
+
+	eptp = find_first_zero_bit(ept->ptr_bitmap, sizeof(ept->ptr_bitmap));
+	if (eptp == sizeof(ept->ptr_bitmap))
+		return false;
+
+	pml4 = &EPT4(ept, eptp);
+	if (!(*pml4 = mm_alloc_page()))
+		return false;
+
+	if (!setup_pml4(ept, access, eptp)) {
+		__mm_free_page(*pml4);
+		return false;
+	}
+
+	setup_eptp(&EPTP(ept, eptp), __pa(*pml4));
+	set_bit(eptp, ept->ptr_bitmap);
+	*out = eptp;
+	return true;
+}
+
+/*
+ * Recursively free each table entries, see comments above
+ * ept_alloc_page() for an explanation.
+ */
+static void free_entries(u64 *table, int lvl)
+{
+	for (int i = 0; i < 512; ++i) {
+		u64 entry = table[i];
+		if (entry) {
+			u64 *sub_table = __va(PAGE_PA(entry));
+			if (lvl > 2)
+				free_entries(sub_table, lvl - 1);
+			else
+				mm_free_page(sub_table);
+		}
+	}
+
+	mm_free_page(table);
+}
+
+void ept_free_ptr(struct ept *ept, u16 eptp)
+{
+	free_entries(EPT4(ept, eptp), 4);
+	clear_bit(eptp, ept->ptr_bitmap);
+}
+
+static void free_pml4_list(struct ept *ept)
+{
+	for_each_eptp(ept, i)
+		ept_free_ptr(ept, i);
+}
+
+static inline bool init_ept(struct ept *ept)
+{
+	int i;
+	u16 dontcare;
+
+	for (i = 0; i < EPTP_INIT_USED; ++i) {
+		if (!ept_create_ptr(ept, EPT_ACCESS_ALL, &dontcare)) {
+			free_pml4_list(ept);
+			return false;
+		}
+	}
+
+	return true;
+}
+
+static inline void free_ept(struct ept *ept)
+{
+	free_pml4_list(ept);
+}
+
 /*
  * Called from:
  *	- ept_handle_violation() aka VMX root mode (host mode)
@@ -319,9 +330,9 @@ static bool do_ept_violation(struct ept_ve_around *ve)
 	}
 
 #ifdef EPAGE_HOOK
-	struct page_hook_info *phi = ksm_find_epage(k, info->gpa);
-	if (phi) {
-		ve->eptp_next = phi->ops->select_eptp(phi, ve);
+	struct epage_info *epage = ksm_find_epage(k, info->gpa);
+	if (epage) {
+		ve->eptp_next = epage->ops->select_eptp(epage, ve);
 		KSM_DEBUG("Found hooked page, switching from %d to %d\n",
 			  info->eptp, ve->eptp_next);
 		return true;
@@ -452,7 +463,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	struct ept *ept = &vcpu->ept;
 	struct ksm *k = vcpu_to_ksm(vcpu);
 
-	u64 vmx = __readmsr(MSR_IA32_VMX_BASIC);
+	u64 vmx;
 	u16 es = __reades();
 	u16 cs = __readcs();
 	u16 ss = __readss();
@@ -468,20 +479,40 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	uintptr_t cr3 = __readcr3();
 	uintptr_t cr4 = __readcr4();
 
+	/*
+	 * Keep an original copy of their IDT base and limit so we can
+	 * restore on exit, and give it to them when `sidt' is executed.
+	 *
+	 * The shadow IDT ->idt is also a copy of their original, but here
+	 * we overwrite the #VE (X86_TRAP_VE) in that one later if we find out
+	 * that #VE is supported.
+	 *
+	 * For more information, see:
+	 *	vcpu_sync_idt() in exit.c
+	 *  and vcpu_handle_gdt_idt_access() in exit.c
+	 */
 	__sgdt(&gdtr);
 	__sidt(idtr);
 	memcpy((void *)vcpu->idt.base, (void *)idtr->base, idtr->limit);
 
-	vmxon = &vcpu->vmxon;
-	vmxon->revision_id = (u32)vmx;
-
+	/* Required bits in CR0  */
 	cr0 &= __readmsr(MSR_IA32_VMX_CR0_FIXED1);
 	cr0 |= __readmsr(MSR_IA32_VMX_CR0_FIXED0);
 	__writecr0(cr0);
 
+	/* ... and CR4 (Most importantly VMXE bit) */
 	cr4 &= __readmsr(MSR_IA32_VMX_CR4_FIXED1);
 	cr4 |= __readmsr(MSR_IA32_VMX_CR4_FIXED0);
 	__writecr4(cr4);
+
+	/*
+	 * This MSR has some useful stuff, most notably the VMX revision ID
+	 * which must be on top of VMXON region and VMCS region.
+	 */
+	vmx = __readmsr(MSR_IA32_VMX_BASIC);
+
+	vmxon = &vcpu->vmxon;
+	vmxon->revision_id = (u32)vmx;
 
 	/* Enter VMX root operation  */
 	u64 pa = __pa(vmxon);
@@ -515,11 +546,18 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	}
 #endif
 
+	/*
+	 * VMX MSRs are split into 2 things (normal and true controls), the VMX
+	 * basic MSR determines which one we should be using, in short, the MSR
+	 * has bits to control which bits are allowed in the control fields,
+	 * and which must be set.  See adjust_ctl_val().
+	 */
 	u32 msr_off = 0;
 	if (vmx & VMX_BASIC_TRUE_CTLS)
 		msr_off = 0xC;
 
-	u32 vm_entry = VM_ENTRY_IA32E_MODE
+	/* VM Entry (aka guest entry)  */
+	u32 vm_entry = VM_ENTRY_IA32E_MODE	/* We want long mode  */
 #ifndef DBG
 		| VM_ENTRY_CONCEAL_IPT
 #endif
@@ -527,6 +565,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	adjust_ctl_val(MSR_IA32_VMX_ENTRY_CTLS + msr_off, &vm_entry);
 	vcpu->entry_ctl = vm_entry;
 
+	/* VM Exit (aka host entry)  */
 	u32 vm_exit = VM_EXIT_ACK_INTR_ON_EXIT | VM_EXIT_HOST_ADDR_SPACE_SIZE
 #ifndef DBG
 		| VM_EXIT_CONCEAL_IPT
@@ -535,10 +574,12 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	adjust_ctl_val(MSR_IA32_VMX_EXIT_CTLS + msr_off, &vm_exit);
 	vcpu->exit_ctl = vm_exit;
 
+	/* Pin controls (external interrupts, etc.)  */
 	u32 vm_pinctl = PIN_BASED_POSTED_INTR;
 	adjust_ctl_val(MSR_IA32_VMX_PINBASED_CTLS + msr_off, &vm_pinctl);
 	vcpu->pin_ctl = vm_pinctl;
 
+	/* Primary processor controls  */
 	const u32 req_cpuctl = CPU_BASED_ACTIVATE_SECONDARY_CONTROLS | CPU_BASED_USE_MSR_BITMAPS |
 		CPU_BASED_USE_IO_BITMAPS
 #ifdef PMEM_SANDBOX
@@ -553,12 +594,14 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS + msr_off, &vm_cpuctl);
 	vcpu->cpu_ctl = vm_cpuctl;
 
+	/* Make sure required are set  */
 	if ((vm_cpuctl & req_cpuctl) != req_cpuctl) {
 		KSM_DEBUG("Primary controls required are not supported: 0x%X 0x%X\n",
 			   req_cpuctl, vm_cpuctl & req_cpuctl);
 		return;
 	}
 
+	/* Secondary processor controls  */
 	const u32 req_2ndctl = SECONDARY_EXEC_ENABLE_EPT | SECONDARY_EXEC_ENABLE_VPID;
 	u32 vm_2ndctl = req_2ndctl
 		| SECONDARY_EXEC_XSAVES //| SECONDARY_EXEC_UNRESTRICTED_GUEST
@@ -579,6 +622,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		| SECONDARY_EXEC_CONCEAL_VMX_IPT
 #endif
 		;
+
 	/* NB: Desc table exiting makes windbg go maniac mode.  */
 #ifndef __linux__
 	if (!KD_DEBUGGER_ENABLED || KD_DEBUGGER_NOT_PRESENT)
@@ -586,6 +630,8 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		vm_2ndctl |= SECONDARY_EXEC_DESC_TABLE_EXITING;
 	adjust_ctl_val(MSR_IA32_VMX_PROCBASED_CTLS2, &vm_2ndctl);
 	vcpu->secondary_ctl = vm_2ndctl;
+
+	/* Make sure required bits are set  */
 	if ((vm_2ndctl & req_2ndctl) != req_2ndctl) {
 		KSM_DEBUG("Secondary controls required are not supported: 0x%X 0x%X\n",
 			   req_2ndctl, vm_2ndctl & req_2ndctl);
@@ -598,12 +644,21 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write32(PIN_BASED_VM_EXEC_CONTROL, vm_pinctl);
 	err |= vmcs_write32(CPU_BASED_VM_EXEC_CONTROL, vm_cpuctl);
 	err |= vmcs_write32(SECONDARY_VM_EXEC_CONTROL, vm_2ndctl);
+
+	/*
+	 * We don't really have any MSRs that we want to auto-load, so zero
+	 * everything.
+	 */
 	err |= vmcs_write32(VM_EXIT_MSR_STORE_COUNT, 0);
 	err |= vmcs_write64(VM_EXIT_MSR_STORE_ADDR, 0);
 	err |= vmcs_write32(VM_EXIT_MSR_LOAD_COUNT, 0);
 	err |= vmcs_write64(VM_EXIT_MSR_LOAD_ADDR, 0);
 	err |= vmcs_write32(VM_ENTRY_MSR_LOAD_COUNT, 0);
+
+	/* This controls injectible-interrupts (see exit.c)  */
 	err |= vmcs_write32(VM_ENTRY_INTR_INFO_FIELD, 0);
+	err |= vmcs_write32(VM_ENTRY_EXCEPTION_ERROR_CODE, 0);
+	err |= vmcs_write32(VM_ENTRY_INSTRUCTION_LEN, 0);
 
 	/* Control Fields */
 	err |= vmcs_write16(VIRTUAL_PROCESSOR_ID, vpid_nr());
@@ -615,9 +670,11 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write64(IO_BITMAP_B, __pa(k->io_bitmap_b));
 	err |= vmcs_write64(MSR_BITMAP, __pa(k->msr_bitmap));
 	err |= vmcs_write64(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
+
+	/* This must be ~0ULL  */
 	err |= vmcs_write64(VMCS_LINK_POINTER, -1ULL);
 
-	/* Posted interrupts if available.  */
+	/* Posted interrupts if available, otherwise entry to guest will fail.  */
 	if (vm_pinctl & PIN_BASED_POSTED_INTR) {
 		err |= vmcs_write16(POSTED_INTR_NV, 0);
 		err |= vmcs_write64(POSTED_INTR_DESC_ADDR, __pa(&vcpu->pi_desc));
@@ -645,7 +702,13 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	}
 #endif
 
-	/* CR0/CR4 controls  */
+	/*
+	 * CR0/CR4 controls:
+	 *	1. Shadow fields: For each bit that is set, that bit will not
+	 *	   appear when guest reads the control field.
+	 *	2. Guest host mask fields: For each bit that is set, a VM exit
+	 *	   will occur when the guest attempts to set that bit.
+	 */
 	err |= vmcs_write(CR0_GUEST_HOST_MASK, vcpu->cr0_guest_host_mask);
 	err |= vmcs_write(CR4_GUEST_HOST_MASK, vcpu->cr4_guest_host_mask);
 	err |= vmcs_write(CR0_READ_SHADOW, cr0 & ~vcpu->cr0_guest_host_mask);
@@ -686,7 +749,13 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	}
 #endif
 
-	/* Guest  */
+	/*
+	 * Guest fields:
+	 *	This simply just copies over selectors, their access rights and
+	 *	their bases, their cr0, cr3, cr4 and some more, note that their
+	 *	eflags are always restored to the one before this call, so it
+	 *	doesn't really matter what we set them to.
+	 */
 	err |= vmcs_write16(GUEST_ES_SELECTOR, es);
 	err |= vmcs_write16(GUEST_CS_SELECTOR, cs);
 	err |= vmcs_write16(GUEST_SS_SELECTOR, ss);
@@ -738,7 +807,12 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write(GUEST_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
 	err |= vmcs_write(GUEST_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
 
-	/* Host  */
+	/*
+	 * Host fields:
+	 *	Note for the selector part, the processor requires that the TI
+	 *	(Table indicator) and RPL (Requestor privilege level) are 0, so
+	 *	we AND it with 0xF8 to make sure they are clear.
+	 */
 	err |= vmcs_write16(HOST_ES_SELECTOR, es & 0xf8);
 	err |= vmcs_write16(HOST_CS_SELECTOR, cs & 0xf8);
 	err |= vmcs_write16(HOST_SS_SELECTOR, ss & 0xf8);
@@ -768,12 +842,12 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		__invept_all();
 		__invvpid_all();
 
-		/* If all good, this goes to do_resume label in assembly.  */
+		/* If all good, this goes to do_resume (initial guest entry) label in assembly.  */
 		err = __vmx_vmlaunch();
 	}
 
 	/*
-	 * vmwrite/vmlaunch failed if we got here,
+	 * vmwrite/vmlaunch failed if we got here,  In the vmlaunch fail case,
 	 * we had already overwritten the IDT entry for #VE (X86_TRAP_VE),
 	 * restore it now otherwise on Windows, PatchGuard is gonna
 	 * notice and crash the system.
@@ -788,6 +862,10 @@ off:
 
 int vcpu_init(struct vcpu *vcpu)
 {
+	/*
+	 * This is gonna hold the shadow IDT, which they won't see, but it's
+	 * the one that'll they be using.
+	 */
 	vcpu->idt.limit = PAGE_SIZE - 1;
 	vcpu->idt.base = (uintptr_t)mm_alloc_page();
 	if (!vcpu->idt.base)

@@ -80,21 +80,21 @@
 #define STACK_EFL_VCPU			16
 #define STACK_VCPU			17
 
-#define KSM_PANIC_CODE		0xCCDDFF11
+#define KSM_PANIC_CODE			0xCCDDFF11
 #define VCPU_TRIPLEFAULT		0x33DDE83A
 #define VCPU_BUG_UNHANDLED		0xBAADF00D
-#define VCPU_IRQ_NOT_HANDLED		0xCAFEBABE
+#define VCPU_IRQ_UNHANDLED		0xCAFEBABE
 #define KSM_PANIC_FAILED_VMENTRY	0xBAADBABE
-#define KSM_PANIC_GUEST_STATE	0xBAAD7A1E
-#define KSM_PANIC_UNEXPECTED	0xEEEEEEE9
+#define KSM_PANIC_GUEST_STATE		0xBAAD7A1E
+#define KSM_PANIC_UNEXPECTED		0xEEEEEEE9
 #ifdef DBG
 #ifndef __linux__
-#define KSM_PANIC(a, b, c, d)	KeBugCheckEx(MANUALLY_INITIATED_CRASH, a, b, c, d)
+#define KSM_PANIC(a, b, c, d)		KeBugCheckEx(MANUALLY_INITIATED_CRASH, a, b, c, d)
 #else
-#define KSM_PANIC(a, b, c, d)panic("bugcheck 0x%016X 0x%016X 0x%016X 0x%016X\n", a, b, c, d)
+#define KSM_PANIC(a, b, c, d)		panic("bugcheck 0x%016X 0x%016X 0x%016X 0x%016X\n", a, b, c, d)
 #endif
 #else
-#define KSM_PANIC(a, b, c, d)	(void)0
+#define KSM_PANIC(a, b, c, d)		(void)0
 #endif
 
 /* Short name:  */
@@ -117,7 +117,7 @@
 
 #ifdef ENABLE_PRINT
 #ifdef __linux__
-#define KSM_DEBUG(fmt, args...)	printk(KERN_INFO "ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
+#define KSM_DEBUG(fmt, args...)		printk(KERN_INFO "ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
 #define KSM_DEBUG_RAW(str)		printk(KERN_INFO "ksm: CPU %d: %s: " str, cpu_nr(), __func__)
 #else
 #ifdef _MSC_VER
@@ -125,7 +125,7 @@
 #define KSM_DEBUG_RAW(str)		do_print("ksm: CPU %d: " __func__ ": " str, cpu_nr())
 #else
 /* avoid warning on empty argument list  */
-#define KSM_DEBUG(fmt, args...)	do_print("ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
+#define KSM_DEBUG(fmt, args...)		do_print("ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
 #define KSM_DEBUG_RAW(str)		do_print("ksm: CPU %d: %s: " str, cpu_nr(), __func__)
 #endif
 #endif
@@ -471,30 +471,19 @@ static inline uintptr_t *ksm_reg(struct vcpu *vcpu, int reg)
 }
 
 #ifdef EPAGE_HOOK
-struct page_hook_info;	/* avoid declared inside parameter list...  */
-struct phi_ops {
-	void(*init_eptp) (struct page_hook_info *phi, struct ept *ept);
-	u16(*select_eptp) (struct page_hook_info *phi, struct ept_ve_around *ve);
+struct epage_info;	/* avoid declared inside parameter list...  */
+struct epage_ops {
+	void(*init_eptp) (struct epage_info *epage, struct ept *ept);
+	u16(*select_eptp) (struct epage_info *epage, struct ept_ve_around *ve);
 };
 
-struct page_hook_info {
+struct epage_info {
 	u64 dpa;
 	u64 cpa;
 	u64 origin;
 	void *c_va;
-	struct phi_ops *ops;
+	struct epage_ops *ops;
 };
-
-static inline size_t epage_hash(u64 va)
-{
-	/* Just take out the offset.  */
-	return va >> PAGE_SHIFT;
-}
-
-static inline size_t epage_rehash(const void *e, void *unused)
-{
-	return epage_hash(((struct page_hook_info *)e)->origin);
-}
 #endif
 
 struct ksm {
@@ -567,6 +556,7 @@ static inline struct vcpu *ksm_current_cpu(void)
 
 static inline struct ksm *vcpu_to_ksm(struct vcpu *vcpu)
 {
+	/* Disable spurious warning  */
 #ifdef __GNUC__
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Wincompatible-pointer-types"
@@ -633,10 +623,14 @@ static inline u8 cpu_invept(struct ksm *k, u64 gpa, u64 ptr)
 
 #ifdef EPAGE_HOOK
 /* page.c  */
+extern int ksm_epage_init(struct ksm *k);
+extern int ksm_epage_exit(struct ksm *k);
+struct epage_info *ksm_prepare_epage(void *original, void *redirect);
 extern int ksm_hook_epage(void *original, void *redirect);
+extern int ksm_hook_epage_on_cpu(struct epage_info *epage, int cpu);
 extern int ksm_unhook_epage(struct ksm *k, void *original);
-extern int __ksm_unhook_epage(struct page_hook_info *phi);
-extern struct page_hook_info *ksm_find_epage(struct ksm *k, uintptr_t gpa);
+extern int __ksm_unhook_epage(struct epage_info *epage);
+extern struct epage_info *ksm_find_epage(struct ksm *k, uintptr_t gpa);
 #endif
 
 /* sandbox.c  */

@@ -19,7 +19,7 @@
 */
 #ifdef EPAGE_HOOK
 #ifdef __linux__
-#include <linux/vmalloc.h>
+#include <linux/kernel.h>
 #else
 #include <ntddk.h>
 #endif
@@ -42,18 +42,18 @@
  *	return ret;
  * \endcode
  */
-static inline void epage_init_eptp(struct page_hook_info *phi, struct ept *ept)
+static inline void epage_init_eptp(struct epage_info *epage, struct ept *ept)
 {
 	/* Called from vmcall (exit.c)  */
-	ept_alloc_page(EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, phi->dpa, phi->cpa);
-	ept_alloc_page(EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, phi->dpa, phi->dpa);
-	ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_EXEC, phi->dpa, phi->dpa);
+	ept_alloc_page(EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, epage->dpa, epage->cpa);
+	ept_alloc_page(EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, epage->dpa, epage->dpa);
+	ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_EXEC, epage->dpa, epage->dpa);
 
 	__invvpid_all();
 	__invept_all();
 }
 
-static inline u16 epage_select_eptp(struct page_hook_info *phi, struct ept_ve_around *ve)
+static inline u16 epage_select_eptp(struct epage_info *epage, struct ept_ve_around *ve)
 {
 	/* called from an EPT violation  */
 	if (ve->info->exit & EPT_ACCESS_RW)
@@ -62,15 +62,15 @@ static inline u16 epage_select_eptp(struct page_hook_info *phi, struct ept_ve_ar
 	return EPTP_EXHOOK;
 }
 
-static struct phi_ops epage_ops = {
+static struct epage_ops epage_ops = {
 	.init_eptp = epage_init_eptp,
 	.select_eptp = epage_select_eptp,
 };
 
 static inline bool ht_cmp(const void *candidate, void *cmp)
 {
-	const struct page_hook_info *phi = candidate;
-	return phi->dpa >> PAGE_SHIFT == (uintptr_t)cmp >> PAGE_SHIFT;
+	const struct epage_info *epage = candidate;
+	return epage->dpa >> PAGE_SHIFT == (uintptr_t)cmp >> PAGE_SHIFT;
 }
 
 #ifndef __linux__
@@ -101,6 +101,17 @@ static void epage_init_trampoline(struct trampoline *trampo, u64 to)
 
 static DEFINE_DPC(__do_hook_page, __vmx_vmcall, HYPERCALL_HOOK, ctx);
 static DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
+
+static inline size_t epage_hash(u64 dpa)
+{
+	/* Just take out the offset.  */
+	return dpa >> PAGE_SHIFT;
+}
+
+static inline size_t epage_rehash(const void *e, void *unused)
+{
+	return epage_hash(((struct epage_info *)e)->dpa);
+}
 
 /*
  * Note!!!
@@ -146,9 +157,9 @@ static DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HYPERCALL_UNHOOK, ctx);
  *
  * Do also note the inline-code provided above is not tested, but should work.
  */
-int ksm_hook_epage(void *original, void *redirect)
+struct epage_info *ksm_prepare_epage(void *original, void *redirect)
 {
-	struct page_hook_info *phi;
+	struct epage_info *epage;
 	u8 *code_page;
 	void *aligned = (void *)page_align(original);
 	uintptr_t code_start = (uintptr_t)original - (uintptr_t)aligned;
@@ -157,74 +168,115 @@ int ksm_hook_epage(void *original, void *redirect)
 	BUG_ON(!ksm);
 	epage_init_trampoline(&trampo, (uintptr_t)redirect);
 	
-	phi = ksm_find_epage(ksm, __pa(original));
-	if (phi) {
+	epage = ksm_find_epage(ksm, __pa(original));
+	if (epage) {
 		/*
 		 * Hooking another function in same page.
 		 *
 		 * Simply just overwrite the start of the
 		 * function to the trampoline...
 		 */
-		code_page = phi->c_va;
+		code_page = epage->c_va;
 		memcpy(code_page + code_start, &trampo, sizeof(trampo));
-		__wbinvd();	/* necessary?  */
 		return 0;
 	}
 
-	phi = mm_alloc_pool(sizeof(*phi));
-	if (!phi)
-		return ERR_NOMEM;
+	epage = mm_alloc_pool(sizeof(*epage));
+	if (!epage)
+		return NULL;
 
 	code_page = mm_alloc_page();
 	if (!code_page) {
-		mm_free_pool(phi, sizeof(*phi));
-		return ERR_NOMEM;
+		mm_free_pool(epage, sizeof(*epage));
+		return NULL;
 	}
 
 	memcpy(code_page, aligned, PAGE_SIZE);
 	memcpy(code_page + code_start, &trampo, sizeof(trampo));
 
-	phi->c_va = code_page;
-	phi->cpa = __pa(code_page);
-	phi->dpa = __pa(original);
-	phi->origin = (u64)aligned;
-	phi->ops = &epage_ops;
+	epage->c_va = code_page;
+	epage->cpa = __pa(code_page);
+	epage->dpa = __pa(original);
+	epage->origin = (u64)aligned;
+	epage->ops = &epage_ops;
+	return epage;
+}
 
-	CALL_DPC(__do_hook_page, phi);
+int ksm_hook_epage_on_cpu(struct epage_info *epage, int cpu)
+{
+	CALL_DPC_ON_CPU(cpu, __do_hook_page, return -1, epage);
+	return DPC_RET();
+}
+
+int ksm_hook_epage(void *original, void *redirect)
+{
+	struct epage_info *epage;
+
+	epage = ksm_prepare_epage(original, redirect);
+	if (!epage)
+		return ERR_NOMEM;
+
+	CALL_DPC(__do_hook_page, epage);
 	spin_lock(&ksm->epage_lock);
-	htable_add(&ksm->ht, epage_hash(phi->dpa), phi);
+	htable_add(&ksm->ht, epage_hash(epage->dpa), epage);
 	spin_unlock(&ksm->epage_lock);
 	return 0;
 }
 
-int ksm_unhook_epage(struct ksm *k, void *va)
+static inline void ksm_free_epage(struct epage_info *epage)
 {
-	struct page_hook_info *phi = ksm_find_epage(k, __pa(va));
-	if (!phi)
-		return ERR_NOTH;
-
-	return __ksm_unhook_epage(phi);
+	mm_free_page(epage->c_va);
+	mm_free_pool(epage, sizeof(*epage));
 }
 
-int __ksm_unhook_epage(struct page_hook_info *phi)
+int __ksm_unhook_epage(struct epage_info *epage)
 {
-	CALL_DPC(__do_unhook_page, (void *)phi->dpa);
+	CALL_DPC(__do_unhook_page, (void *)epage->dpa);
 	spin_lock(&ksm->epage_lock);
-	htable_del(&ksm->ht, epage_hash(phi->origin), phi);
+	htable_del(&ksm->ht, epage_hash(epage->dpa), epage);
 	spin_unlock(&ksm->epage_lock);
-	mm_free_page(phi->c_va);
-	mm_free_pool(phi, sizeof(*phi));
+	ksm_free_epage(epage);
 	return DPC_RET();
 }
 
-struct page_hook_info *ksm_find_epage(struct ksm *k, uintptr_t gpa)
+int ksm_unhook_epage(struct ksm *k, void *va)
 {
-	struct page_hook_info *phi;
+	struct epage_info *epage = ksm_find_epage(k, __pa(va));
+	if (!epage)
+		return ERR_NOTH;
+
+	return __ksm_unhook_epage(epage);
+}
+
+struct epage_info *ksm_find_epage(struct ksm *k, uintptr_t gpa)
+{
+	struct epage_info *epage;
 	spin_lock(&k->epage_lock);
-	phi = htable_get(&k->ht, epage_hash(gpa),
+	epage = htable_get(&k->ht, epage_hash(gpa),
 			 ht_cmp, (const void *)gpa);
 	spin_unlock(&k->epage_lock);
-	return phi;
+	return epage;
+}
+
+int ksm_epage_init(struct ksm *k)
+{
+	htable_init(&k->ht, epage_rehash, NULL);
+	spin_lock_init(&k->epage_lock);
+	return 0;
+}
+
+int ksm_epage_exit(struct ksm *k)
+{
+	struct htable_iter i;
+	struct epage_info *epage;
+
+	for (epage = htable_first(&k->ht, &i); epage; epage = htable_next(&k->ht, &i)) {
+		ksm_free_epage(epage);
+		htable_delval(&k->ht, &i);
+	}
+
+	htable_clear(&k->ht);
+	return 0;
 }
 
 #endif

@@ -580,7 +580,7 @@ static inline void vcpu_do_exit(struct vcpu *vcpu)
 }
 
 #ifdef EPAGE_HOOK
-static bool vcpu_handle_hook(struct vcpu *vcpu, struct page_hook_info *h)
+static bool vcpu_handle_hook(struct vcpu *vcpu, struct epage_info *h)
 {
 	KSM_DEBUG("page hook request for %p => %p (%p)\n", h->dpa, h->cpa, h->c_va);
 	h->ops->init_eptp(h, &vcpu->ept);
@@ -924,7 +924,7 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 		break;
 #ifdef EPAGE_HOOK
 	case HYPERCALL_HOOK:
-		vcpu_adjust_rflags(vcpu, vcpu_handle_hook(vcpu, (struct page_hook_info *)arg));
+		vcpu_adjust_rflags(vcpu, vcpu_handle_hook(vcpu, (struct epage_info *)arg));
 		break;
 	case HYPERCALL_UNHOOK:
 		vcpu_adjust_rflags(vcpu, vcpu_handle_unhook(vcpu, arg));
