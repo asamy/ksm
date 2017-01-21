@@ -199,6 +199,9 @@ static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
 	if (pmd_none(*pmd) || pmd_bad(*pmd))
 		return NULL;
 
+	if (pmd_large(pmd))
+		return (pte_t *)pmd;
+
 	return pte_offset_kernel(pmd, va);
 }
 
@@ -308,6 +311,9 @@ static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
 	if (!pte_present(*pmd))
 		return NULL;
 
+	if (pte_large(pmd))
+		return (pte_t *)pmd;
+
 	return pte_offset(pmd, va);
 }
 
@@ -386,15 +392,13 @@ static inline void set_pte_flags(pte_t *pte, int flags)
 		pte->pte |= flags;
 }
 
-static inline void mark_pte_dirty(uintptr_t va)
+static inline void mark_pte_dirty(pte_t *pte)
 {
-	pte_t *pte = va_to_pte(va);
 	set_pte_flags(pte, PAGE_DIRTY);
 }
 
-static inline void mark_pte_accessed(uintptr_t va)
+static inline void mark_pte_accessed(pte_t *pte)
 {
-	pte_t *pte = va_to_pte(va);
 	set_pte_flags(pte, PAGE_ACCESSED);
 }
 

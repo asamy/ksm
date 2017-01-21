@@ -733,14 +733,24 @@ static inline bool ept_gpa_to_hpa(struct ept *ept, int eptp, u64 gpa, u64 *hpa)
 	return true;
 }
 
-static inline bool gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3,
-			      uintptr_t gva, u32 ac, u64 *gpa)
+static inline pte_t *__gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3,
+				  uintptr_t gva, u32 ac)
 {
 	pte_t *pte = pte_from_cr3_va(cr3, gva);
 	if (!pte || (pte->pte & ac) != ac)
+		return NULL;
+
+	return pte;
+}
+
+static inline bool gva_to_gpa(struct vcpu *vcpu, uintptr_t cr3,
+			      uintptr_t gva, u32 ac, u64 *gpa)
+{
+	pte_t *pte = __gva_to_gpa(vcpu, cr3, gva, ac);
+	if (!pte)
 		return false;
 
-	*gpa = PAGE_PA(pte->pte);
+	*gpa = PAGE_PPA(pte);
 	return true;
 }
 

@@ -364,7 +364,7 @@ int ksm_free_idt(unsigned n)
  */
 bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len)
 {
-	u64 gpa;
+	pte_t *pte;
 	u64 hpa;
 	size_t off;
 	size_t copy;
@@ -374,12 +374,12 @@ bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len)
 	off = 0;
 	cr3 = vmcs_read(GUEST_CR3);
 	while (len) {
-		if (!gva_to_gpa(vcpu, cr3, gva,
-				PAGE_PRESENT | PAGE_WRITE,
-				&gpa))
+		pte = __gva_to_gpa(vcpu, cr3, gva,
+				   PAGE_PRESENT | PAGE_WRITE);
+		if (!pte)
 			return false;
 
-		if (!gpa_to_hpa(vcpu, gpa, &hpa))
+		if (!gpa_to_hpa(vcpu, PAGE_PPA(pte), &hpa))
 			return false;
 
 		tmp = mm_remap(hpa, PAGE_SIZE);
@@ -393,7 +393,7 @@ bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len)
 		mm_unmap(tmp, PAGE_SIZE);
 
 		/* Mark it dirty  */
-		mark_pte_dirty(gva);
+		mark_pte_dirty(pte);
 
 		len -= copy;
 		data += copy;
@@ -409,7 +409,7 @@ bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len)
  */
 bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len)
 {
-	u64 gpa;
+	pte_t *pte;
 	u64 hpa;
 	size_t off;
 	size_t copy;
@@ -421,10 +421,11 @@ bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len)
 	off = 0;
 	cr3 = vmcs_read(GUEST_CR3);
 	while (len) {
-		if (!gva_to_gpa(vcpu, cr3, gva, PAGE_PRESENT, &gpa))
+		pte = __gva_to_gpa(vcpu, cr3, gva, PAGE_PRESENT);
+		if (!pte)
 			return false;
 
-		if (!gpa_to_hpa(vcpu, gpa, &hpa))
+		if (!gpa_to_hpa(vcpu, PAGE_PPA(pte), &hpa))
 			return false;
 
 		tmp = mm_remap(hpa, PAGE_SIZE);
@@ -438,7 +439,7 @@ bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len)
 		mm_unmap(tmp, PAGE_SIZE);
 
 		/* Mark it accessed  */
-		mark_pte_accessed(gva);
+		mark_pte_accessed(pte);
 
 		len -= copy;
 		d += copy;
