@@ -477,7 +477,9 @@ static inline u8 __vmx_vmlaunch(void)
 {
 	u8 error;
 	__asm __volatile(ASM_VMX_VMLAUNCH "; setna %0"
-			 : "=q" (error) :: "cc");
+			 : "=q" (error)
+			 : /* no reads  */
+			 : "cc");
 	return error;
 }
 
@@ -485,7 +487,8 @@ static inline u8 __vmx_vmclear(unsigned long long *pa)
 {
 	u8 error;
 	__asm __volatile(ASM_VMX_VMCLEAR_RAX "; setna %0"
-			 : "=qm" (error) : "a" (pa), "m" (*pa)
+			 : "=qm" (error)
+			 : "a" (pa), "m" (*pa)
 			 : "cc", "memory");
 	return error;
 }
@@ -494,20 +497,19 @@ static inline u8 __vmx_vmptrld(unsigned long long *pa)
 {
 	u8 error;
 	__asm __volatile(ASM_VMX_VMPTRLD_RAX "; setna %0"
-			 : "=qm" (error) : "a" (pa), "m" (*pa)
+			 : "=qm" (error)
+			 : "a" (pa), "m" (*pa)
 			 : "cc", "memory");
 	return error;
 }
 
 static inline u8 __vmx_vmread(size_t field, size_t *value)
 {
-	size_t tmp;
 	u8 error;
 	__asm __volatile("vmread %2, %0; setna %1"
-			 : "=r" (tmp), "=qm" (error)
+			 : "=r" (*value), "=qm" (error)
 			 : "r" (field)
 			 : "cc");
-	*value = tmp;
 	return error;
 }
 
@@ -525,7 +527,8 @@ static inline u8 __vmx_vmcall(uintptr_t hc, void *d)
 {
 	u8 error;
 	__asm __volatile("vmcall; setna %0"
-			 : "=q" (error) : "c" (hc), "d" (d)
+			 : "=q" (error)
+			 : "c" (hc), "d" (d)
 			 : "cc");
 	return error;
 }
@@ -543,7 +546,8 @@ static inline u8 __invept(int ext, const invept_t *i)
 {
 	u8 error;
 	__asm __volatile(ASM_VMX_INVEPT "; setna %0"
-			 : "=q" (error) : "d" (i), "c" (ext)
+			 : "=q" (error)
+			 : "d" (i), "c" (ext)
 			 : "cc", "memory");
 	return error;
 }
@@ -552,7 +556,8 @@ static inline u8 __invvpid(int ext, const invvpid_t *i)
 {
 	u8 error;
 	__asm __volatile(ASM_VMX_INVVPID "; setna %0"
-			 : "=q" (error): "d" (i), "c" (ext)
+			 : "=q" (error)
+			 : "d" (i), "c" (ext)
 			 : "cc", "memory");
 	return error;
 }

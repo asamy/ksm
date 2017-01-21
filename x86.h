@@ -573,14 +573,14 @@
 
 #ifndef _MSC_VER
 #ifndef __cli
-#define __cli			__asm("cli")
+#define __cli			__asm("cli" ::: "cc")
 #endif
 #ifndef __sti
-#define __sti			__asm("sti")
+#define __sti			__asm("sti" ::: "cc")
 #endif
 #define __return_addr()		__builtin_return_address(0)
-#define cpu_relax()		__asm __volatile("pause\n\t" ::: "memory")
 #ifndef __linux__
+#define cpu_relax()		__asm __volatile("pause\n\t" ::: "memory")
 #define barrier()		__asm __volatile("" ::: "memory")
 #define smp_mb()		__asm __volatile("mfence" ::: "memory")
 #define smp_rmb()		__asm __volatile("lfence" ::: "memory")
@@ -620,23 +620,18 @@ static inline void _xsetbv(u32 index, u64 value)
 
 static inline void __cpuidex(int *ret, int func, int subf)
 {
-	u32 eax, ebx, ecx, edx;
-	__asm __volatile("cpuid"
-			 : "=a" (eax), "=D" (ebx), "=c" (ecx), "=d" (edx)
+	__asm __volatile("cpuid\n\t"
+			 : "=a" (ret[0]), "=b" (ret[1]), "=c" (ret[2]), "=d"(ret[3])
 			 : "a" (func), "c" (subf)
-			 : "%rbx");
-	ret[0] = eax;
-	ret[1] = ebx;
-	ret[2] = ecx;
-	ret[3] = edx;
+			 : "cc", "%rbx");
 }
 
 static inline u64 __lar(u64 sel)
 {
 	u64 ar;
-	__asm __volatile("lar %[sel], %[ar]"
-			 : [ar] "=r" (ar)
-			 : [sel] "r" (sel));
+	__asm __volatile("lar %1, %0"
+			 : "=r" (ar)
+			 : "r" (sel));
 	return ar;
 }
 
@@ -714,7 +709,7 @@ static inline void __writemsr(u32 msr, u64 val)
 #define __invlpg(addr)	__asm __volatile("invlpg (%0)" :: "r" (addr) : "memory")
 #define __readeflags()	({							\
 	u64 rflags;								\
-	__asm __volatile("pushfq\n\tpopq %[rf]" : [rf] "=r" (rflags));		\
+	__asm __volatile("pushfq\n\tpopq %0" : "=r" (rflags));			\
 	rflags;									\
 })
 
@@ -808,25 +803,10 @@ struct kidt_entry64 {
 #endif
 
 #ifndef _MSC_VER
-static inline void __sidt(struct gdtr *idt)
-{
-	__asm __volatile("sidt %0" : "=m" (*idt));
-}
-
-static inline void __lidt(const struct gdtr *idt)
-{
-	__asm __volatile("lidt %0" :: "m" (*idt));
-}
-
-static inline void __sgdt(struct gdtr *gdt)
-{
-	__asm __volatile("sgdt %0" : "=m" (*gdt));
-}
-
-static inline void __lgdt(const struct gdtr *gdt)
-{
-	__asm __volatile("lgdt %0" :: "m" (*gdt));
-}
+#define __sidt(idt)	__asm __volatile("sidt %0" : "=m" (*idt));
+#define __lidt(idt)	__asm __volatile("lidt %0" :: "m" (*idt));
+#define __sgdt(gdt)	__asm __volatile("sgdt %0" : "=m" (*gdt));
+#define __lgdt(gdt)	__asm __volatile("lgdt %0" :: "m" (*gdt));
 #endif
 
 #define LOW_U16_U64(x) ((u64)(x) & 0xFFFF)
@@ -928,9 +908,7 @@ static uintptr_t __segmentbase(uintptr_t gdt, u16 sel)
 	if (!sel)
 		return 0;
 
-	/* If it's an LDT segment, load the LDT, we deal with GDT mostly here,
-	 * it's very unlikely that this will branch...  See calls down below in setup_vmcs().
- 	 * in vcpu.c  (Hence parameter name "gdt")  */
+	/* If it's an LDT segment, load the LDT  */
 	if (sel & 4) {
 		segmentdesc_t *ldt = segment_desc(gdt, __sldt());
 		uintptr_t ldt_base = segment_desc_base(ldt);
