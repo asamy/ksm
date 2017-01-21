@@ -624,7 +624,8 @@ static inline void __cpuidex(int *ret, int func, int subf)
 			 "cpuid\n\t"
 			 "xchgl %%ebx, %%edi\n\t"
 			 : "=a" (ret[0]), "=D" (ret[1]), "=c" (ret[2]), "=d"(ret[3])
-			 : "a" (func), "c" (subf));
+			 : "a" (func), "c" (subf)
+			 : "cc", "%rbx");
 }
 
 static inline u64 __lar(u64 sel)
