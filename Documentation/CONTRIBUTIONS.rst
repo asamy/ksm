@@ -144,9 +144,8 @@ Using git-request-pull
 
 		git request-pull master https://github.com/USER_NAME/ksm LOCAL_BRANCH:REMOTE_BRANCH
 
-	Which will summarize changes from the local master branch (Which should contain
-								   my changes, i.e. my
-								   tree) to your changes.
+	Which will summarize changes from the local master branch
+        Which is a "diff" between my tree and yours.
 
 	`REMOTE_BRANCH` can be omitted if same as `LOCAL_BRANCH`.
 	You can also specify a tag of your choice, in that case, use tag names instead

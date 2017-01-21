@@ -143,7 +143,7 @@ Initialization
 		handle_fail:
 			push guest registers
 			push guest flags
-			vcpu_handle_fail()	/* should not return  */
+			call vcpu_handle_fail()	/* should not return  */
 		do_hlt:		/* incase vcpu_handle_fail() somehow
 				   returned...  */
 			hlt
