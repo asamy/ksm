@@ -559,10 +559,11 @@ static inline void vcpu_adjust_rflags(struct vcpu *vcpu, bool success)
 static inline void vcpu_do_exit(struct vcpu *vcpu)
 {
 	/* Fix GDT  */
-	__lgdt(&(struct gdtr) {
+	struct gdtr gdt = {
 		.limit = vmcs_read32(GUEST_GDTR_LIMIT),
 		.base = vmcs_read(GUEST_GDTR_BASE),
-	});
+	};
+	__lgdt(&gdt);
 
 	/* Fix IDT (restore whatever guest last loaded...)  */
 	__lidt(&vcpu->g_idt);
