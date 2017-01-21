@@ -420,6 +420,11 @@ struct vcpu {
 #endif
 };
 
+static inline struct vcpu *ept_to_vcpu(struct ept *ept)
+{
+	return container_of(ept, struct vcpu, ept);
+}
+
 static inline bool vcpu_has_pending_irq(const struct vcpu *vcpu)
 {
 	return vcpu->irq.pending;
@@ -619,6 +624,14 @@ static inline u8 cpu_invept(struct ksm *k, u64 gpa, u64 ptr)
 		return __invept_gpa(ptr, gpa);
 
 	return __invept_all();
+}
+
+static inline u8 cpu_invvpid(struct ksm *k, u64 gva)
+{
+	if (cpu_supports_invvpidtype(k, VMX_VPID_EXTEND_INDIVIDUAL_ADDR))
+		return __invvpid_addr(vpid_nr(), gva);
+
+	return __invvpid_all();
 }
 
 #ifdef EPAGE_HOOK

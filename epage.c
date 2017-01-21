@@ -42,15 +42,19 @@
  *	return ret;
  * \endcode
  */
-static inline void epage_init_eptp(struct epage_info *epage, struct ept *ept)
+static inline void epage_init_eptp(struct epage_info *epage,
+				   struct ept *ept)
 {
+	struct vcpu *vcpu = ept_to_vcpu(ept);
+	struct ksm *k = vcpu_to_ksm(vcpu);
+
 	/* Called from vmcall (exit.c)  */
 	ept_alloc_page(EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, epage->dpa, epage->cpa);
 	ept_alloc_page(EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, epage->dpa, epage->dpa);
 	ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_EXEC, epage->dpa, epage->dpa);
 
-	__invvpid_all();
-	__invept_all();
+	cpu_invvpid(k, epage->origin);
+	cpu_invept(k, epage->dpa, EPTP(ept, vcpu_eptp_idx(vcpu)));
 }
 
 static inline u16 epage_select_eptp(struct epage_info *epage, struct ept_ve_around *ve)
@@ -253,7 +257,7 @@ struct epage_info *ksm_find_epage(struct ksm *k, uintptr_t gpa)
 	struct epage_info *epage;
 	spin_lock(&k->epage_lock);
 	epage = htable_get(&k->ht, epage_hash(gpa),
-			 ht_cmp, (const void *)gpa);
+			   ht_cmp, (const void *)gpa);
 	spin_unlock(&k->epage_lock);
 	return epage;
 }

@@ -203,7 +203,7 @@ ENDM
 
 .CODE
 
-; Returns 0 on success, 1 on failure
+; Returns 0 on success, -1 on failure
 __vmx_vminit PROC
 	pushfq
 	PUSHAQ			; -8 * 16
