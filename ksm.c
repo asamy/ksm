@@ -27,9 +27,6 @@
 #include "percpu.h"
 #include "bitmap.h"
 
-/* Externed everywhere.  */
-struct ksm *ksm = NULL;
-
 /*
  * This file mostly manages CPUs initialization and deinitialization
  * but is not limited to that, it also initializes shared stuff and defines
@@ -39,35 +36,43 @@ struct ksm *ksm = NULL;
  * For per-cpu initializaiton see vcpu.c.
  * For VM-exit handlers see exit.c.
  * For the macro magic (aka DEFINE_DPC, etc.) see percpu.h.
+ *
+ * The `ksm' structure is a shared structure, it shares common things between
+ * all CPUs such as I/O bitmaps, MSR bitmap, etc, however, this global variable
+ * `ksm' is not supposed to be used inside root, you should instead utilize the
+ * function (defined in ksm.h): vcpu_to_ksm() as follows:
+ *	struct ksm *k = vcpu_to_ksm(vcpu);
+ */
+struct ksm *ksm = NULL;
+
+/*
+ * Setup the MSR bitmap.
+ * There are 4 things here:
+ *	- Read bitmap low (aka MSR indices of 0 to 1FFFH)
+ *		offset: +0
+ *	- Read bitmap high (aka MSR indices of 0xC0000000 to 0xC0001FFFH)
+ *		offset; +1024
+ *	- Write bitmap low (same thing as read low)
+ *		offset: +2048
+ *	- Write bitmap high (same thing as read high)
+ *		offset: +3072
+ *
+ * To opt-in for an MSR vm-exit, simply set the bit of it.
+ * Note: for high msrs, subtract it with 0xC0000000, e.g.:
+ *	set_bit(MSR_STAR - 0xC0000000, write_hi);
+ *
+ * We currently opt in for reads to MSRs that are VT-x related, so that we can
+ * emulate VT-x ("nesting").
+ *
+ * Note: No real reason to opt-in for writes to VT-x MSRs, those are readonly
+ * anyway and the CPU will throw #GP to any writes there.
+ *
+ * See also:
+ *	vcpu_handle_rdmsr()  in exit.c
+ *	vcpu_handle_wrmsr()  in exit.c
  */
 static inline void init_msr_bitmap(struct ksm *k)
 {
-	/*
-	 * Setup the MSR bitmap.
-	 * There are 4 things here:
-	 *	- Read bitmap low (aka MSR indices of 0 to 1FFFH)
-	 *		offset: +0
-	 *	- Read bitmap high (aka MSR indices of 0xC0000000 to 0xC0001FFFH)
-	 *		offset; +1024
-	 *	- Write bitmap low (same thing as read low)
-	 *		offset: +2048
-	 *	- Write bitmap high (same thing as read high)
-	 *		offset: +3072
-	 *
-	 * To opt-in for an MSR vm-exit, simply set the bit of it.
-	 * Note: for high msrs, subtract it with 0xC0000000, e.g.:
-	 *	set_bit(MSR_STAR - 0xC0000000, write_hi);
-	 *
-	 * We currently opt in for reads to MSRs that are VT-x related, so that we can
-	 * emulate VT-x.
-	 *
-	 * Note: No real reason to opt-in for writes to VT-x MSRs, those are readonly
-	 * anyway and the CPU will throw #GP to any writes there.
-	 *
-	 * See also:
-	 *	vcpu_handle_rdmsr()  in exit.c
-	 *	vcpu_handle_wrmsr()  in exit.c
-	 */
 	unsigned long *read_lo = (unsigned long *)k->msr_bitmap;
 	set_bit(MSR_IA32_FEATURE_CONTROL, read_lo);
 #ifdef NESTED_VMX
@@ -134,18 +139,20 @@ int __ksm_init_cpu(struct ksm *k)
 		return ret;
 	}
 
-	/* Saves state and calls vcpu_run()  */
+	/* Saves state and calls vcpu_run() (Defined in assembly, vmx.{S,asm} */
 	ret = __vmx_vminit(vcpu);
 	KSM_DEBUG("%s: Started: %d\n", proc_name(), !ret);
 
-	if (ret == 0) {
-		vcpu->subverted = true;
-		k->active_vcpus++;
-	} else {
-		vcpu_free(vcpu);
-		__writecr4(__readcr4() & ~X86_CR4_VMXE);
-	}
+	if (ret < 0)
+		goto out;
 
+	vcpu->subverted = true;
+	k->active_vcpus++;
+	return 0;
+
+out:
+	vcpu_free(vcpu);
+	__writecr4(__readcr4() & ~X86_CR4_VMXE);
 	return ret;
 }
 
@@ -197,11 +204,6 @@ int ksm_init(struct ksm **kp)
 	k->vpid_ept = vpid;
 	KSM_DEBUG("EPT/VPID caps: 0x%016X\n", vpid);
 
-#ifdef EPAGE_HOOK
-	htable_init(&k->ht, epage_rehash, NULL);
-	spin_lock_init(&k->epage_lock);
-#endif
-
 	ret = mm_cache_ram_ranges(&k->ranges[0], &k->range_count);
 	if (ret < 0)
 		goto out_ksm;
@@ -210,10 +212,16 @@ int ksm_init(struct ksm **kp)
 	for (i = 0; i < k->range_count; ++i)
 		KSM_DEBUG("Range: %p -> %p\n", k->ranges[i].start, k->ranges[i].end);
 
+#ifdef EPAGE_HOOK
+	ret = ksm_epage_init(k);
+	if (ret < 0)
+		goto out_ksm;
+#endif
+
 #ifdef PMEM_SANDBOX
 	ret = ksm_sandbox_init(k);
 	if (ret < 0)
-		goto out_ksm;
+		goto out_epage;
 #endif
 
 #ifdef INTROSPECT_ENGINE
@@ -242,6 +250,10 @@ out_sbox:
 #endif
 #ifdef PMEM_SANDBOX
 	ksm_sandbox_exit(k);
+out_epage:
+#endif
+#ifdef EPAGE_HOOK
+	ksm_epage_exit(k);
 #endif
 out_ksm:
 	mm_free_pool(k, sizeof(*k));
@@ -303,9 +315,8 @@ int ksm_free(struct ksm *k)
 	/* Desubvert all:  */
 	ret = ksm_unsubvert(k);
 
-	/* Clear page hook table  */
 #ifdef EPAGE_HOOK
-	htable_clear(&k->ht);
+	ksm_epage_exit(k);
 #endif
 
 	unregister_cpu_callback();
@@ -381,6 +392,9 @@ bool ksm_write_virt(struct vcpu *vcpu, u64 gva, const u8 *data, size_t len)
 		memcpy(tmp + off, data, copy);
 		mm_unmap(tmp, PAGE_SIZE);
 
+		/* Mark it dirty  */
+		mark_pte_dirty(gva);
+
 		len -= copy;
 		data += copy;
 		gva += copy;
@@ -422,6 +436,9 @@ bool ksm_read_virt(struct vcpu *vcpu, u64 gva, u8 *data, size_t len)
 		copy = min(len, PAGE_SIZE - off);
 		memcpy(d, tmp + off, copy);
 		mm_unmap(tmp, PAGE_SIZE);
+
+		/* Mark it accessed  */
+		mark_pte_accessed(gva);
 
 		len -= copy;
 		d += copy;

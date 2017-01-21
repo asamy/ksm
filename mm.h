@@ -181,15 +181,6 @@ static inline pte_t *va_to_pte(uintptr_t va)
 	return pte_offset_kernel(va_to_pmd(va), va);
 }
 
-static inline uintptr_t __pte_to_va(pte_t *pte)
-{
-	struct page *page = pfn_to_page(PAGE_FN(pte->pte));
-	if (!page)
-		return 0;
-
-	return (uintptr_t)page_address(page);
-}
-
 static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
 {
 	pgd_t *pgd;
@@ -277,12 +268,6 @@ static inline pte_t *va_to_pte(uintptr_t va)
 {
 	uintptr_t off = (va >> PTI_SHIFT) & PTI_MASK;
 	return (pte_t *)pte_base + off;
-}
-
-static inline uintptr_t __pte_to_va(pte_t *pte)
-{
-	return ((((uintptr_t)pte - pte_base)
-		 << (PAGE_SHIFT + VA_SHIFT - PTE_SHIFT)) >> VA_SHIFT);
 }
 
 static inline pgd_t *pgd_offset(uintptr_t cr3, uintptr_t va)
@@ -383,11 +368,6 @@ static inline void mm_free_page(void *v)
 	__mm_free_page(v);
 }
 
-static inline void *pte_to_va(pte_t *pte)
-{
-	return (void *)__pte_to_va(pte);
-}
-
 static inline u64 va_to_pa(uintptr_t va)
 {
 	pte_t *pte = (pte_t *)va_to_pmd(va);
@@ -398,6 +378,24 @@ static inline u64 va_to_pa(uintptr_t va)
 		return 0;
 
 	return PAGE_PPA(pte) | addr_offset(va);
+}
+
+static inline void set_pte_flags(pte_t *pte, int flags)
+{
+	if (pte && (pte->pte & flags) != flags)
+		pte->pte |= flags;
+}
+
+static inline void mark_pte_dirty(uintptr_t va)
+{
+	pte_t *pte = va_to_pte(va);
+	set_pte_flags(pte, PAGE_DIRTY);
+}
+
+static inline void mark_pte_accessed(uintptr_t va)
+{
+	pte_t *pte = va_to_pte(va);
+	set_pte_flags(pte, PAGE_ACCESSED);
 }
 
 struct pmem_range {
