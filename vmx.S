@@ -118,7 +118,7 @@
 #define KFRAME_EC	0x0E0
 #define KFRAME_IP	0x0E8
 
-.macro TRAP_ENTER no_swap
+.macro TRAP_SAVE_GPR
 	pushq	%rbp
 	subq	$0x158, %rsp
 	leaq	0x80(%rsp), %rbp
@@ -135,14 +135,9 @@
 #ifdef REG_V9
 	movq	REG_V9, KFRAME_V9(%rbp)
 #endif
-	movw	KFRAME_CS(%rbp), %ax
-	andb	$1, %al
-	movb	%al, KFRAME_RPL(%rbp)
-	jz	\no_swap
-	swapgs
 .endm
 
-.macro TRAP_EXIT
+.macro TRAP_REST_GPR
 #ifdef REG_V9
 	movq	KFRAME_V9(%rbp), REG_V9
 #endif
@@ -161,22 +156,6 @@
 	addq	$0xE8, %rsp
 .endm
 
-/*
- * Fix this if XMM (floating point) really is needed inside C code, for now
- * this is commented out on just Linux, because it's not tested.
- */
-.macro TRAP_REST_XMM
-#ifndef __linux__
-	ldmxcsr KFRAME_CSR(%rbp)
-	movaps KFRAME_XMM0(%rbp), %xmm0
-	movaps KFRAME_XMM1(%rbp), %xmm1
-	movaps KFRAME_XMM2(%rbp), %xmm2
-	movaps KFRAME_XMM3(%rbp), %xmm3
-	movaps KFRAME_XMM4(%rbp), %xmm4
-	movaps KFRAME_XMM5(%rbp), %xmm5
-#endif
-.endm
-
 .macro TRAP_SAVE_XMM
 #ifndef __linux__
 	stmxcsr KFRAME_CSR(%rbp)
@@ -190,34 +169,56 @@
 #endif
 .endm
 
+.macro TRAP_REST_XMM
+#ifndef __linux__
+	ldmxcsr KFRAME_CSR(%rbp)
+	movaps KFRAME_XMM0(%rbp), %xmm0
+	movaps KFRAME_XMM1(%rbp), %xmm1
+	movaps KFRAME_XMM2(%rbp), %xmm2
+	movaps KFRAME_XMM3(%rbp), %xmm3
+	movaps KFRAME_XMM4(%rbp), %xmm4
+	movaps KFRAME_XMM5(%rbp), %xmm5
+#endif
+.endm
+
+.macro TRAP_ENTER
+	TRAP_SAVE_GPR
+	movw	KFRAME_CS(%rbp), %ax
+	andb	$1, %al
+	movb	%al, KFRAME_RPL(%rbp)
+	jz	1f
+	swapgs
+1:
+	cld
+	TRAP_SAVE_XMM
+.endm
+
+.macro TRAP_EXIT
+	testb	$1, KFRAME_RPL(%rbp)
+	jz	1f
+
+	TRAP_REST_XMM
+	TRAP_REST_GPR
+	swapgs
+	iretq
+
+1:
+	TRAP_REST_XMM
+	TRAP_REST_GPR
+	iretq
+.endm
+
 .macro irq_entry symbol:req handler:req no_error_code:req
 .globl \symbol
 \symbol:
 	.if \no_error_code
 		subq	$8, %rsp
 	.endif
-	TRAP_ENTER(1f)
-
-1:
-	cld
-	TRAP_SAVE_XMM
-
+	TRAP_ENTER
 	movq	KFRAME_CS(%rbp), REG_A1
 	movq	KFRAME_IP(%rbp), REG_A2
 	call	\handler
-
-	testb	$1, KFRAME_RPL(%rbp)
-	jz	2f
-
-	TRAP_REST_XMM
 	TRAP_EXIT
-	swapgs
-	iretq
-
-2:
-	TRAP_REST_XMM
-	TRAP_EXIT
-	iretq
 .endm
 
 	.text

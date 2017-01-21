@@ -78,16 +78,7 @@ POPAQ MACRO
 	pop	r15
 ENDM
 
-; General IDT trap handler (entry)
-;	assumes:
-;		1) There is an error code on the stack
-;		2) NO_SWAP_LABEL is provided in case the trap is a kernel mode trap.
-; Note: This does not save XMM registers, you need to do that with TRAP_SAVE_XMM.
-;
-; Saves non-volatile registers on the frame pointer and jumps to NO_SWAP_LABEL if no
-; GS swapping required (MSR_IA32_KERNEL_GS_BASE <-> MSR_IA32_GS_BASE), otherwise does
-; swapgs and that's it.
-TRAP_ENTER MACRO	NO_SWAP_LABEL
+TRAP_SAVE_GPR MACRO
 	; stack:
 	;		ss (+40)
 	;		rsp (+32)
@@ -117,16 +108,10 @@ TRAP_ENTER MACRO	NO_SWAP_LABEL
 	mov	[rbp + KFRAME_R9], r9
 	mov	[rbp + KFRAME_R10], r10
 	mov	[rbp + KFRAME_R11], r11
-
-	mov	ax, word ptr [rbp + KFRAME_CS]
-	and	al, 1
-	mov	[rbp + KFRAME_RPL], al
-	jz	NO_SWAP_LABEL
-	swapgs
 ENDM
 
-; cleans up stack from TRAP_ENTER.
-TRAP_EXIT MACRO
+; cleans up stack from TRAP_SAVE_GP.
+TRAP_REST_GPR MACRO
 	mov	r11, [rbp + KFRAME_R11]
 	mov	r10, [rbp + KFRAME_R10]
 	mov	r9,  [rbp + KFRAME_R9]
@@ -161,6 +146,59 @@ TRAP_REST_XMM MACRO
 	movaps	xmm3, xmmword ptr[rbp + KFRAME_XMM3]
 	movaps	xmm4, xmmword ptr[rbp + KFRAME_XMM4]
 	movaps	xmm5, xmmword ptr[rbp + KFRAME_XMM5]
+ENDM
+
+; General IDT trap handler (entry)
+;	assumes:
+;		1) There is an error code on the stack
+;		2) NO_SWAP_LABEL is provided in case the trap is a kernel mode trap.
+; Note: This does not save XMM registers, you need to do that with TRAP_SAVE_GP_XMM.
+;
+; Saves non-volatile registers on the frame pointer and jumps to NO_SWAP_LABEL if no
+; GS swapping required (MSR_IA32_KERNEL_GS_BASE <-> MSR_IA32_GS_BASE), otherwise does
+; swapgs and that's it.
+;
+; See __ept_violation below on how this is used.
+TRAP_ENTER MACRO	NO_SWAP_LABEL, NO_ERROR_CODE
+	IFNB <NO_ERROR_CODE>
+		sub	rsp, 8
+	ENDIF
+
+	; align stack then save general purpose registers.
+	TRAP_SAVE_GPR
+
+	; see if we're coming from usermode, if so, swap gs.
+	mov	ax, word ptr [rbp + KFRAME_CS]
+	and	al, 1
+	mov	[rbp + KFRAME_RPL], al
+	jz	&NO_SWAP_LABEL&
+
+	; ok we're coming from usermode, swap to kernel gs.
+	swapgs
+
+&NO_SWAP_LABEL&:
+	; clear direction flag
+	cld
+
+	; save XMM
+	TRAP_SAVE_XMM
+ENDM
+
+TRAP_EXIT MACRO		NO_SWAP_LABEL
+	; see if we're coming from usermode, if so, swap back gs
+	test	byte ptr [rbp + KFRAME_RPL], 1
+	jz	&NO_SWAP_LABEL&
+
+	; ok we're coming from usermode
+	TRAP_REST_XMM
+	TRAP_REST_GPR
+	swapgs
+	iretq
+
+&NO_SWAP_LABEL&:
+	TRAP_REST_XMM
+	TRAP_REST_GPR
+	iretq
 ENDM
 
 .CODE
@@ -357,37 +395,24 @@ __invvpid ENDP
 __ept_violation PROC
 	; #VE handler, standard interrupt handling then
 	; calls C handler aka __ept_handle_violation, see ept.c
-	sub	rsp, 8
-	TRAP_ENTER(ept_no_swap)
-
-ept_no_swap:
-	cld
-	TRAP_SAVE_XMM
+	TRAP_ENTER ept_no_swap, 1
 
 	mov	rcx, [rbp + KFRAME_CS]
 	mov	rdx, [rbp + KFRAME_IP]
+
 	sub	rsp, 20h
 	call	__ept_handle_violation
 	add	rsp, 20h
 
-	test	byte ptr [rbp + KFRAME_RPL], 1
-	jz	ept_ret_noswap
-
-	TRAP_REST_XMM
-	TRAP_EXIT
-	swapgs
-	iretq
-
-ept_ret_noswap:
-	TRAP_REST_XMM
-	TRAP_EXIT
-	iretq
+	TRAP_EXIT	ept_ret_no_swap
 __ept_violation ENDP
 
 PURGE PUSHAQ
 PURGE POPAQ
 PURGE TRAP_ENTER
 PURGE TRAP_EXIT
+PURGE TRAP_SAVE_GPR
+PURGE TRAP_REST_GPR
 PURGE TRAP_SAVE_XMM
 PURGE TRAP_REST_XMM
 END

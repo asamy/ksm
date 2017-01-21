@@ -482,7 +482,7 @@ struct epage_info {
 	u64 cpa;
 	u64 origin;
 	void *c_va;
-	struct epage_ops *ops;
+	const struct epage_ops *ops;
 };
 #endif
 

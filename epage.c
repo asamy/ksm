@@ -62,7 +62,7 @@ static inline u16 epage_select_eptp(struct epage_info *epage, struct ept_ve_arou
 	return EPTP_EXHOOK;
 }
 
-static struct epage_ops epage_ops = {
+static const struct epage_ops epage_ops = {
 	.init_eptp = epage_init_eptp,
 	.select_eptp = epage_select_eptp,
 };
