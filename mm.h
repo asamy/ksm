@@ -199,7 +199,7 @@ static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
 	if (pmd_none(*pmd) || pmd_bad(*pmd))
 		return NULL;
 
-	if (pmd_large(pmd))
+	if (pmd_large(*pmd))
 		return (pte_t *)pmd;
 
 	return pte_offset_kernel(pmd, va);
