@@ -557,7 +557,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 		msr_off = 0xC;
 
 	/* VM Entry (aka guest entry)  */
-	u32 vm_entry = VM_ENTRY_IA32E_MODE	/* We want long mode  */
+	u32 vm_entry = VM_ENTRY_LOAD_DEBUG_CONTROLS | VM_ENTRY_IA32E_MODE	/* We want long mode  */
 #ifndef DBG
 		| VM_ENTRY_CONCEAL_IPT
 #endif
@@ -566,7 +566,8 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	vcpu->entry_ctl = vm_entry;
 
 	/* VM Exit (aka host entry)  */
-	u32 vm_exit = VM_EXIT_ACK_INTR_ON_EXIT | VM_EXIT_HOST_ADDR_SPACE_SIZE
+	u32 vm_exit = VM_EXIT_SAVE_DEBUG_CONTROLS | VM_EXIT_ACK_INTR_ON_EXIT
+		| VM_EXIT_HOST_ADDR_SPACE_SIZE
 #ifndef DBG
 		| VM_EXIT_CONCEAL_IPT
 #endif
