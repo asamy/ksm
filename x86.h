@@ -620,12 +620,11 @@ static inline void _xsetbv(u32 index, u64 value)
 
 static inline void __cpuidex(int *ret, int func, int subf)
 {
-	__asm __volatile("xchgl %%ebx, %%edi\n\t"
+	__asm __volatile("xchgq %%rbx, %%rdi\n\t"
 			 "cpuid\n\t"
-			 "xchgl %%ebx, %%edi\n\t"
+			 "xchgq %%rbx, %%rdi\n\t"
 			 : "=a" (ret[0]), "=D" (ret[1]), "=c" (ret[2]), "=d"(ret[3])
-			 : "a" (func), "c" (subf)
-			 : "cc", "%rbx");
+			 : "a" (func), "c" (subf));
 }
 
 static inline u64 __lar(u64 sel)
