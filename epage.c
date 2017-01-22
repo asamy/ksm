@@ -51,7 +51,7 @@ static inline void epage_init_eptp(struct epage_info *epage,
 	/* Called from vmcall (exit.c)  */
 	ept_alloc_page(EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, epage->dpa, epage->cpa);
 	ept_alloc_page(EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, epage->dpa, epage->dpa);
-	ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_EXEC, epage->dpa, epage->dpa);
+	ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_ALL, epage->dpa, epage->dpa);
 
 	cpu_invvpid(k, epage->origin);
 	cpu_invept(k, epage->dpa, EPTP(ept, vcpu_eptp_idx(vcpu)));
