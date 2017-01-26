@@ -181,7 +181,6 @@ static int __init ksm_start(void)
 	}
 
 	KSM_DEBUG_RAW("failed to create device\n");
-	class_unregister(class);
 	class_destroy(class);
 
 out_unregister:
@@ -196,7 +195,6 @@ static void __exit ksm_cleanup(void)
 	int ret, active;
 
 	device_destroy(class, MKDEV(major_no, 0));
-	class_unregister(class);
 	class_destroy(class);
 	unregister_chrdev(major_no, UM_DEVICE_NAME);
 	unregister_reboot_notifier(&reboot_notify);
