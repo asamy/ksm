@@ -207,7 +207,7 @@ static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)
 
 static inline void *mm_alloc_page(void)
 {
-	return (void *)get_zeroed_page(GFP_KERNEL);
+	return (void *)get_zeroed_page(GFP_KERNEL | GFP_ATOMIC);
 }
 
 static inline void __mm_free_page(void *v)
@@ -217,7 +217,7 @@ static inline void __mm_free_page(void *v)
 
 static inline void *mm_alloc_pool(size_t size)
 {
-	return kmalloc(size, GFP_KERNEL | __GFP_ZERO);
+	return kmalloc(size, GFP_KERNEL | GFP_ATOMIC | __GFP_ZERO);
 }
 
 static inline void __mm_free_pool(void *v)
