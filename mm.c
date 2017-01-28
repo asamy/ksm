@@ -37,33 +37,22 @@ extern struct resource iomem_resource;
 
 void *mm_remap(u64 phys, size_t size)
 {
-	/*
-	 * Since we can't use ioremap() for physical RAM, we are just going to
-	 * allocate some memory then re-map it using the VM API.  Just like
-	 * ioremap()...
-	 */
-	unsigned long vaddr;
-	unsigned long offset;
-	struct vm_struct *area;
+	unsigned long offset = addr_offset(phys);
+	struct page *page;
+	void *ret;
 
-	area = __get_vm_area(size, VM_IOREMAP | VM_LOCKED, VMALLOC_START, VMALLOC_END);
-	if (!area)
+	/* For now this supports one-page at a time.  */
+	WARN_ON(size > PAGE_SIZE);
+
+	page = pfn_to_page(phys >> PAGE_SHIFT);
+	if (!page)
 		return NULL;
 
-	offset = phys & ~PAGE_MASK;
-	phys &= PHYSICAL_PAGE_MASK;
-	size = PAGE_ALIGN(phys + size) - phys;
-
-	area->phys_addr = phys;
-	vaddr = (unsigned long)area->addr;
-
-	/* Just assume RW mapping.  */
-	if (ioremap_page_range(vaddr, vaddr + size, phys, PAGE_KERNEL_IO)) {
-		free_vm_area(area);
+	ret = vmap(&page, 1, VM_LOCKED, PAGE_KERNEL);
+	if (!ret)
 		return NULL;
-	}
 
-	return (void *)(vaddr + offset);
+	return (void *)(ret + offset);
 }
 
 void mm_unmap(void *vaddr, size_t size)
