@@ -36,6 +36,7 @@
 	if (!!(cond))		\
 		__ud2();	\
 } while (0)
+
 #define WARN_ON(cond)	do {	\
 	if (!!(cond))		\
 		KSM_DEBUG("Badness in %s at %s:%d\n", __func__, __FILE__, __LINE__);	\
@@ -80,6 +81,10 @@ typedef _Bool bool;
 #define true	1
 #define false	0
 #define _bool_true_false_are_defined
+#endif
+
+#ifndef PRIxPTR
+#define PRIxPTR		"%llX"
 #endif
 
 /* Avoid NT retardism  */

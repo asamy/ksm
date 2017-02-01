@@ -2657,17 +2657,17 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 
 static inline void vcpu_dump_state(uintptr_t *stack)
 {
-	KSM_DEBUG("%p: ax=0x%X   cx=0x%X  dx=0x%X\n"
-		  "    bx=0x%X   sp=0x%X  bp=0x%X\n"
-		  "    si=0x%X   di=0x%X  r08=0x%X\n"
-		  "    r09=0x%X  r10=0x%X r11=0x%X\n"
-		  "    r12=0x%X  r13=0x%X r14=0x%X\n"
-		  "    r15=0x%X  rip=0x%X efl=0x%08lX"
-		  "    cs=0x%02X ds=0x%02Xes=0x%02X\n"
-		  "    fs=0x%X   gs=0x%X  kgs=0x%X\n"
-		  "    cr0=0x%X  cr3=0x%X cr4=0x%X\n"
-		  "    dr0=0x%X  dr1=0x%X dr2=0x%X\n"
-		  "    dr3=0x%X  dr6=0x%X dr7=0x%X\n",
+	KSM_DEBUG("%p: ax=0x"PRIxPTR"   cx=0x"PRIxPTR" dx=0x"PRIxPTR"\n"
+		  "    bx=0x"PRIxPTR"   sp=0x"PRIxPTR"  bp=0x"PRIxPTR"\n"
+		  "    si=0x"PRIxPTR"   di=0x"PRIxPTR"  r08=0x"PRIxPTR"\n"
+		  "    r09=0x"PRIxPTR"  r10=0x"PRIxPTR" r11=0x"PRIxPTR"\n"
+		  "    r12=0x"PRIxPTR"  r13=0x"PRIxPTR" r14=0x"PRIxPTR"\n"
+		  "    r15=0x"PRIxPTR"  rip=0x"PRIxPTR" efl=0x08lX\n"
+		  "    cs=0x%04hX       ds=0x%04hX       es=0x%04hX\n"
+		  "    fs=0x"PRIxPTR"   gs=0x"PRIxPTR"  kgs=0x"PRIxPTR"\n"
+		  "    cr0=0x"PRIxPTR"  cr3=0x"PRIxPTR" cr4=0x"PRIxPTR"\n"
+		  "    dr0=0x"PRIxPTR"  dr1=0x"PRIxPTR" dr2=0x"PRIxPTR"\n"
+		  "    dr3=0x"PRIxPTR"  dr6=0x"PRIxPTR" dr7=0x"PRIxPTR"\n",
 		  (void *)stack[STACK_VCPU],
 		  stack[STACK_REG_AX], stack[STACK_REG_CX], stack[STACK_REG_DX],
 		  stack[STACK_REG_BX], vmcs_read(GUEST_RSP), stack[STACK_REG_BP],
