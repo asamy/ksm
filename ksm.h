@@ -91,7 +91,8 @@
 #ifndef __linux__
 #define KSM_PANIC(a, b, c, d)		KeBugCheckEx(MANUALLY_INITIATED_CRASH, a, b, c, d)
 #else
-#define KSM_PANIC(a, b, c, d)		panic("bugcheck 0x%016X 0x%016X 0x%016X 0x%016X\n", a, b, c, d)
+#define KSM_PANIC(a, b, c, d)		panic("bugcheck %016llX %016llX 0x%016llX 0x%016llX\n", \
+					      (u64)a, (u64)b, (u64)c, (u64)d);
 #endif
 #else
 #define KSM_PANIC(a, b, c, d)		(void)0

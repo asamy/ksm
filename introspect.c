@@ -172,7 +172,7 @@ bool ksm_introspect_handle_ept(struct ept_ve_around *ve)
 		KSM_DEBUG_RAW("Miss!\n");
 	}
 
-	KSM_DEBUG("Addr %p: %d hits %d miss\n", info->gpa, addr->hits, addr->miss);
+	KSM_DEBUG("Addr %p: %d hits %d miss\n", (void *)info->gpa, addr->hits, addr->miss);
 	ve->invalidate = true;
 	return true;
 }

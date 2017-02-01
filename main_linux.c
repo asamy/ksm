@@ -33,14 +33,22 @@ static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 {
 	int ret = -EINVAL;
 	int __maybe_unused pid = 0;
-	struct __maybe_unused watch_ioctl watch;
-	KSM_DEBUG("ioctl from %s: cmd(0x%08X) args(%p)\n",
-		   current->comm, cmd, args);
+	struct watch_ioctl *watch = NULL;
+	KSM_DEBUG("ioctl from %s: cmd(0x%08X)\n",
+		   current->comm, cmd);
 
 	if (mm && current->mm != mm) {
 		KSM_DEBUG("not processing ioctl from %s\n", current->comm);
 		goto out;
 	}
+
+#ifdef INTROSPECT_ENGINE
+	if (cmd >= KSM_IOCTL_INTRO_WATCH && cmd <= KSM_IOCTL_INTRO_STATS) {
+		watch = kmalloc(sizeof(*watch), GFP_KERNEL | __GFP_ZERO);
+		if (!watch)
+			return -ENOMEM;
+	}
+#endif
 
 	switch (cmd) {
 #ifdef PMEM_SANDBOX
@@ -88,38 +96,41 @@ static long ksm_ioctl(struct file *filp, unsigned int cmd, unsigned long args)
 		break;
 	case KSM_IOCTL_INTRO_WATCH:
 		ret = -EFAULT;
-		if (copy_from_user(&watch, (const void __force *)args, sizeof(watch)))
+		if (copy_from_user(watch, (const void __force *)args, sizeof(*watch)))
 			break;
 
-		ret = ksm_introspect_add_watch(ksm, &watch);
+		ret = ksm_introspect_add_watch(ksm, watch);
 		break;
 	case KSM_IOCTL_INTRO_UNWATCH:
 		ret = -EFAULT;
-		if (copy_from_user(&watch, (const void __force *)args, sizeof(watch)))
+		if (copy_from_user(watch, (const void __force *)args, sizeof(*watch)))
 			break;
 
-		ret = ksm_introspect_rem_watch(ksm, &watch);
+		ret = ksm_introspect_rem_watch(ksm, watch);
 		break;
 	case KSM_IOCTL_INTRO_STATS:
 		ret = -EFAULT;
-		if (copy_from_user(&watch, (const void __force *)args, sizeof(watch)))
+		if (copy_from_user(watch, (const void __force *)args, sizeof(*watch)))
 			break;
 
-		ret = ksm_introspect_collect(ksm, &watch);
+		ret = ksm_introspect_collect(ksm, watch);
 		if (ret < 0)
 			break;
 
-		if (copy_to_user((void __force *)args, &watch, sizeof(watch)))
+		if (copy_to_user((void __force *)args, watch, sizeof(*watch)))
 			ret = -EFAULT;
 		break;
 #endif
 	default:
-		KSM_DEBUG("unknown ioctl code %X\n", cmd);
+		KSM_DEBUG("unknown ioctl code 0x%08X\n", cmd);
 		ret = -EINVAL;
 		break;
 	}
 
 out:
+	if (watch)
+		kfree(watch);
+
 	KSM_DEBUG("ioctl ret: %d\n", ret);
 	return ret;
 }

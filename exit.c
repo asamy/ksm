@@ -1899,8 +1899,8 @@ static bool vcpu_handle_io_instr(struct vcpu *vcpu)
 			ksm_write_reg(vcpu, STACK_REG_CX, 0);
 	}
 
-	KSM_DEBUG("%s: port: 0x%X, addr: %p [0x%X] (str: %d, count: %d, size: %d)\n",
-		   type, port, addr, *addr, exit & 16, count, size);
+	KSM_DEBUG("%s: port: 0x%04hX = 0x%08X (str: %d, count: %d, size: %d)\n",
+		   type, port, (u32)*addr, (int)(exit & 16), count, size);
 
 	vcpu_advance_rip(vcpu);
 	return true;
@@ -2097,7 +2097,7 @@ static inline void vcpu_sync_idt(struct vcpu *vcpu, struct gdtr *idt)
 	}
 
 	KSM_DEBUG("Loading new IDT (new size: %d old size: %d)  Copying %d entries\n",
-		   idt->limit, vcpu->idt.limit, entries);
+		   idt->limit, vcpu->idt.limit, (int)entries);
 
 	vcpu->g_idt = *idt;
 	vcpu->idt.limit = idt->limit;
@@ -2124,7 +2124,7 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 	if (((info >> 7) & 7) == 1)
 		addr &= 0xFFFFFFFF;
 
-	KSM_DEBUG("GDT/IDT access, addr %p\n", addr);
+	KSM_DEBUG("GDT/IDT access, addr %p\n", (void *)addr);
 	switch ((info >> 28) & 3) {
 	case 0:		/* sgdt  */
 		dt.limit = (u16)vmcs_read32(GUEST_GDTR_LIMIT);
@@ -2192,7 +2192,7 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 		if (((info >> 7) & 7) == 1)
 			addr &= 0xFFFFFFFF;
 
-		KSM_DEBUG("LDT/TR access, addr %p\n", addr);
+		KSM_DEBUG("LDT/TR access, addr %p\n", (void *)addr);
 		switch (sel_idx) {
 		case 0:
 			sel = vmcs_read16(GUEST_LDTR_SELECTOR);
@@ -2657,25 +2657,26 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 
 static inline void vcpu_dump_state(uintptr_t *stack)
 {
-	KSM_DEBUG("%p: ax=0x%016llX   cx=0x%016llX  dx=0x%016llX\n"
-		  "    bx=0x%016llX   sp=0x%016llX  bp=0x%016llX\n"
-		  "    si=0x%016llX   di=0x%016llX  r08=0x%016llX\n"
-		  "    r09=0x%016llX  r10=0x%016llX r11=0x%016llX\n"
-		  "    r12=0x%016llX  r13=0x%016llX r14=0x%016llX\n"
-		  "    r15=0x%016llX  rip=0x%016llX efl=0x%08lX"
-		  "    cs=0x%02X      ds=0x%02X     es=0x%02X\n"
-		  "    fs=0x%016llX   gs=0x%016llX  kgs=0x%016llX\n"
-		  "    cr0=0x%016llX  cr3=0x%016llX cr4=0x%016llX\n"
-		  "    dr0=0x%016llX  dr1=0x%016llX dr2=0x%016llX\n"
-		  "    dr3=0x%016llX  dr6=0x%016llX dr7=0x%016llX\n",
-		  stack[STACK_VCPU], stack[STACK_REG_AX], stack[STACK_REG_CX], stack[STACK_REG_DX],
+	KSM_DEBUG("%p: ax=0x%X   cx=0x%X  dx=0x%X\n"
+		  "    bx=0x%X   sp=0x%X  bp=0x%X\n"
+		  "    si=0x%X   di=0x%X  r08=0x%X\n"
+		  "    r09=0x%X  r10=0x%X r11=0x%X\n"
+		  "    r12=0x%X  r13=0x%X r14=0x%X\n"
+		  "    r15=0x%X  rip=0x%X efl=0x%08lX"
+		  "    cs=0x%02X ds=0x%02Xes=0x%02X\n"
+		  "    fs=0x%X   gs=0x%X  kgs=0x%X\n"
+		  "    cr0=0x%X  cr3=0x%X cr4=0x%X\n"
+		  "    dr0=0x%X  dr1=0x%X dr2=0x%X\n"
+		  "    dr3=0x%X  dr6=0x%X dr7=0x%X\n",
+		  (void *)stack[STACK_VCPU],
+		  stack[STACK_REG_AX], stack[STACK_REG_CX], stack[STACK_REG_DX],
 		  stack[STACK_REG_BX], vmcs_read(GUEST_RSP), stack[STACK_REG_BP],
 		  stack[STACK_REG_SI], stack[STACK_REG_DI], stack[STACK_REG_R8],
 		  stack[STACK_REG_R9], stack[STACK_REG_R10], stack[STACK_REG_R11],
 		  stack[STACK_REG_R12], stack[STACK_REG_R13], stack[STACK_REG_R14],
 		  stack[STACK_REG_R15], vmcs_read(GUEST_RIP), (u32)stack[STACK_EFL_VCPU],
-		  vmcs_read(GUEST_CS_SELECTOR), vmcs_read(GUEST_DS_SELECTOR),
-		  vmcs_read(GUEST_ES_SELECTOR), vmcs_read(GUEST_FS_BASE),
+		  vmcs_read16(GUEST_CS_SELECTOR), vmcs_read16(GUEST_DS_SELECTOR),
+		  vmcs_read16(GUEST_ES_SELECTOR), vmcs_read(GUEST_FS_BASE),
 		  vmcs_read(GUEST_GS_BASE), __readmsr(MSR_IA32_KERNEL_GS_BASE),
 		  vmcs_read(GUEST_CR0), vmcs_read(GUEST_CR3), vmcs_read(GUEST_CR4),
 		  __readdr(0), __readdr(1), __readdr(2),

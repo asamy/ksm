@@ -80,8 +80,8 @@ static inline void init_msr_bitmap(struct ksm *k)
 		set_bit(msr, read_lo);
 #endif
 
-	unsigned long *write_lo = (unsigned long *)((char *)k->msr_bitmap + 2048);
 #ifdef NESTED_VMX
+	unsigned long *write_lo = (unsigned long *)((char *)k->msr_bitmap + 2048);
 	set_bit(MSR_IA32_FEATURE_CONTROL, write_lo);
 #endif
 }
@@ -202,7 +202,7 @@ int ksm_init(struct ksm **kp)
 		return ret;
 
 	k->vpid_ept = vpid;
-	KSM_DEBUG("EPT/VPID caps: 0x%016X\n", vpid);
+	KSM_DEBUG("EPT/VPID caps: 0x%016llX\n", vpid);
 
 	ret = mm_cache_ram_ranges(&k->ranges[0], &k->range_count);
 	if (ret < 0)
@@ -210,7 +210,7 @@ int ksm_init(struct ksm **kp)
 
 	KSM_DEBUG("%d physical memory ranges\n", k->range_count);
 	for (i = 0; i < k->range_count; ++i)
-		KSM_DEBUG("Range: %p -> %p\n", k->ranges[i].start, k->ranges[i].end);
+		KSM_DEBUG("Range: 0x%016llX -> 0x%016llX\n", k->ranges[i].start, k->ranges[i].end);
 
 #ifdef EPAGE_HOOK
 	ret = ksm_epage_init(k);

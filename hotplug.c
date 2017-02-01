@@ -26,7 +26,7 @@ static int ksm_hotplug_cpu(struct notifier_block *nfb, unsigned long action, voi
 {
 	unsigned long cpu = (unsigned long)hcpu;
 
-	KSM_DEBUG("CPU %d action: %d\n", cpu, action);
+	KSM_DEBUG("CPU %ld action: %ld\n", cpu, action);
 	switch (action) {
 	case CPU_ONLINE:
 	case CPU_ONLINE_FROZEN:

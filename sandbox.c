@@ -320,7 +320,7 @@ bool ksm_sandbox_handle_ept(struct ept_ve_around *ve)
 
 	if (info->exit & EPT_ACCESS_WRITE) {
 		KSM_DEBUG("allocating cow page for GPA %p GVA %p AC %X)\n",
-			  info->gpa, info->gla, info->exit & EPT_AR_MASK);
+			  (void *)info->gpa, (void *)info->gla, (int)info->exit & EPT_AR_MASK);
 
 		page = ksm_sandbox_copy_page(vcpu, task, info->gpa);
 		WARN_ON(!page);
@@ -332,7 +332,7 @@ bool ksm_sandbox_handle_ept(struct ept_ve_around *ve)
 	} else {
 manually_fix:
 		BREAK_ON(1);
-		KSM_DEBUG("Manually fixing AR for %p (0x%X)\n", info->gpa, info->exit & EPT_AR_MASK);
+		KSM_DEBUG("Manually fixing AR for %p (0x%X)\n", (void *)info->gpa, (int)info->exit & EPT_AR_MASK);
 		__set_epte_ar_inplace(epte, info->exit & EPT_AR_MASK);
 	}
 
