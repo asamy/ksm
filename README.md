@@ -1,11 +1,11 @@
-# ksm v1.5 [![BountySource](https://www.bountysource.com/badge/team?team_id=189129&style=raised)](https://www.bountysource.com/teams/ksm?utm_source=ksm&utm_medium=shield&utm_campaign=raised) [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/project/asamy/ksm)
+# ksm v1.6-dev [![BountySource](https://www.bountysource.com/badge/team?team_id=189129&style=raised)](https://www.bountysource.com/teams/ksm?utm_source=ksm&utm_medium=shield&utm_campaign=raised) [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/project/asamy/ksm)
 
 A really simple and lightweight x64 hypervisor written in C for Intel processors.  
 KSM has a self-contained physical memory introspection engine and userspace physical
 memory virtualization which can be enabled at compiletime.
 
 Currently, KSM runs on Windows and Linux kernels natively, and aims to support
-macOS by 2017, if you want to port KSM see Documentation/SPEC.md for more information.
+macOS by 2017, if you want to port KSM see `Documentation/SPEC.rst` for more information.
 
 Unlike other hypervisors (e.g. KVM, XEN, etc.), KSM's purpose is not to run
 other Operating Systems, instead, KSM can be used as an extra layer of
@@ -42,22 +42,29 @@ is not recommended.
 If you have tested it under another kernel version, please create an issue so
 it can be added here.
 
+## Hacking KSM
+
+Few examples are included to illustrate usage and show how to integrate modules
+into it, some of which are sandbox.c and introspect.c, those are mainly not
+very useful right now, but they will be extended later, so feel free to
+contribute your ideas or code.  
+
 ## Technical Documentation
 
-See Documentation/SPEC.md
+See Documentation/SPEC.rst
 
 ## Contributions
 
-See Documentation/CONTRIBUTIONS.md
+See Documentation/CONTRIBUTIONS.rst
 
 ## Building / Usage
 
-See Documentation/BUILDING.md
+See Documentation/BUILDING.rst
 
-## Reporting bugs (or similar)
+## Issues (bugs, features, etc.)
 
-You can report bugs using Github issues, there is an Issue Template to help you
-fill things as needed.
+Feel free to use Github Issues, there is an Issue Template to help you file
+things as required.
 
 ## References
 
