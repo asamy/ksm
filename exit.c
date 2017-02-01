@@ -2657,17 +2657,17 @@ static bool(*g_handlers[]) (struct vcpu *) = {
 
 static inline void vcpu_dump_state(uintptr_t *stack)
 {
-	KSM_DEBUG("%p: ax=0x"PRIxPTR"   cx=0x"PRIxPTR" dx=0x"PRIxPTR"\n"
-		  "    bx=0x"PRIxPTR"   sp=0x"PRIxPTR"  bp=0x"PRIxPTR"\n"
-		  "    si=0x"PRIxPTR"   di=0x"PRIxPTR"  r08=0x"PRIxPTR"\n"
-		  "    r09=0x"PRIxPTR"  r10=0x"PRIxPTR" r11=0x"PRIxPTR"\n"
-		  "    r12=0x"PRIxPTR"  r13=0x"PRIxPTR" r14=0x"PRIxPTR"\n"
-		  "    r15=0x"PRIxPTR"  rip=0x"PRIxPTR" efl=0x08lX\n"
-		  "    cs=0x%04hX       ds=0x%04hX       es=0x%04hX\n"
-		  "    fs=0x"PRIxPTR"   gs=0x"PRIxPTR"  kgs=0x"PRIxPTR"\n"
-		  "    cr0=0x"PRIxPTR"  cr3=0x"PRIxPTR" cr4=0x"PRIxPTR"\n"
-		  "    dr0=0x"PRIxPTR"  dr1=0x"PRIxPTR" dr2=0x"PRIxPTR"\n"
-		  "    dr3=0x"PRIxPTR"  dr6=0x"PRIxPTR" dr7=0x"PRIxPTR"\n",
+	KSM_DEBUG("%p: ax=0x%"PRIxPTR"   cx=0x%"PRIxPTR"  dx=0x%"PRIxPTR"\n"
+		  "    bx=0x%"PRIxPTR"   sp=0x%"PRIxPTR"  bp=0x%"PRIxPTR"\n"
+		  "    si=0x%"PRIxPTR"   di=0x%"PRIxPTR"  r08=0x%"PRIxPTR"\n"
+		  "    r09=0x%"PRIxPTR"  r10=0x%"PRIxPTR" r11=0x%"PRIxPTR"\n"
+		  "    r12=0x%"PRIxPTR"  r13=0x%"PRIxPTR" r14=0x%"PRIxPTR"\n"
+		  "    r15=0x%"PRIxPTR"  rip=0x%"PRIxPTR" efl=0x%08X\n"
+		  "    cs=0x%04hX        ds=0x%04hX       es=0x%04hX\n"
+		  "    fs=0x%"PRIxPTR"   gs=0x%"PRIxPTR"  kgs=0x%016llX\n"
+		  "    cr0=0x%"PRIxPTR"  cr3=0x%"PRIxPTR" cr4=0x%"PRIxPTR"\n"
+		  "    dr0=0x%016llX     dr1=0x%016llX    dr2=0x%016llX\n"
+		  "    dr3=0x%016llX     dr6=0x%016llX    dr7=0x%"PRIxPTR"\n",
 		  (void *)stack[STACK_VCPU],
 		  stack[STACK_REG_AX], stack[STACK_REG_CX], stack[STACK_REG_DX],
 		  stack[STACK_REG_BX], vmcs_read(GUEST_RSP), stack[STACK_REG_BP],
@@ -2675,9 +2675,8 @@ static inline void vcpu_dump_state(uintptr_t *stack)
 		  stack[STACK_REG_R9], stack[STACK_REG_R10], stack[STACK_REG_R11],
 		  stack[STACK_REG_R12], stack[STACK_REG_R13], stack[STACK_REG_R14],
 		  stack[STACK_REG_R15], vmcs_read(GUEST_RIP), (u32)stack[STACK_EFL_VCPU],
-		  vmcs_read16(GUEST_CS_SELECTOR), vmcs_read16(GUEST_DS_SELECTOR),
-		  vmcs_read16(GUEST_ES_SELECTOR), vmcs_read(GUEST_FS_BASE),
-		  vmcs_read(GUEST_GS_BASE), __readmsr(MSR_IA32_KERNEL_GS_BASE),
+		  vmcs_read16(GUEST_CS_SELECTOR), vmcs_read16(GUEST_DS_SELECTOR), vmcs_read16(GUEST_ES_SELECTOR),
+		  vmcs_read(GUEST_FS_BASE), vmcs_read(GUEST_GS_BASE), __readmsr(MSR_IA32_KERNEL_GS_BASE),
 		  vmcs_read(GUEST_CR0), vmcs_read(GUEST_CR3), vmcs_read(GUEST_CR4),
 		  __readdr(0), __readdr(1), __readdr(2),
 		  __readdr(3), __readdr(6), vmcs_read(GUEST_DR7));

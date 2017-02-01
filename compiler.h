@@ -84,7 +84,7 @@ typedef _Bool bool;
 #endif
 
 #ifndef PRIxPTR
-#define PRIxPTR		"%llX"
+#define PRIxPTR		"llX"
 #endif
 
 /* Avoid NT retardism  */
@@ -172,6 +172,10 @@ NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(PEPROCESS process);
 #include <inttypes.h>
 #endif
 #include <asm-generic/errno-base.h>
+
+#ifndef PRIxPTR
+#define PRIxPTR		"lX"
+#endif
 
 #define __align(alignment)	__attribute__((__aligned__(alignment)))
 #define KERNEL_STACK_SIZE	(6 << PAGE_SHIFT)
