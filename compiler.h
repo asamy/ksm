@@ -111,14 +111,10 @@ NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(PEPROCESS process);
 /* MSVC specific definitions  */
 /* Disable annoying warnings  */
 #pragma warning(disable:4115)		/* 'type' : named type definition in parentheses  */
-#pragma warning(disable:4242)		/* 'identifier' : conversion from 'type1' to 'type2', possible loss of data*/
-#pragma warning(disable:4244)		/* 'conversion' conversion from 'type1' to 'type2', possible loss of data  */
 #pragma warning(disable:4201)		/* nonstandard extension used : nameless struct/union  */
 #pragma warning(disable:4311)		/* 'variable' : pointer truncation from 'type' to 'type'  */
 #pragma warning(disable:4214)		/* nonstandard extension used : bit field types other than int  */
 #pragma warning(disable:4133)		/* 'type' : incompatible types - from 'type1' to 'type2'  */
-#pragma warning(disable:4146)		/* unary minus operator applied to unsigned type, result still unsigned  */
-#pragma warning(disable:4366)		/* The result of the unary 'operator' operator may be unaligned  */
 #pragma warning(disable:4702)		/* unreachable code  */
 #pragma warning(disable:4100)		/* 'identifier' : unreferenced formal parameter  */
 #pragma warning(disable:4200)		/* nonstandard extension used : zero-sized array in struct/union  */
@@ -129,8 +125,6 @@ NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(PEPROCESS process);
 #pragma warning(disable:4706)		/* assignment within conditional expression  */
 #pragma warning(disable:4221)		/* nonstandard extension used : 'identifier' : cannot be initialized using address of automatic variable  */
 #pragma warning(disable:4054)		/*  'conversion' : from function pointer 'type1' to data pointer 'type2'  */
-#pragma warning(disable:4057)		/* 'function' : 'unsigned int *' differs in indirection to slightly different base types from 'u32 *'  */
-#pragma warning(disable:4245)		/* 'initializing': conversion from 'int' to 'u8', signed/unsigned mismatch  */
 
 #define __align(alignment)	__declspec(align(alignment))
 #define __packed

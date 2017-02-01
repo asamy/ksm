@@ -105,7 +105,7 @@
 #endif
 
 /* VPID 0 is used by VMX root.  */
-#define vpid_nr()			(cpu_nr() + 1)
+#define vpid_nr()			(u16)(cpu_nr() + 1)
 #ifdef __linux__
 #define proc_name()			current->comm
 #define proc_id()			current->pid
@@ -189,7 +189,7 @@
 #define EPTP(e, i)			(e)->ptr_list[(i)]
 #define EPT4(e, i)			(e)->pml4_list[(i)]
 #define for_each_eptp(ept, i)		\
-	for (int i = 0; i < EPT_MAX_EPTP_LIST; ++i)	\
+	for (u16 i = 0; i < EPT_MAX_EPTP_LIST; ++i)	\
 		if (test_bit(i, ept->ptr_bitmap))
 
 #define EPT_BUGCHECK_CODE		0x3EDFAAAA

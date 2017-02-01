@@ -209,7 +209,7 @@ static void print_thread(void)
 		print_flush();
 
 #ifdef _MSC_VER
-	InterlockedExchange8(&exited, true);
+	InterlockedExchange8((char *)&exited, true);
 #else
 	__sync_bool_compare_and_swap(&exited, false, true);
 #endif
@@ -261,7 +261,7 @@ err_file:
 void print_exit(void)
 {
 #ifdef _MSC_VER
-	InterlockedExchange8(&do_exit, true);
+	InterlockedExchange8((char *)&do_exit, true);
 #else
 	__sync_bool_compare_and_swap(&do_exit, false, true);
 #endif

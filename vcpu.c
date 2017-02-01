@@ -230,7 +230,7 @@ bool ept_create_ptr(struct ept *ept, int access, u16 *out)
 	u64 **pml4;
 	u16 eptp;
 
-	eptp = find_first_zero_bit(ept->ptr_bitmap, sizeof(ept->ptr_bitmap));
+	eptp = (u16)find_first_zero_bit(ept->ptr_bitmap, sizeof(ept->ptr_bitmap));
 	if (eptp == sizeof(ept->ptr_bitmap))
 		return false;
 
@@ -673,7 +673,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write64(EPT_POINTER, EPTP(ept, EPTP_DEFAULT));
 
 	/* This must be ~0ULL  */
-	err |= vmcs_write64(VMCS_LINK_POINTER, -1ULL);
+	err |= vmcs_write64(VMCS_LINK_POINTER, ~0ULL);
 
 	/* Posted interrupts if available, otherwise entry to guest will fail.  */
 	if (vm_pinctl & PIN_BASED_POSTED_INTR) {
@@ -804,7 +804,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write(GUEST_RSP, gsp);
 	err |= vmcs_write(GUEST_RIP, gip);
 	err |= vmcs_write(GUEST_RFLAGS, __readeflags());
-	err |= vmcs_write32(GUEST_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
+	err |= vmcs_write32(GUEST_SYSENTER_CS, (u32)__readmsr(MSR_IA32_SYSENTER_CS));
 	err |= vmcs_write(GUEST_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
 	err |= vmcs_write(GUEST_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
 
@@ -829,7 +829,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write(HOST_TR_BASE, __segmentbase(gdtr.base, tr));
 	err |= vmcs_write(HOST_GDTR_BASE, gdtr.base);
 	err |= vmcs_write(HOST_IDTR_BASE, idtr->base);
-	err |= vmcs_write32(HOST_IA32_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
+	err |= vmcs_write32(HOST_IA32_SYSENTER_CS, (u32)__readmsr(MSR_IA32_SYSENTER_CS));
 	err |= vmcs_write(HOST_IA32_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
 	err |= vmcs_write(HOST_IA32_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
 	err |= vmcs_write(HOST_RSP, (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE - 8);

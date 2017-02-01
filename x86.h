@@ -1133,7 +1133,7 @@ static inline u32 ioapic_read(u64 base, u8 reg)
 
 static inline void ioapic_set_entry(u64 base, u8 index, u64 data)
 {
-	ioapic_write(base, IOAPIC_REDTBL + index * 2, data);
+	ioapic_write(base, IOAPIC_REDTBL + index * 2, (u32)data);
 	ioapic_write(base, IOAPIC_REDTBL + index * 2 + 1, data >> 32);
 }
 

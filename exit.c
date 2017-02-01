@@ -203,7 +203,7 @@ static inline void vcpu_inject_irq(struct vcpu *vcpu, u32 instr_len, u16 intr_ty
 	 */
 	struct pending_irq *pirq = &vcpu->irq;
 	if (pirq->pending) {
-		u8 prev_vec = pirq->bits;
+		u8 prev_vec = (u8)pirq->bits;
 		if (prev_vec == X86_TRAP_DF) {
 			/* FIXME:  Triple fault  */
 			dbgbreak();
@@ -328,7 +328,7 @@ static bool vcpu_handle_except_nmi(struct vcpu *vcpu)
 	VCPU_TRACER_START();
 
 	u32 intr_info = vmcs_read32(VM_EXIT_INTR_INFO);
-	u32 intr_type = intr_info & INTR_INFO_INTR_TYPE_MASK;
+	u16 intr_type = intr_info & INTR_INFO_INTR_TYPE_MASK;
 	u8 vector = intr_info & INTR_INFO_VECTOR_MASK;
 
 	u32 instr_len = 0;
@@ -449,7 +449,7 @@ static bool vcpu_handle_rdtsc(struct vcpu *vcpu)
 	VCPU_TRACER_START();
 
 	u64 tsc = __rdtsc();
-	ksm_write_reg32(vcpu, STACK_REG_AX, tsc);
+	ksm_write_reg32(vcpu, STACK_REG_AX, (u32)tsc);
 	ksm_write_reg32(vcpu, STACK_REG_DX, tsc >> 32);
 	vcpu_advance_rip(vcpu);
 
@@ -560,7 +560,7 @@ static inline void vcpu_do_exit(struct vcpu *vcpu)
 {
 	/* Fix GDT  */
 	struct gdtr gdt = {
-		.limit = vmcs_read32(GUEST_GDTR_LIMIT),
+		.limit = (u16)vmcs_read32(GUEST_GDTR_LIMIT),
 		.base = vmcs_read(GUEST_GDTR_BASE),
 	};
 	__lgdt(&gdt);
@@ -636,7 +636,7 @@ static inline bool vcpu_emulate_vmfunc(struct vcpu *vcpu, struct h_vmfunc *vmfun
 		return false;
 	}
 
-	vcpu_switch_root_eptp(vcpu, vmfunc->eptp);
+	vcpu_switch_root_eptp(vcpu, (u16)vmfunc->eptp);
 	return true;
 }
 
@@ -837,7 +837,7 @@ static inline bool nested_prepare_hypervisor(struct vcpu *vcpu, uintptr_t vmcs)
 	err |= vmcs_write(GUEST_DR7, DR7_FIXED_1);
 	err |= vmcs_write64(GUEST_IA32_DEBUGCTL, 0);
 
-	err |= vmcs_write64(VMCS_LINK_POINTER, -1ULL);
+	err |= vmcs_write64(VMCS_LINK_POINTER, ~0ULL);
 	err |= vmcs_write32(VM_ENTRY_CONTROLS, vcpu->entry_ctl);
 	err |= vmcs_write32(VM_EXIT_CONTROLS, vcpu->exit_ctl);
 	err |= vmcs_write32(PIN_BASED_VM_EXEC_CONTROL, vcpu->pin_ctl);
@@ -878,7 +878,7 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu, u32 exit_reas
 	if (!nested_prepare_hypervisor(vcpu, vmcs))
 		return false;
 
-	u16 handler = exit_reason;
+	u16 handler = (u16)exit_reason;
 	if (lapic_in_kernel() && handler == EXIT_REASON_EXTERNAL_INTERRUPT &&
 	    __nested_vmcs_read(vmcs, VM_EXIT_CONTROLS) & VM_EXIT_ACK_INTR_ON_EXIT)
 		;/* FIXME  */
@@ -888,7 +888,7 @@ static inline bool vcpu_enter_nested_hypervisor(struct vcpu *vcpu, u32 exit_reas
 	if ((intr_info & intr_mask) == intr_mask)
 		nested_save(vmcs, VM_EXIT_INTR_ERROR_CODE);
 
-	__nested_vmcs_write(vmcs, VM_EXIT_REASON, exit_reason);
+	__nested_vmcs_write(vmcs, VM_EXIT_REASON, (u16)exit_reason);
 	__nested_vmcs_write(vmcs, VM_EXIT_INTR_INFO, intr_info);
 	__nested_vmcs_write(vmcs, EXIT_QUALIFICATION, vmcs_read(EXIT_QUALIFICATION));
 	__nested_vmcs_write(vmcs, VM_EXIT_INSTRUCTION_LEN, vmcs_read32(VM_EXIT_INSTRUCTION_LEN));
@@ -907,7 +907,7 @@ static bool vcpu_handle_vmcall(struct vcpu *vcpu)
 	VCPU_TRACER_START();
 
 	/* VMFUNC does not have CPL checks, so emulator shouldn't have too...  */
-	uint8_t nr = ksm_read_reg32(vcpu, STACK_REG_CX);
+	u32 nr = ksm_read_reg32(vcpu, STACK_REG_CX);
 	if (nr != HCALL_VMFUNC && vcpu_inject_gp_if(vcpu, !vcpu_probe_cpl(0)))
 		goto out;
 
@@ -1140,7 +1140,7 @@ static bool prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 		err |= nested_copy64(vmcs, TSC_OFFSET);
 
 	err |= vmcs_write32(CPU_BASED_VM_EXEC_CONTROL,
-			    ctl | __nested_vmcs_read(vmcs, CPU_BASED_VM_EXEC_CONTROL));
+			    ctl | __nested_vmcs_read32(vmcs, CPU_BASED_VM_EXEC_CONTROL));
 
 	if (secondary) {
 		ctl = vcpu->secondary_ctl;
@@ -1153,7 +1153,7 @@ static bool prepare_nested_guest(struct vcpu *vcpu, uintptr_t vmcs)
 			err |= nested_copy64(vmcs, XSS_EXIT_BITMAP);
 
 		err |= vmcs_write(SECONDARY_VM_EXEC_CONTROL,
-				  ctl | __nested_vmcs_read(vmcs, SECONDARY_VM_EXEC_CONTROL));
+				  ctl | __nested_vmcs_read32(vmcs, SECONDARY_VM_EXEC_CONTROL));
 	}
 
 	err |= nested_copy(vmcs, PIN_BASED_VM_EXEC_CONTROL);
@@ -1171,7 +1171,7 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 	struct nested_vcpu *nested = &vcpu->nested_vcpu;
 	uintptr_t vmcs = nested->vmcs;
 
-	if (__nested_vmcs_read64(vmcs, VMCS_LINK_POINTER) != -1ULL) {
+	if (__nested_vmcs_read64(vmcs, VMCS_LINK_POINTER) != ~0ULL) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_ENTRY_INVALID_CONTROL_FIELD);
 		return false;
 	}
@@ -1406,7 +1406,7 @@ static bool vcpu_handle_vmread(struct vcpu *vcpu)
 		goto err;
 
 	u32 inst = vmcs_read32(VMX_INSTRUCTION_INFO);
-	u32 field = ksm_read_reg(vcpu, (inst >> 28) & 15);
+	u32 field = ksm_read_reg32(vcpu, (inst >> 28) & 15);
 	u64 value;
 	if (!nested_vmcs_read(vmcs, field, &value)) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_UNSUPPORTED_VMCS_COMPONENT);
@@ -1464,7 +1464,7 @@ static bool vcpu_handle_vmwrite(struct vcpu *vcpu)
 		goto out;
 
 	u64 inst = vmcs_read(VMX_INSTRUCTION_INFO);
-	u32 field = ksm_read_reg(vcpu, (inst >> 28) & 15);
+	u32 field = ksm_read_reg32(vcpu, (inst >> 28) & 15);
 	if (field_ro(field)) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_VMWRITE_READ_ONLY_VMCS_COMPONENT);
 		goto out;
@@ -1725,7 +1725,7 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 
 			break;
 		case 8:
-			__lapic_write((u64)vcpu->vapic_page, APIC_TASKPRI, *val);
+			__lapic_write((u64)vcpu->vapic_page, APIC_TASKPRI, (u32)*val);
 			break;
 		}
 		break;
@@ -1843,7 +1843,7 @@ static bool vcpu_handle_io_instr(struct vcpu *vcpu)
 			addr = (uintptr_t *)ksm_read_reg(vcpu, STACK_REG_DI);
 	}
 
-	u16 port = exit >> 16;
+	u16 port = (u16)(exit >> 16);
 	u32 size = (exit & 7) + 1;
 	u32 count = 1;
 	if (exit & 32)
@@ -1956,7 +1956,7 @@ static bool vcpu_handle_rdmsr(struct vcpu *vcpu)
 		break;
 	}
 
-	ksm_write_reg32(vcpu, STACK_REG_AX, val);
+	ksm_write_reg32(vcpu, STACK_REG_AX, (u32)val);
 	ksm_write_reg32(vcpu, STACK_REG_DX, val >> 32);
 	vcpu_advance_rip(vcpu);
 	VCPU_TRACER_END();
@@ -2013,7 +2013,7 @@ static bool vcpu_handle_wrmsr(struct vcpu *vcpu)
 				if ((val >> 32) != 0 || (msr >= 0x810 && msr <= 0x827)) /* ISR through IRR  */
 					vcpu_inject_hardirq(vcpu, X86_TRAP_GP, 0);
 				else
-					__lapic_write((u64)vcpu->vapic_page, offset, val);
+					__lapic_write((u64)vcpu->vapic_page, offset, (u32)val);
 				break;
 			}
 		} else {
@@ -2127,7 +2127,7 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 	KSM_DEBUG("GDT/IDT access, addr %p\n", addr);
 	switch ((info >> 28) & 3) {
 	case 0:		/* sgdt  */
-		dt.limit = vmcs_read32(GUEST_GDTR_LIMIT);
+		dt.limit = (u16)vmcs_read32(GUEST_GDTR_LIMIT);
 		dt.base = vmcs_read(GUEST_GDTR_BASE);
 		if (!ksm_write_virt(vcpu, addr, (const u8 *)&dt, sizeof(dt)))
 			vcpu_inject_pf(vcpu, addr, PGF_PRESENT | PGF_WRITE);
@@ -2269,7 +2269,7 @@ static bool vcpu_handle_rdtscp(struct vcpu *vcpu)
 	u32 tsc_aux;
 	u64 tsc = __rdtscp((unsigned int *)&tsc_aux);
 
-	ksm_write_reg32(vcpu, STACK_REG_AX, tsc);
+	ksm_write_reg32(vcpu, STACK_REG_AX, (u32)tsc);
 	ksm_write_reg32(vcpu, STACK_REG_DX, tsc >> 32);
 	ksm_write_reg32(vcpu, STACK_REG_CX, tsc_aux);
 	vcpu_advance_rip(vcpu);
@@ -2338,7 +2338,7 @@ static inline bool nested_can_handle_cr(const struct nested_vcpu *nested)
 		case 3:
 		{
 			uintptr_t val = ksm_read_reg(vcpu, (exit >> 8) & 15);
-			u32 count = __nested_vmcs_read(vmcs, CR3_TARGET_COUNT);
+			u32 count = __nested_vmcs_read32(vmcs, CR3_TARGET_COUNT);
 			for (u32 i = 0; i < count; i++)
 				if (__nested_vmcs_read(vmcs, CR3_TARGET_VALUE0 + i * 2) == val)
 					return false;
@@ -2388,11 +2388,11 @@ static inline bool nested_can_handle_io(const struct nested_vcpu *nested)
 	struct vcpu *vcpu = container_of(nested, struct vcpu, nested_vcpu);
 	uintptr_t vmcs = nested->vmcs;
 	u32 exit = vmcs_read32(EXIT_QUALIFICATION);
-	u16 port = exit;
+	u16 port = (u16)(exit >> 16);
 	u16 size = (exit & 7) + 1;
 	u64 bitmap = ~0ULL;
 	u64 last_bitmap = ~0ULL;
-	u8 byte = -1;
+	u8 byte = 0xFF;
 
 	while (size > 0) {
 		if (port < 0x8000)
@@ -2482,7 +2482,7 @@ static inline bool nested_can_handle(const struct nested_vcpu *nested, u32 exit_
 	 * Unconditional exit reasons (cpuid, invd, triple fault, vm instructions, ...)
 	 * are always passed to the nested hypervisor.
 	 */
-	u16 handler = exit_reason;
+	u16 handler = (u16)exit_reason;
 	switch (handler) {
 	case EXIT_REASON_TRIPLE_FAULT:
 	case EXIT_REASON_CPUID:
