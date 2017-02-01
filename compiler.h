@@ -169,7 +169,6 @@ NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(PEPROCESS process);
 /* Linux definitions  */
 #ifndef __ASSEMBLY__
 #include <stdbool.h>
-#include <inttypes.h>
 #endif
 #include <asm-generic/errno-base.h>
 
