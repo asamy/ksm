@@ -61,6 +61,16 @@ void mm_unmap(void *vaddr, size_t size)
 	vunmap(addr);
 }
 
+void *mm_remap_iomem(u64 phys, size_t size)
+{
+	return ioremap(phys, size);
+}
+
+void mm_unmap_iomem(void *addr, size_t size)
+{
+	return iounmap((void __iomem __force *)addr);
+}
+
 /*
  *  Original:
  *	 * map_writable creates a shadow page mapping of the range

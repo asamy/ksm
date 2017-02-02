@@ -1165,23 +1165,23 @@ static inline u64 __lapic_read64(u64 base, u32 reg)
 
 static inline bool lapic_write(u32 reg, u32 val)
 {
-	void *base = mm_remap(lapic_base_phys(), PAGE_SIZE);
+	void *base = mm_remap_iomem(lapic_base_phys(), PAGE_SIZE);
 	if (!base)
 		return false;
 
 	__lapic_write((u64)base, reg, val);
-	mm_unmap(base, PAGE_SIZE);
+	mm_unmap_iomem(base, PAGE_SIZE);
 	return true;
 }
 
 static inline u32 lapic_read(u32 reg)
 {
-	void *base = mm_remap(lapic_base_phys(), PAGE_SIZE);
+	void *base = mm_remap_iomem(lapic_base_phys(), PAGE_SIZE);
 	if (!base)
 		return false;
 
 	u32 val = __lapic_read((u64)base, reg);
-	mm_unmap(base, PAGE_SIZE);
+	mm_unmap_iomem(base, PAGE_SIZE);
 	return val;
 }
 

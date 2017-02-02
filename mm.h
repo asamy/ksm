@@ -228,6 +228,8 @@ static inline bool mm_is_kernel_addr(void *va)
 
 extern void *mm_remap(u64 phys, size_t size);
 extern void mm_unmap(void *addr, size_t size);
+extern void *mm_remap_iomem(u64 phys, size_t size);
+extern void mm_unmap_iomem(void *addr, size_t size);
 extern void *kmap_virt(void *addr, size_t len, pgprot_t prot);
 static inline void *kmap_exec(void *addr, size_t len)
 {
@@ -322,6 +324,16 @@ static inline void *mm_remap(u64 phys, size_t size)
 static inline void mm_unmap(void *addr, size_t size)
 {
 	return MmUnmapIoSpace(addr, size);
+}
+
+static inline void *mm_remap_iomem(u64 phys, size_t size)
+{
+	return mm_remap(phys, size);
+}
+
+static inline void mm_unmap_iomem(void *addr, size_t size)
+{
+	return mm_unmap(addr, size);
 }
 
 static inline void *mm_alloc_page(void)
