@@ -653,9 +653,9 @@ static inline u64 __rdtscp(u32 *cpu)
 	return (u64)eax | (u64)edx << 32;
 }
 
-static inline unsigned long __readmsr(u32 msr)
+static inline unsigned long long __readmsr(u32 msr)
 {
-	unsigned long x;
+	unsigned long long x;
 	rdmsrl(msr, x);
 	return x;
 }
