@@ -19,6 +19,8 @@
 
 #ifdef __linux__
 #include <linux/kernel.h>
+#else
+#include <intrin.h>
 #endif
 
 #include "compiler.h"
