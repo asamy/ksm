@@ -63,10 +63,10 @@ static inline u64 *ept_page_addr(u64 *pte)
  * So, with that being said, while we only have the initial table (PML4) virtual address
  * to work with, we need first need to get an offset into it (for the PDPT), and so on, so
  * we use the following macros (defined in mm.h):
- *	- __pxe_idx(pa)		- Gives an offset into PML4 to get the PDPT
- *	- __ppe_idx(pa)		- Gives an offset into PDPT to get the PDT
- *	- __pde_idx(pa)		- Gives an offset into PDT to get the PT 
- *	- __pte_idx(pa)		- Gives an offset into PT to get the final page!
+ *	- PGD_INDEX_P(pa)		- Gives an offset into PML4 to get the PDPT
+ *	- PUD_INDEX_P(pa)		- Gives an offset into PDPT to get the PDT
+ *	- PMD_INDEX_P(pa)		- Gives an offset into PDT to get the PT 
+ *	- PTE_INDEX_P(pa)		- Gives an offset into PT to get the final page!
  *
  * And since each of those entries contain a physical address, we need to use
  * ept_page_addr() to obtain the virtual address for that specific table.
@@ -80,7 +80,7 @@ static inline u64 *ept_page_addr(u64 *pte)
 u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 {
 	/* PML4 (512 GB) */
-	u64 *pml4e = &pml4[__pxe_idx(gpa)];
+	u64 *pml4e = &pml4[PGD_INDEX_P(gpa)];
 	u64 *pdpt = ept_page_addr(pml4e);
 
 	if (!pdpt) {
@@ -92,7 +92,7 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 	}
 
 	/* PDPT (1 GB)  */
-	u64 *pdpte = &pdpt[__ppe_idx(gpa)];
+	u64 *pdpte = &pdpt[PUD_INDEX_P(gpa)];
 	u64 *pdt = ept_page_addr(pdpte);
 	if (!pdt) {
 		pdt = mm_alloc_page();
@@ -103,7 +103,7 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 	}
 
 	/* PDT (2 MB)  */
-	u64 *pdte = &pdt[__pde_idx(gpa)];
+	u64 *pdte = &pdt[PMD_INDEX_P(gpa)];
 	u64 *pt = ept_page_addr(pdte);
 	if (!pt) {
 		pt = mm_alloc_page();
@@ -114,7 +114,7 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 	}
 
 	/* PT (4 KB)  */
-	u64 *page = &pt[__pte_idx(gpa)];
+	u64 *page = &pt[PTE_INDEX_P(gpa)];
 	init_epte(page, access, hpa);
 
 	*page |= EPT_MT_WRITEBACK << VMX_EPT_MT_EPTE_SHIFT;
@@ -149,11 +149,11 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
 	u64 *pdpt, *pdt, *pd;
 	u64 *pdpte, *pdte;
 
-	pdpt = ept_page_addr(&pml4[__pxe_idx(gpa)]);
+	pdpt = ept_page_addr(&pml4[PGD_INDEX_P(gpa)]);
 	if (!pdpt)
 		return 0;
 
-	pdpte = &pdpt[__ppe_idx(gpa)];
+	pdpte = &pdpt[PUD_INDEX_P(gpa)];
 	pdt = ept_page_addr(pdpte);
 	if (!pdt)
 		return 0;
@@ -161,7 +161,7 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
 	if (*pdpte & PAGE_LARGE)
 		return pdpte;	/* 1 GB  */
 
-	pdte = &pdt[__pde_idx(gpa)];
+	pdte = &pdt[PMD_INDEX_P(gpa)];
 	pd = ept_page_addr(pdte);
 	if (!pd)
 		return 0;
@@ -169,7 +169,7 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
 	if (*pdte & PAGE_LARGE)
 		return pdte;	/* 2 MB  */
 
-	return &pd[__pte_idx(gpa)];	/* 4 KB  */
+	return &pd[PTE_INDEX_P(gpa)];	/* 4 KB  */
 }
 
 static bool setup_pml4(struct ept *ept, int access, u16 eptp)

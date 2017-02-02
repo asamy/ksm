@@ -26,24 +26,20 @@
 #include <linux/sched.h>
 #endif
 
-#ifndef PXI_SHIFT
-#define PXI_SHIFT		39
+#ifndef PGD_SHIFT_P
+#define PGD_SHIFT_P		39
 #endif
 
-#ifndef PPI_SHIFT
-#define PPI_SHIFT		30
+#ifndef PUD_SHIFT_P
+#define PUD_SHIFT_P		30
 #endif
 
-#ifndef PDI_SHIFT
-#define PDI_SHIFT		21
+#ifndef PMD_SHIFT_P
+#define PMD_SHIFT_P		21
 #endif
 
-#ifndef PTI_SHIFT
-#define PTI_SHIFT		12
-#endif
-
-#ifndef PTE_SHIFT
-#define PTE_SHIFT		3
+#ifndef PTE_SHIFT_P
+#define PTE_SHIFT_P		12
 #endif
 
 #define VA_BITS			48
@@ -54,16 +50,16 @@
 #define PTX_MASK		0x1FF
 #endif
 
-#ifndef PPI_MASK
-#define PPI_MASK		0x3FFFF
+#ifndef PUD_MASK_P
+#define PUD_MASK_P		0x3FFFF
 #endif
 
-#ifndef PDI_MASK
-#define PDI_MASK		0x7FFFFFF
+#ifndef PMD_MASK_P
+#define PMD_MASK_P		0x7FFFFFF
 #endif
 
-#ifndef PTI_MASK
-#define PTI_MASK		0xFFFFFFFFF
+#ifndef PTE_MASK_P
+#define PTE_MASK_P		0xFFFFFFFFF
 #endif
 
 /*
@@ -92,7 +88,7 @@
 #define PAGE_TRANSIT		0x800	/* Linux: Hidden by kmemcheck  */
 #define PAGE_PA_MASK		(0xFFFFFFFFFULL << PAGE_SHIFT)
 #define PAGE_PA(page)		((page) & PAGE_PA_MASK)
-#define PAGE_FN(page)		(((page) >> PTI_SHIFT) & PTI_MASK)
+#define PAGE_FN(page)		(((page) >> PTE_SHIFT_P) & PTE_MASK_P)
 #define PAGE_PPA(pte)		(PAGE_PA(pte->pte))
 #define PAGE_PFN(pte)		(PAGE_FN(pte->pte))
 #define PAGE_NX			0x8000000000000000	/* No execute  */
@@ -106,10 +102,10 @@
 #define PGF_PK			0x20	/* Protection key fault  */
 #define PGF_SGX			0x40	/* SGX induced fault  */
 
-#define __pxe_idx(addr)		(((addr) >> PXI_SHIFT) & PTX_MASK)
-#define __ppe_idx(addr)		(((addr) >> PPI_SHIFT) & PTX_MASK)
-#define __pde_idx(addr)		(((addr) >> PDI_SHIFT) & PTX_MASK)
-#define __pte_idx(addr)		(((addr) >> PTI_SHIFT) & PTX_MASK)
+#define PGD_INDEX_P(addr)		(((addr) >> PGD_SHIFT_P) & PTX_MASK)
+#define PUD_INDEX_P(addr)		(((addr) >> PUD_SHIFT_P) & PTX_MASK)
+#define PMD_INDEX_P(addr)		(((addr) >> PMD_SHIFT_P) & PTX_MASK)
+#define PTE_INDEX_P(addr)		(((addr) >> PTE_SHIFT_P) & PTX_MASK)
 
 #ifndef __linux__
 /* be in the same boat  */
@@ -251,46 +247,46 @@ static inline void *kmap_write(void *addr, size_t len)
  */
 static inline pgd_t *va_to_pgd(uintptr_t va)
 {
-	uintptr_t off = (va >> PXI_SHIFT) & PTX_MASK;
+	uintptr_t off = (va >> PGD_SHIFT_P) & PTX_MASK;
 	return (pgd_t *)pxe_base + off;
 }
 
 static inline pud_t *va_to_pud(uintptr_t va)
 {
-	uintptr_t off = (va >> PPI_SHIFT) & PPI_MASK;
+	uintptr_t off = (va >> PUD_SHIFT_P) & PUD_MASK_P;
 	return (pud_t *)ppe_base + off;
 }
 
 static inline pmd_t *va_to_pmd(uintptr_t va)
 {
-	uintptr_t off = (va >> PDI_SHIFT) & PDI_MASK;
+	uintptr_t off = (va >> PMD_SHIFT_P) & PMD_MASK_P;
 	return (pmd_t *)pde_base + off;
 }
 
 static inline pte_t *va_to_pte(uintptr_t va)
 {
-	uintptr_t off = (va >> PTI_SHIFT) & PTI_MASK;
+	uintptr_t off = (va >> PTE_SHIFT_P) & PTE_MASK_P;
 	return (pte_t *)pte_base + off;
 }
 
 static inline pgd_t *pgd_offset(uintptr_t cr3, uintptr_t va)
 {
-	return (pgd_t *)__va(PAGE_PA(cr3)) + __pxe_idx(va);
+	return (pgd_t *)__va(PAGE_PA(cr3)) + PGD_INDEX_P(va);
 }
 
 static inline pud_t *pud_offset(pgd_t *pgd, uintptr_t va)
 {
-	return (pud_t *)__va(PAGE_PPA(pgd)) + __ppe_idx(va);
+	return (pud_t *)__va(PAGE_PPA(pgd)) + PUD_INDEX_P(va);
 }
 
 static inline pmd_t *pmd_offset(pud_t *pud, uintptr_t va)
 {
-	return (pmd_t *)__va(PAGE_PPA(pud)) + __pde_idx(va);
+	return (pmd_t *)__va(PAGE_PPA(pud)) + PMD_INDEX_P(va);
 }
 
 static inline pte_t *pte_offset(pmd_t *pmd, uintptr_t va)
 {
-	return (pte_t *)__va(PAGE_PPA(pmd)) + __pte_idx(va);
+	return (pte_t *)__va(PAGE_PPA(pmd)) + PTE_INDEX_P(va);
 }
 
 static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)

@@ -78,10 +78,10 @@ static inline NTSTATUS check_dynamic_pgtables(void)
 			if (RtlCompareMemory(pattern, &base[i], sizeof(pattern)) == sizeof(pattern)) {
 				pte_base = *(uintptr_t *)(base + i + sizeof(pattern));
 
-				uintptr_t idx = (pte_base >> PXI_SHIFT) & PTX_MASK;
-				pde_base = pte_base | (idx << PPI_SHIFT);
-				ppe_base = pde_base | (idx << PDI_SHIFT);
-				pxe_base = ppe_base | (idx << PTI_SHIFT);
+				uintptr_t idx = (pte_base >> PGD_SHIFT_P) & PTX_MASK;
+				pde_base = pte_base | (idx << PUD_SHIFT_P);
+				ppe_base = pde_base | (idx << PMD_SHIFT_P);
+				pxe_base = ppe_base | (idx << PTE_SHIFT_P);
 				found = true;
 				break;
 			}

@@ -690,7 +690,7 @@ extern void ept_free_ptr(struct ept *ept, u16 eptp);
 static inline void __set_epte_pfn(u64 *epte, u64 pfn)
 {
 	*epte &= ~PAGE_PA_MASK;
-	*epte |= (pfn & PTI_MASK) << PTI_SHIFT;
+	*epte |= (pfn & PTE_MASK_P) << PTE_SHIFT_P;
 }
 
 static inline void __set_epte_ar(u64 *epte, int ar)
