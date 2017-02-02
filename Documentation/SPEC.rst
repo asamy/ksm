@@ -96,7 +96,9 @@ Initialization
 		return whatever___ksm_init_cpu_returned
 	...
 
+
 	During a guest event (e.g. CPUID execution, etc.), this is what happens:
+
 
 .. code-block::
 

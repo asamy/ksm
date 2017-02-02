@@ -10,6 +10,8 @@
 #ifndef __COMPILER_H
 #define __COMPILER_H
 
+#include "inttypes.h"
+
 #ifdef DBG
 #ifdef __linux__
 #define dbgbreak()	(void)0		//__asm __volatile("int $3")
@@ -81,10 +83,6 @@ typedef _Bool bool;
 #define true	1
 #define false	0
 #define _bool_true_false_are_defined
-#endif
-
-#ifndef PRIxPTR
-#define PRIxPTR		"llX"
 #endif
 
 /* Avoid NT retardism  */
@@ -171,10 +169,6 @@ NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(PEPROCESS process);
 #include <stdbool.h>
 #endif
 #include <asm-generic/errno-base.h>
-
-#ifndef PRIxPTR
-#define PRIxPTR		"lX"
-#endif
 
 #define __align(alignment)	__attribute__((__aligned__(alignment)))
 #define KERNEL_STACK_SIZE	(6 << PAGE_SHIFT)
