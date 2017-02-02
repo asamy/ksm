@@ -2662,7 +2662,7 @@ static inline void vcpu_dump_state(uintptr_t *stack)
 		  "    si=0x%"PRIxPTR"   di=0x%"PRIxPTR"  r08=0x%"PRIxPTR"\n"
 		  "    r09=0x%"PRIxPTR"  r10=0x%"PRIxPTR" r11=0x%"PRIxPTR"\n"
 		  "    r12=0x%"PRIxPTR"  r13=0x%"PRIxPTR" r14=0x%"PRIxPTR"\n"
-		  "    r15=0x%"PRIxPTR"  rip=0x%"PRIxPTR" efl=0x%08lX\n"
+		  "    r15=0x%"PRIxPTR"  rip=0x%"PRIxPTR" efl=0x%08X\n"
 		  "    cs=0x%04hX        ds=0x%04hX       es=0x%04hX\n"
 		  "    fs=0x%"PRIxPTR"   gs=0x%"PRIxPTR"  kgs=0x%016llX\n"
 		  "    cr0=0x%"PRIxPTR"  cr3=0x%"PRIxPTR" cr4=0x%"PRIxPTR"\n"
