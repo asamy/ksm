@@ -7,13 +7,14 @@ memory virtualization which can be enabled at compiletime.
 Currently, KSM runs on Windows and Linux kernels natively, and aims to support
 macOS by 2017, if you want to port KSM see `Documentation/SPEC.rst` for more information.
 
+## Purpose
+
 Unlike other hypervisors (e.g. KVM, XEN, etc.), KSM's purpose is not to run
 other Operating Systems, instead, KSM can be used as an extra layer of
 protection to the existing running OS.  This type of virtualization is usually
 seen in Anti-viruses, or sandboxers or even Viruses.  KSM also supports
 nesting, that means it can emulate other hardware-assisted virtualization tools
-(VT-x) such as KVM or itself, it's however an experimental feature and
-is not recommended.
+(VT-x).
 
 ## Usage under Linux (+sandbox)
 
@@ -29,6 +30,10 @@ is not recommended.
 - APIC virtualization (Experimental, do not use)
 - VMX Nesting (Experimental, do not use)
 
+For VMFUNC to work, at least Haswell is required, for #VE to work, at least
+Broadwell is required (Backward compatibility for both is also supported),
+consult your processor specification for more information.
+
 ## Requirements
 
 - An Intel processor (with VT-x and EPT support)
@@ -39,27 +44,17 @@ is not recommended.
 - All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested under Windows 7/8/8.1/10.
 - Linux kernel (tested under 3.16, 4.8.13 and mainline)
 
-If you have tested it under another kernel version, please create an issue so
-it can be added here.
+## Documentation
 
-## Hacking KSM
+See `Documentation/BUILDING.rst` for building and usage. Guidelines for Contributing code can be found in
+`Documentation/CONTRIBUTIONS.rst`, for technical documentation consult
+`Documentation/SPEC.rst`, for TODO list see `Documentation/TODO.rst` or Github
+Issues.
 
 Few examples are included to illustrate usage and show how to integrate modules
-into it, some of which are sandbox.c and introspect.c, those are mainly not
+into it, some of which are epage.c, sandbox.c and introspect.c, those are mainly not
 very useful right now, but they will be extended later, so feel free to
 contribute your ideas or code.  
-
-## Technical Documentation
-
-See Documentation/SPEC.rst
-
-## Contributions
-
-See Documentation/CONTRIBUTIONS.rst
-
-## Building / Usage
-
-See Documentation/BUILDING.rst
 
 ## Issues (bugs, features, etc.)
 
