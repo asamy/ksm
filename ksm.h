@@ -633,7 +633,7 @@ static inline u8 cpu_invvpid(struct ksm *k, u64 gva)
 /* page.c  */
 extern int ksm_epage_init(struct ksm *k);
 extern int ksm_epage_exit(struct ksm *k);
-struct epage_info *ksm_prepare_epage(void *original, void *redirect);
+struct epage_info *ksm_prepare_epage(void *original, void *redirect, bool *exist);
 extern int ksm_hook_epage(void *original, void *redirect);
 extern int ksm_hook_epage_on_cpu(struct epage_info *epage, int cpu);
 extern int ksm_unhook_epage(struct ksm *k, void *original);

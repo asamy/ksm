@@ -140,18 +140,6 @@ static inline size_t epage_rehash(const void *e, void *unused)
  *	IoFreeMdl(mdl);
  * \endcode
  *
- * On Linux this can be something like:
- * \code
- *	struct page *page = vmalloc_to_page(original);
- *	void *tmp = kmap(page);
- *	u64 pa = __pa(tmp);
- * \endcode
- *
- * On unlock:
- * \code
- *	kunmap(page);
- * \endcode
- *
  *	Notes on hooking out-of-kernel pages (e.g. userspace pages or similar):
  *	
  *	When hooking a userspace specific function, you should first attach to that
@@ -161,7 +149,7 @@ static inline size_t epage_rehash(const void *e, void *unused)
  *
  * Do also note the inline-code provided above is not tested, but should work.
  */
-struct epage_info *ksm_prepare_epage(void *original, void *redirect)
+struct epage_info *ksm_prepare_epage(void *original, void *redirect, bool *exist)
 {
 	struct epage_info *epage;
 	u8 *code_page;
@@ -171,7 +159,6 @@ struct epage_info *ksm_prepare_epage(void *original, void *redirect)
 
 	BUG_ON(!ksm);
 	epage_init_trampoline(&trampo, (uintptr_t)redirect);
-	
 	epage = ksm_find_epage(ksm, __pa(original));
 	if (epage) {
 		/*
@@ -180,9 +167,10 @@ struct epage_info *ksm_prepare_epage(void *original, void *redirect)
 		 * Simply just overwrite the start of the
 		 * function to the trampoline...
 		 */
+		*exist = true;
 		code_page = epage->c_va;
 		memcpy(code_page + code_start, &trampo, sizeof(trampo));
-		return 0;
+		return epage;
 	}
 
 	epage = mm_alloc_pool(sizeof(*epage));
@@ -215,10 +203,14 @@ int ksm_hook_epage_on_cpu(struct epage_info *epage, int cpu)
 int ksm_hook_epage(void *original, void *redirect)
 {
 	struct epage_info *epage;
+	bool exist;
 
-	epage = ksm_prepare_epage(original, redirect);
+	epage = ksm_prepare_epage(original, redirect, &exist);
 	if (!epage)
 		return ERR_NOMEM;
+
+	if (exist)
+		return 0;
 
 	CALL_DPC(__do_hook_page, epage);
 	spin_lock(&ksm->epage_lock);
