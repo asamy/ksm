@@ -200,7 +200,7 @@ static bool setup_pml4(struct ept *ept, int access, u16 eptp)
 	return true;
 }
 
-static inline void setup_eptp(u64 *ptr, u64 pml4)
+static inline u64 create_eptp(u64 pml4)
 {
 	/*
 	 * You can think of the EPT pointer like CR3, but it does not have to
@@ -211,13 +211,12 @@ static inline void setup_eptp(u64 *ptr, u64 pml4)
 	 * The pml4 parameter is the physical address of the PML4 table which
 	 * we allocate down below in ept_create_ptr().
 	 */
-	*ptr ^= *ptr;
-	*ptr |= VMX_EPT_DEFAULT_MT;
-	*ptr |= VMX_EPT_DEFAULT_GAW << VMX_EPT_GAW_EPTP_SHIFT;
+	return VMX_EPT_DEFAULT_MT | VMX_EPT_DEFAULT_GAW << VMX_EPT_GAW_EPTP_SHIFT |
+		(pml4 & PAGE_PA_MASK)
 #ifdef ENABLE_PML
-	*ptr |= VMX_EPT_AD_ENABLE_BIT;
+		| VMX_EPT_AD_ENABLE_BIT
 #endif
-	*ptr |= pml4 & PAGE_PA_MASK;
+		;
 }
 
 bool ept_create_ptr(struct ept *ept, int access, u16 *out)
@@ -238,7 +237,7 @@ bool ept_create_ptr(struct ept *ept, int access, u16 *out)
 		return false;
 	}
 
-	setup_eptp(&EPTP(ept, eptp), __pa(*pml4));
+	EPTP(ept, eptp) = create_eptp(__pa(*pml4));
 	set_bit(eptp, ept->ptr_bitmap);
 	*out = eptp;
 	return true;
