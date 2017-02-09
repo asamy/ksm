@@ -200,7 +200,7 @@ static bool setup_pml4(struct ept *ept, int access, u16 eptp)
 	return true;
 }
 
-static inline u64 create_eptp(u64 pml4)
+static inline u64 mk_eptp(u64 pml4)
 {
 	/*
 	 * You can think of the EPT pointer like CR3, but it does not have to
@@ -237,7 +237,7 @@ bool ept_create_ptr(struct ept *ept, int access, u16 *out)
 		return false;
 	}
 
-	EPTP(ept, eptp) = create_eptp(__pa(*pml4));
+	EPTP(ept, eptp) = mk_eptp(__pa(*pml4));
 	set_bit(eptp, ept->ptr_bitmap);
 	*out = eptp;
 	return true;
