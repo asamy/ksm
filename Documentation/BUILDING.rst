@@ -11,7 +11,6 @@ Enabling certain features / tests
 	- `EPAGE_HOOK` - Enables executable page shadow hook
 	- `ENABLE_PML` - Enables Page Modification Log if supported.
 	- `EMULATE_VMFUNC` - Forces emulation of VMFUNC even if CPU supports it.
-	- `EPT_SUPPRESS_VE` - Force suppress VE bit in EPT.
 	- `ENABLE_RESUBV` - Enable S1-3-S4 power state monitoring for re-virtualization
 	- `NESTED_VMX` - Enable experimental VT-x nesting
 	- `ENABLE_FILEPRINT` - Available on Windows only.  Enables loggin to disk

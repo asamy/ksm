@@ -23,13 +23,9 @@
 
 #include "ksm.h"
 
-static inline u64 mk_epte(int access, u64 hpa)
+static inline u64 mkepte(int access, u64 hpa)
 {
-	return (access & EPT_AR_MASK) | (hpa & PAGE_PA_MASK)
-#ifdef EPT_SUPPRESS_VE
-		| EPT_SUPPRESS_VE_BIT
-#endif
-		;
+	return (access & EPT_AR_MASK) | (hpa & PAGE_PA_MASK);
 }
 
 static inline u64 *ept_page_addr(u64 *pte)
@@ -87,7 +83,7 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 		if (!pdpt)
 			return NULL;
 
-		*pml4e = mk_epte(EPT_ACCESS_ALL, __pa(pdpt));
+		*pml4e = mkepte(EPT_ACCESS_ALL, __pa(pdpt));
 	}
 
 	/* PDPT (1 GB)  */
@@ -98,7 +94,7 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 		if (!pdt)
 			return NULL;
 
-		*pdpte = mk_epte(EPT_ACCESS_ALL, __pa(pdt));
+		*pdpte = mkepte(EPT_ACCESS_ALL, __pa(pdt));
 	}
 
 	/* PDT (2 MB)  */
@@ -109,12 +105,12 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 		if (!pt)
 			return NULL;
 
-		*pdte = mk_epte(EPT_ACCESS_ALL, __pa(pt));
+		*pdte = mkepte(EPT_ACCESS_ALL, __pa(pt));
 	}
 
 	/* PT (4 KB)  */
 	u64 *page = &pt[PTE_INDEX_P(gpa)];
-	*page = mk_epte(access, hpa);
+	*page = mkepte(access, hpa);
 	*page |= EPT_MT_WRITEBACK << VMX_EPT_MT_EPTE_SHIFT;
 	return page;
 }
@@ -200,7 +196,7 @@ static bool setup_pml4(struct ept *ept, int access, u16 eptp)
 	return true;
 }
 
-static inline u64 mk_eptp(u64 pml4)
+static inline u64 mkeptp(u64 pml4)
 {
 	/*
 	 * You can think of the EPT pointer like CR3, but it does not have to
@@ -237,7 +233,7 @@ bool ept_create_ptr(struct ept *ept, int access, u16 *out)
 		return false;
 	}
 
-	EPTP(ept, eptp) = mk_eptp(__pa(*pml4));
+	EPTP(ept, eptp) = mkeptp(__pa(*pml4));
 	set_bit(eptp, ept->ptr_bitmap);
 	*out = eptp;
 	return true;
