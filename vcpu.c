@@ -23,14 +23,13 @@
 
 #include "ksm.h"
 
-static inline void init_epte(u64 *entry, int access, u64 hpa)
+static inline u64 mk_epte(int access, u64 hpa)
 {
-	*entry ^= *entry;
-	*entry |= access & EPT_AR_MASK;
-	*entry |= hpa & PAGE_PA_MASK;
+	return (access & EPT_AR_MASK) | (hpa & PAGE_PA_MASK)
 #ifdef EPT_SUPPRESS_VE
-	*entry |= EPT_SUPPRESS_VE_BIT;
+		| EPT_SUPPRESS_VE_BIT
 #endif
+		;
 }
 
 static inline u64 *ept_page_addr(u64 *pte)
@@ -88,7 +87,7 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 		if (!pdpt)
 			return NULL;
 
-		init_epte(pml4e, EPT_ACCESS_ALL, __pa(pdpt));
+		*pml4e = mk_epte(EPT_ACCESS_ALL, __pa(pdpt));
 	}
 
 	/* PDPT (1 GB)  */
@@ -99,7 +98,7 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 		if (!pdt)
 			return NULL;
 
-		init_epte(pdpte, EPT_ACCESS_ALL, __pa(pdt));
+		*pdpte = mk_epte(EPT_ACCESS_ALL, __pa(pdt));
 	}
 
 	/* PDT (2 MB)  */
@@ -110,17 +109,13 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 		if (!pt)
 			return NULL;
 
-		init_epte(pdte, EPT_ACCESS_ALL, __pa(pt));
+		*pdte = mk_epte(EPT_ACCESS_ALL, __pa(pt));
 	}
 
 	/* PT (4 KB)  */
 	u64 *page = &pt[PTE_INDEX_P(gpa)];
-	init_epte(page, access, hpa);
-
+	*page = mk_epte(access, hpa);
 	*page |= EPT_MT_WRITEBACK << VMX_EPT_MT_EPTE_SHIFT;
-#ifdef EPT_SUPPRESS_VE
-	*page |= EPT_SUPPRESS_VE_BIT;
-#endif
 	return page;
 }
 
