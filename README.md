@@ -9,6 +9,7 @@ macOS by 2017, if you want to port KSM see `Documentation/SPEC.rst` for more inf
 
 **Note**: You can find precompiled binaries on the AppVeyor link above (last icon that
 									shows build).
+This build is _usually_ optimized for Windows 10, and may not work on others!
 
 ## Purpose
 
