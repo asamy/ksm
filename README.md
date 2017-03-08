@@ -7,6 +7,9 @@ memory virtualization which can be enabled at compiletime.
 Currently, KSM runs on Windows and Linux kernels natively, and aims to support
 macOS by 2017, if you want to port KSM see `Documentation/SPEC.rst` for more information.
 
+**Note**: You can find precompiled binaries on the AppVeyor link above (last icon that
+									shows build).
+
 ## Purpose
 
 Unlike other hypervisors (e.g. KVM, XEN, etc.), KSM's purpose is not to run
