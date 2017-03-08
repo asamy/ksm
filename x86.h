@@ -636,6 +636,12 @@ static inline u64 __lar(u64 sel)
 	return ar;
 }
 
+/* MinGW might not have it, and Linux most likely won't.  */
+#ifndef __writecr2
+#define __writecr2(cr2)		\
+	__asm("mov %0, %%cr2" :: "r"(cr2))
+#endif
+
 #ifdef __linux__
 static inline u64 __rdtsc(void)
 {
@@ -676,8 +682,6 @@ static inline void __writemsr(u32 msr, u64 val)
 	__asm("mov %%cr2, %0" : "=r" (cr2));	\
 	cr2;	\
 })
-#define __writecr2(cr2)		\
-	__asm("mov %0, %%cr2" :: "r"(cr2))
 #define __readcr4() 	__extension__ ({	\
 	uintptr_t cr4;				\
 	__asm("mov %%cr4, %0" : "=r" (cr4));	\
@@ -703,6 +707,7 @@ static inline void __writemsr(u32 msr, u64 val)
 #define __outdword(port, value)			outl(value, port)
 #endif
 
+/* Generic GCC (MinGW and native Linux).  */
 #define __ud2()		__asm __volatile("ud2")
 #define __wbinvd()	__asm __volatile("wbinvd")
 #define __invd() 	__asm __volatile("invd")
@@ -731,6 +736,7 @@ DEFINE_SEL_READER(__readfs, "movw %%fs, %0")
 DEFINE_SEL_READER(__readgs, "movw %%gs, %0")
 DEFINE_SEL_READER(__readss, "movw %%ss, %0")
 #else
+/* MSVC: those are defined in vmx.asm (MASM)  */
 extern void __lgdt(const void *);
 extern void __sgdt(void *);
 
@@ -749,9 +755,6 @@ extern u16 __readgs(void);
 
 extern uintptr_t __lar(uintptr_t);
 extern void __invd(void);
-#endif
-
-#ifndef __linux__
 extern void __writecr2(uintptr_t);
 #endif
 
