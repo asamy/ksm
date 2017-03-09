@@ -1,4 +1,6 @@
-# ksm v1.6-dev [![BountySource](https://www.bountysource.com/badge/team?team_id=189129&style=raised)](https://www.bountysource.com/teams/ksm?utm_source=ksm&utm_medium=shield&utm_campaign=raised) [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/project/asamy/ksm)
+# ksm v1.6-dev [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/project/asamy/ksm)
+
+[![BountySource](https://www.bountysource.com/badge/team?team_id=189129&style=raised)](https://www.bountysource.com/teams/ksm?utm_source=ksm&utm_medium=shield&utm_campaign=raised)  
 
 A really simple and lightweight x64 hypervisor written in C for Intel processors.  
 KSM has a self-contained physical memory introspection engine and userspace physical
@@ -7,9 +9,7 @@ memory virtualization which can be enabled at compiletime.
 Currently, KSM runs on Windows and Linux kernels natively, and aims to support
 macOS by 2017, if you want to port KSM see `Documentation/SPEC.rst` for more information.
 
-**Note**: You can find precompiled binaries on the AppVeyor link above (last icon that
-									shows build).
-This build is _usually_ optimized for Windows 10, and may not work on others!
+**Note**: You can find Windows 10 precompiled binaries [here](https://ci.appveyor.com/project/asamy/ksm).  
 
 ## Purpose
 
