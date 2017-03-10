@@ -86,6 +86,7 @@ $(TARGET): $(BIN_DIR) $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
 	$(PREPEND)$(STRIP) $@
 	@echo "  LD   $@"
 	$(PREPEND)$(NPAGE) $@
+	@echo "  NP   $@"
 
 $(UM_BIN):
 	$(PREPEND)$(CC) $(UM_SRC) -o $(UM_BIN) $(UM_LIB)
