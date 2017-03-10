@@ -32,6 +32,7 @@ PREPEND := $(PREPEND.$(Q))
 CC = $(CROSS_BUILD)gcc
 STRIP = $(CROSS_BUILD)strip
 OBJCOPY = $(CROSS_BUILD)objcopy --only-keep-debug
+NPAGE = make_nonpagable.py
 
 # Windows versions:
 # 	0x0601 = Windows 7
@@ -84,6 +85,7 @@ $(TARGET): $(BIN_DIR) $(DEP_DIR) $(OBJ_DIR) $(OBJ) $(DEP)
 	$(PREPEND)$(OBJCOPY) $@ $(SYMBOL)
 	$(PREPEND)$(STRIP) $@
 	@echo "  LD   $@"
+	$(PREPEND)$(NPAGE) $@
 
 $(UM_BIN):
 	$(PREPEND)$(CC) $(UM_SRC) -o $(UM_BIN) $(UM_LIB)
