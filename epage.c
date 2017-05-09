@@ -203,7 +203,7 @@ int ksm_hook_epage_on_cpu(struct epage_info *epage, int cpu)
 int ksm_hook_epage(void *original, void *redirect)
 {
 	struct epage_info *epage;
-	bool exist;
+	bool exist = false;
 
 	epage = ksm_prepare_epage(original, redirect, &exist);
 	if (!epage)
