@@ -686,18 +686,18 @@ static inline void __set_epte_pfn(u64 *epte, u64 pfn)
 	*epte |= (pfn & PTE_MASK_P) << PTE_SHIFT_P;
 }
 
-static inline void __set_epte_ar(u64 *epte, int ar)
+static inline void __set_epte_ar(u64 *epte, u64 ar)
 {
 	*epte &= ~(ar ^ EPT_ACCESS_ALL);
 	*epte |= ar & EPT_AR_MASK;
 }
 
-static inline void __set_epte_ar_inplace(u64 *epte, int ar)
+static inline void __set_epte_ar_inplace(u64 *epte, u64 ar)
 {
 	*epte |= ar & EPT_AR_MASK;
 }
 
-static inline void __set_epte_ar_pfn(u64 *epte, int ar, u64 pfn)
+static inline void __set_epte_ar_pfn(u64 *epte, u64 ar, u64 pfn)
 {
 	__set_epte_pfn(epte, pfn);
 	__set_epte_ar(epte, ar);
@@ -710,7 +710,7 @@ static inline void ept_set_hpa(struct ept *ept, int eptp, u64 gpa, u64 hpa)
 		__set_epte_pfn(epte, hpa >> PAGE_SHIFT);
 }
 
-static inline void ept_set_ar(struct ept *ept, int eptp, u64 gpa, int ar)
+static inline void ept_set_ar(struct ept *ept, int eptp, u64 gpa, u64 ar)
 {
 	u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
 	if (epte)
