@@ -296,37 +296,28 @@ void do_print(const char *fmt, ...)
 			 * This will not branch inside a VM-exit, simply because the IF flag
 			 * is clear for obvious reasons.
 			 */
-			bool queue = false;
 #ifdef ENABLE_FILEPRINT
 			IO_STATUS_BLOCK sblk;
 			if (!KeAreAllApcsDisabled() && NT_SUCCESS(ZwWriteFile(file, NULL, NULL, NULL,
 									      &sblk, buffer, (ULONG)strlen(buffer),
 									      NULL, NULL)))
 				ZwFlushBuffersFile(file, &sblk);
-			else
-				queue = true;
 #endif
 #ifdef ENABLE_DBGPRINT
 			DbgPrintEx(DPFLTR_DEFAULT_ID, DPFLTR_ERROR_LEVEL, "%s", buffer);
 #endif
+		} else {
+			KeAcquireInStackQueuedSpinLock(&lock, &q);
 
-			if (!queue)
-				return;
+			len = strlen(buffer);
+			pos = next_use - head_use;
+			if (pos + len < PRINT_BUF_STRIDE) {
+				next_use = stpcpy(next_use, buffer);
+				smp_wmb();
+			}
+
+			KeReleaseInStackQueuedSpinLock(&q);
 		}
-
-		/* Acquire lock to update head:  */
-		KeAcquireInStackQueuedSpinLock(&lock, &q);
-
-		len = strlen(buffer);
-		pos = next_use - head_use;
-		if (pos + len >= PRINT_BUF_STRIDE)
-			return KeReleaseInStackQueuedSpinLock(&q);
-
-		next_use = stpcpy(next_use, buffer);
-		KeReleaseInStackQueuedSpinLock(&q);
-
-		/* Make sure print_thread() will see the update:  */
-		smp_wmb();
 	}
 }
 #endif
