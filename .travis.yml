@@ -1,6 +1,7 @@
 os: linux
 language: c
 compiler: gcc
+dist: trusty
 sudo: required
 
 cache:
@@ -27,6 +28,6 @@ matrix:
                   env:
                           - B=Linux
                   install:
-                          - sudo apt-get install -y linux-headers-generic
+                          - sudo apt-get install -y linux-headers-$(uname -r)
                   script:
                           - make
