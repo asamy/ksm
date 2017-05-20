@@ -137,7 +137,7 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
  */
 u64 *ept_pte(u64 *pml4, u64 gpa)
 {
-	u64 *pdpt, *pdt, *pd;
+	u64 *pdpt, *pdt, *pt;
 	u64 *pdpte, *pdte;
 
 	pdpt = ept_page_addr(&pml4[PGD_INDEX_P(gpa)]);
@@ -153,14 +153,14 @@ u64 *ept_pte(u64 *pml4, u64 gpa)
 		return pdpte;	/* 1 GB  */
 
 	pdte = &pdt[PMD_INDEX_P(gpa)];
-	pd = ept_page_addr(pdte);
-	if (!pd)
+	pt = ept_page_addr(pdte);
+	if (!pt)
 		return 0;
 
 	if (*pdte & PAGE_LARGE)
 		return pdte;	/* 2 MB  */
 
-	return &pd[PTE_INDEX_P(gpa)];	/* 4 KB  */
+	return &pt[PTE_INDEX_P(gpa)];	/* 4 KB  */
 }
 
 static bool setup_pml4(struct ept *ept, int access, u16 eptp)
