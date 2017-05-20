@@ -20,7 +20,6 @@ matrix:
                           - B=MinGW
                   install:
                           - sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
-                          - sudo apt-get install -y mingw-w64 mingw-w64-dev
                   script:
                           - sudo pip install pefile
                           - make -f Makefile.windows C=1 Q=1
