@@ -21,7 +21,7 @@ matrix:
                   install:
                           - sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
                   script:
-                          - sudo pip install pefile
+                          - sudo -H pip install pefile
                           - make -f Makefile.windows C=1 Q=1
                 - os: linux
                   env:
