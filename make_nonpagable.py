@@ -1,4 +1,4 @@
-#!/usr/bin/env python
+#!/usr/bin/env python2.7
 # Mark executable sections as non-pagable, this is necessary because VMX root mode runs
 # with interrupts off, so all pages must be physically contiguous.
 # This file is only for the MinGW build!

@@ -32,7 +32,7 @@ PREPEND := $(PREPEND.$(Q))
 CC = $(CROSS_BUILD)gcc
 STRIP = $(CROSS_BUILD)strip
 OBJCOPY = $(CROSS_BUILD)objcopy --only-keep-debug
-NPAGE = python make_nonpagable.py
+NPAGE = ./make_nonpagable.py
 
 # Windows versions:
 # 	0x0601 = Windows 7
