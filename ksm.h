@@ -370,8 +370,7 @@ struct ept_ve_around {
 struct ept {
 	__align(PAGE_SIZE) u64 ptr_list[EPT_MAX_EPTP_LIST];
 	u64 *pml4_list[EPT_MAX_EPTP_LIST];
-	unsigned long
-		ptr_bitmap[EPT_MAX_EPTP_LIST / sizeof(unsigned long)];
+	DECLARE_BITMAP(ptr_bitmap, EPT_MAX_EPTP_LIST);
 };
 
 struct vcpu {

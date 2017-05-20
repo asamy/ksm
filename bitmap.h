@@ -35,7 +35,7 @@
 
 #define BITMAP_BITS			(sizeof(unsigned long) * CHAR_BIT)
 #define DECLARE_BITMAP(name, bits)	\
-	unsigned long name[BITMAP_BITS * bits]
+	unsigned long name[DIV_ROUND_UP(bits, BITMAP_BITS)]
 
 static inline unsigned long pos_bit(unsigned long pos)
 {

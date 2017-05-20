@@ -32,6 +32,7 @@
 
 #ifndef __linux__
 /* Windows definitions  */
+#define DIV_ROUND_UP(n, d) 	(((n) + (d) - 1) / (d))
 
 /* Sync with Linux  */
 #define BUG_ON(cond)	do {	\
