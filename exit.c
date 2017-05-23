@@ -2716,6 +2716,7 @@ bool vcpu_handle_exit(uintptr_t *stack)
 
 	uintptr_t eflags = vcpu->eflags;
 	if (vcpu->curr_handler < sizeof(g_handlers) / sizeof(g_handlers[0]) &&
+	    g_handlers[vcpu->curr_handler] &&
 	    (ret = g_handlers[vcpu->curr_handler](vcpu)) &&
 	    (vcpu->eflags ^ eflags) != 0)
 		vmcs_write(GUEST_RFLAGS, vcpu->eflags);
