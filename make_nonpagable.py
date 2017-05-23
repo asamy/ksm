@@ -3,7 +3,10 @@
 # with interrupts off, so all pages must be physically contiguous.
 # This file is only for the MinGW build!
 import sys
-import pefile
+try:
+    import pefile
+except:
+    print "Please install pefile before running this script."
 
 pe = pefile.PE(sys.argv[1])
 for section in pe.sections:

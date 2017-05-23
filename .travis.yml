@@ -21,12 +21,26 @@ matrix:
                   install:
                           - sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
                   script:
-                          - sudo -H pip install pefile
                           - make -f Makefile.windows C=1 Q=1
                 - os: linux
                   env:
-                          - B=Linux
+                        global:
+                            # The next declaration is the encrypted COVERITY_SCAN_TOKEN, created
+                            #   via the "travis encrypt" command using the project repo's public key
+                            - secure: "EHGEACeEzqxjP7P4+C1jgfmXcwk6K+PyMP/qBP+6Uk4Y6M9w8vtRz70wfXwHlcUBs+nRuhuZxC8MR2a5KJndOsd5hTwdBgg0b/rcoDMoMz0d7YdZLo708SRh3Fyl7B4e0zXoa8apYgV5ShnEFq0j0m48baeuVkfjIFaRkg+7TQ774dPylYtzZM6d70eoQ8GuuB96JMcDHp+ZcGCncbbp84UMDAFnuWPrbpJnPPVoHAHhDXJVyeivG98JDG22ya4qGdfNq91T/ETovZEDAFzCm0/gIr7ifrUX08G1ouOSHHzXju02HEpkUBKBzAIwD+RTGxnMWGideb6tKrTi8Pp11MbkSB8mHh97+zYIdIxCahbhcIUUxHqKxWr/ZjxB0cUOe2aBWV5DhUuGUTxWWMakSngXSUsKjkF0uF0VB2AcERAl9AEH+oWWZRHPnnzPhYnRDhxARML+kfZVI/L5l2A9WoimmBoXEs6Gfnj3B1Dx3fvthgTJU7nCVu+3SqrD+YpXz6LYpOihy9UTLOmTZkCu5TshSrWgl8lJEQ/z/toRtDXSHB3K7nYkGONsL+twNp2otPLSvQp8rao7cQellkX3nh3O08XMxN5YkR8c2GZZNWKTRshyqDMgnO88QHi2bhqNYbyR877Kwdc2CVsgDmdI+VYH6iR1kPOoBvNxRVHhV14="
+                        - B=Linux
+                  before_install:
+                        - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-
                   install:
                           - sudo apt-get install -y linux-headers-$(uname -r)
                   script:
                           - make
+                  addons:
+                    coverity_scan:
+                      project:
+                        name: "asamy/ksm"
+                        description: "Build submitted via Travis CI"
+                      notification_email: f.fallen45@gmail.com
+                      build_command_prepend: "make clean"
+                      build_command:   "make"
+                      branch_pattern: master

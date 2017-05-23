@@ -1,5 +1,11 @@
 # ksm v1.6-dev [![Build Status](https://travis-ci.org/asamy/ksm.svg?branch=master)](https://travis-ci.org/asamy/ksm) [![Build Status](https://ci.appveyor.com/api/projects/status/nb7u22qxjabauex5?svg=true)](https://ci.appveyor.com/project/asamy/ksm)
 
+<a href="https://scan.coverity.com/projects/asamy-ksm">
+	<img alt="Coverity Scan Build Status"
+		src="https://scan.coverity.com/projects/10823/badge.svg"/>
+</a>
+
+
 [![BountySource](https://www.bountysource.com/badge/team?team_id=189129&style=raised)](https://www.bountysource.com/teams/ksm?utm_source=ksm&utm_medium=shield&utm_campaign=raised)  
 
 A really simple and lightweight x64 hypervisor written in C for Intel processors.  
