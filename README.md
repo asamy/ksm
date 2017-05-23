@@ -43,18 +43,18 @@ consult your processor specification for more information.
 
 ## Supported Kernels
 
-- All x64 NT kernels starting from the Windows 7 NT kernel.  It was mostly tested under Windows 7/8/8.1/10.
+- Windows NT kernel (7/8/8.1/10)
 - Linux kernel (tested under 3.16, 4.8.13 and mainline)
 
 ## Documentation
 
-See `Documentation/BUILDING.rst` for building and usage. Guidelines for Contributing code can be found in
-`Documentation/CONTRIBUTIONS.rst`, for technical documentation consult
-`Documentation/SPEC.rst`, for TODO list see `Documentation/TODO.rst` or Github
-Issues.
+- [Building](https://github.com/asamy/ksm/blob/master/Documentation/BUILDING.rst)
+- [Contributions](https://github.com/asamy/ksm/blob/master/Documentation/CONTRIBUTIONS.rst)
+- [Specification](https://github.com/asamy/ksm/blob/master/Documentation/SPEC.rst)
+- [TODO](https://github.com/asamy/ksm/blob/master/Documentation/TODO.rst)
 
 Few examples are included to illustrate usage and show how to integrate modules
-into it, some of which are epage.c, sandbox.c and introspect.c, those are mainly not
+into it, some of which are `epage.c`, `sandbox.c` and `introspect.c`, those are mainly not
 very useful right now, but they will be extended later, so feel free to
 contribute your ideas or code.  
 
@@ -71,7 +71,5 @@ things as required.
 
 ## License
 
-GPL v2 firm, see LICENSE file.  Note that some code is thirdparty, respective
-licenses and/or copyright should be there, if you think it's not, please let me
-know.  Most of the code is GPL'd, though...
-
+GPL v2, see LICENSE file.  Note that some code is thirdparty, respective
+licenses and/or copyright should be there, if you think otherwise, feel free to mail me.
