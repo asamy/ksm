@@ -45,9 +45,6 @@ void *mm_remap(u64 phys, size_t size)
 	WARN_ON(size > PAGE_SIZE);
 
 	page = pfn_to_page(phys >> PAGE_SHIFT);
-	if (!page)
-		return NULL;
-
 	ret = vmap(&page, 1, VM_LOCKED, PAGE_KERNEL);
 	if (!ret)
 		return NULL;
