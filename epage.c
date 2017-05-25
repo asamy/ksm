@@ -94,17 +94,6 @@ static void epage_init_trampoline(struct trampoline *trampo, u64 to)
 static DEFINE_DPC(__do_hook_page, __vmx_vmcall, HCALL_HOOK, ctx);
 static DEFINE_DPC(__do_unhook_page, __vmx_vmcall, HCALL_UNHOOK, ctx);
 
-static inline size_t epage_hash(u64 dpa)
-{
-	/* Just take out the offset.  */
-	return dpa >> PAGE_SHIFT;
-}
-
-static inline size_t epage_rehash(const void *e, void *unused)
-{
-	return epage_hash(((struct epage_info *)e)->dpa);
-}
-
 /*
  * Note!!!
  * This function is not very robust, e.g. pages that are not
