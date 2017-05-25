@@ -64,17 +64,17 @@ static inline bool test_bit(unsigned long pos, volatile const unsigned long *bmp
 
 static inline unsigned long count_bits(unsigned long count)
 {
-	return ((count + BITMAP_BITS - 1) / BITMAP_BITS) * sizeof(unsigned long);
+	return DIV_ROUND_UP(count, BITMAP_BITS) * sizeof(unsigned long);
+}
+
+static inline void fill_bits(unsigned long *bmp, unsigned char bits, unsigned long count)
+{
+	memset(bmp, bits, count_bits(count));
 }
 
 static inline void clear_bits(unsigned long *bmp, unsigned long count)
 {
-	memset(bmp, 0x00, count_bits(count));
-}
-
-static inline void fill_bits(unsigned long *bmp, unsigned long count, unsigned char bits)
-{
-	memset(bmp, bits, count_bits(count));
+	return fill_bits(bmp, 0, count);
 }
 
 static inline unsigned long __ffs(unsigned long x)
