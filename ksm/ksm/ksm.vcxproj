@@ -68,7 +68,7 @@
       <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
     </DriverSign>
     <ClCompile>
-      <PreprocessorDefinitions>ENABLE_DBGPRINT;NESTED_VMX;PMEM_SANDBOX;EPAGE_HOOK;INTROSPECT_ENGINE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ENABLE_DBGPRINT;ENABLE_FILEPRINT;NESTED_VMX;PMEM_SANDBOX;EPAGE_HOOK;INTROSPECT_ENGINE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
     <Link>
@@ -96,7 +96,6 @@
     <ClCompile Include="..\..\epage.c" />
     <ClCompile Include="..\..\exit.c" />
     <ClCompile Include="..\..\hotplug.c" />
-    <ClCompile Include="..\..\htable.c" />
     <ClCompile Include="..\..\introspect.c" />
     <ClCompile Include="..\..\ksm.c" />
     <ClCompile Include="..\..\main_nt.c" />
@@ -109,7 +108,6 @@
   <ItemGroup>
     <ClInclude Include="..\..\bitmap.h" />
     <ClInclude Include="..\..\compiler.h" />
-    <ClInclude Include="..\..\htable.h" />
     <ClInclude Include="..\..\ksm.h" />
     <ClInclude Include="..\..\list.h" />
     <ClInclude Include="..\..\mm.h" />

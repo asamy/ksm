@@ -28,7 +28,6 @@
 #include "vmx.h"
 #include "mm.h"
 #include "bitmap.h"
-#include "htable.h"
 
 #define KSM_MAX_VCPUS		32
 #define __EXCEPTION_BITMAP	0
@@ -478,18 +477,12 @@ static inline uintptr_t *ksm_reg(struct vcpu *vcpu, int reg)
 }
 
 #ifdef EPAGE_HOOK
-struct epage_info;	/* avoid declared inside parameter list...  */
-struct epage_ops {
-	void(*init_eptp) (struct epage_info *epage, struct ept *ept);
-	u16(*select_eptp) (struct epage_info *epage, struct ept_ve_around *ve);
-};
-
 struct epage_info {
 	u64 dpa;
 	u64 cpa;
 	u64 origin;
 	void *c_va;
-	const struct epage_ops *ops;
+	struct list_head link;
 };
 #endif
 
@@ -501,7 +494,7 @@ struct ksm {
 	uintptr_t host_pgd;
 	u64 vpid_ept;
 #ifdef EPAGE_HOOK
-	struct htable ht;
+	struct list_head epage_list;
 	spinlock_t epage_lock;
 #endif
 #ifdef PMEM_SANDBOX
@@ -638,6 +631,8 @@ extern int ksm_hook_epage_on_cpu(struct epage_info *epage, int cpu);
 extern int ksm_unhook_epage(struct ksm *k, void *original);
 extern int __ksm_unhook_epage(struct epage_info *epage);
 extern struct epage_info *ksm_find_epage(struct ksm *k, uintptr_t gpa);
+extern void ksm_handle_epage(struct vcpu *vcpu, struct epage_info *epage);
+extern void ksm_handle_epage_ve(struct epage_info *epage, struct ept_ve_around *ve);
 #endif
 
 /* sandbox.c  */

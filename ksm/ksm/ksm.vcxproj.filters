@@ -23,9 +23,6 @@
     <ClCompile Include="..\..\exit.c">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="..\..\htable.c">
-      <Filter>Source Files</Filter>
-    </ClCompile>
     <ClCompile Include="..\..\ksm.c">
       <Filter>Source Files</Filter>
     </ClCompile>
@@ -58,9 +55,6 @@
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="..\..\htable.h">
-      <Filter>Header Files</Filter>
-    </ClInclude>
     <ClInclude Include="..\..\ksm.h">
       <Filter>Header Files</Filter>
     </ClInclude>

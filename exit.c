@@ -648,7 +648,7 @@ static inline void vcpu_do_exit(struct vcpu *vcpu)
 static bool vcpu_handle_hook(struct vcpu *vcpu, struct epage_info *h)
 {
 	KSM_DEBUG("page hook request for %p => %p (%p)\n", h->dpa, h->cpa, h->c_va);
-	h->ops->init_eptp(h, &vcpu->ept);
+	ksm_handle_epage(vcpu, h);
 	return true;
 }
 

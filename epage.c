@@ -42,10 +42,9 @@
  *	return ret;
  * \endcode
  */
-static inline void epage_init_eptp(struct epage_info *epage,
-				   struct ept *ept)
+void ksm_handle_epage(struct vcpu *vcpu, struct epage_info *epage)
 {
-	struct vcpu *vcpu = ept_to_vcpu(ept);
+	struct ept *ept = &vcpu->ept;
 	struct ksm *k = vcpu_to_ksm(vcpu);
 
 	/* Called from vmcall (exit.c)  */
@@ -57,24 +56,13 @@ static inline void epage_init_eptp(struct epage_info *epage,
 	cpu_invept(k, epage->dpa, EPTP(ept, vcpu_eptp_idx(vcpu)));
 }
 
-static inline u16 epage_select_eptp(struct epage_info *epage, struct ept_ve_around *ve)
+void ksm_handle_epage_ve(struct epage_info *epage, struct ept_ve_around *ve)
 {
 	/* called from an EPT violation  */
 	if (ve->info->exit & EPT_ACCESS_RW)
-		return EPTP_RWHOOK;
-
-	return EPTP_EXHOOK;
-}
-
-static const struct epage_ops epage_ops = {
-	.init_eptp = epage_init_eptp,
-	.select_eptp = epage_select_eptp,
-};
-
-static inline bool ht_cmp(const void *candidate, void *cmp)
-{
-	const struct epage_info *epage = candidate;
-	return epage->dpa >> PAGE_SHIFT == (uintptr_t)cmp >> PAGE_SHIFT;
+		ve->eptp_next = EPTP_RWHOOK;
+	else
+		ve->eptp_next = EPTP_EXHOOK;
 }
 
 #ifndef __linux__
@@ -190,7 +178,6 @@ struct epage_info *ksm_prepare_epage(void *original, void *redirect, bool *exist
 	epage->cpa = __pa(code_page);
 	epage->dpa = __pa(original);
 	epage->origin = (u64)aligned;
-	epage->ops = &epage_ops;
 	return epage;
 }
 
@@ -214,9 +201,9 @@ int ksm_hook_epage(void *original, void *redirect)
 
 	CALL_DPC(__do_hook_page, epage);
 	spin_lock(&ksm->epage_lock);
-	htable_add(&ksm->ht, epage_hash(epage->dpa), epage);
+	list_add_tail(&epage->link, &ksm->epage_list);
 	spin_unlock(&ksm->epage_lock);
-	return 0;
+	return DPC_RET();
 }
 
 static inline void ksm_free_epage(struct epage_info *epage)
@@ -229,7 +216,7 @@ int __ksm_unhook_epage(struct epage_info *epage)
 {
 	CALL_DPC(__do_unhook_page, (void *)epage->dpa);
 	spin_lock(&ksm->epage_lock);
-	htable_del(&ksm->ht, epage_hash(epage->dpa), epage);
+	list_del(&epage->link);
 	spin_unlock(&ksm->epage_lock);
 	ksm_free_epage(epage);
 	return DPC_RET();
@@ -246,32 +233,37 @@ int ksm_unhook_epage(struct ksm *k, void *va)
 
 struct epage_info *ksm_find_epage(struct ksm *k, uintptr_t gpa)
 {
-	struct epage_info *epage;
+	struct epage_info *epage = NULL;
+	struct epage_info *ret = NULL;
+
 	spin_lock(&k->epage_lock);
-	epage = htable_get(&k->ht, epage_hash(gpa),
-			   ht_cmp, (const void *)gpa);
+	list_for_each_entry(epage, &k->epage_list, link)
+	{
+		if (epage->dpa >> PAGE_SHIFT == gpa >> PAGE_SHIFT) {
+			ret = epage;
+			break;
+		}
+	}
+
 	spin_unlock(&k->epage_lock);
-	return epage;
+	return ret;
 }
 
 int ksm_epage_init(struct ksm *k)
 {
-	htable_init(&k->ht, epage_rehash, NULL);
+	INIT_LIST_HEAD(&k->epage_list);
 	spin_lock_init(&k->epage_lock);
 	return 0;
 }
 
 int ksm_epage_exit(struct ksm *k)
 {
-	struct htable_iter i;
-	struct epage_info *epage;
+	struct epage_info *epage = NULL;
+	struct epage_info *next;
 
-	for (epage = htable_first(&k->ht, &i); epage; epage = htable_next(&k->ht, &i)) {
+	list_for_each_entry_safe(epage, next, &k->epage_list, link)
 		ksm_free_epage(epage);
-		htable_delval(&k->ht, &i);
-	}
 
-	htable_clear(&k->ht);
 	return 0;
 }
 

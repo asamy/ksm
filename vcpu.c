@@ -322,9 +322,7 @@ static bool do_ept_violation(struct ept_ve_around *ve)
 #ifdef EPAGE_HOOK
 	struct epage_info *epage = ksm_find_epage(k, info->gpa);
 	if (epage) {
-		ve->eptp_next = epage->ops->select_eptp(epage, ve);
-		KSM_DEBUG("Found hooked page, switching from %d to %d\n",
-			  info->eptp, ve->eptp_next);
+		ksm_handle_epage_ve(epage, ve);
 		return true;
 	}
 #endif
