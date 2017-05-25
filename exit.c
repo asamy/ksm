@@ -315,6 +315,70 @@ static inline bool nested_inject_ve(struct vcpu *vcpu)
 }
 #endif
 
+static inline bool vcpu_parse_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst, u64 *out)
+{
+	/*
+	 * Register access is handled before this call or not
+	 * supported at all.
+	 *
+	 * Register access is only valid in those cases:
+	 *	1) vmwrite
+	 *	2) vmread
+	 *
+	 * Other cases such as vmptrld, vmptrst, vmclear, vmon, etc, must
+	 * be passed through a memory reference, e.g. stack, something
+	 * like:
+	 *	pushq	phys_add
+	 *	vmon	0(%rsp)
+	 *
+	 * or even:
+	 *	vmon	%cs:some_global_phys_addr
+	 *
+	 * C:
+	 *	u64 phys = __pa(vmon);
+	 *	__vmxon(&phys);
+	 *
+	 * See also vcpu.c.
+	 *
+	 * So we need to first get the address, then dereference to get the
+	 * actual physical address, note that dereferencing does not happen
+	 * here, here we only validate the address and return the virtual address.
+	 *
+	 * Dereferencing happens in:
+	 *	vcpu_read_vmx_addr()
+	 *	vcpu_write_vmx_addr()
+	 */
+	if ((inst >> 10) & 1) {
+		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
+		return false;
+	}
+
+	u64 seg_offset = (inst >> 15) & 7;
+	if (vcpu_inject_gp_if(vcpu, seg_offset > 5))
+		return false;
+
+	uintptr_t base = 0;
+	if (!((inst >> 27) & 1))
+		base = ksm_read_reg(vcpu, (inst >> 23) & 15);
+
+	uintptr_t index = 0;
+	if (!((inst >> 22) & 1))
+		index = ksm_read_reg(vcpu, (inst >> 18) & 15) << (inst & 3);
+
+	uintptr_t gva = vmcs_read(GUEST_ES_BASE + (seg_offset << 1)) +
+			base + index + disp;
+	if (((inst >> 7) & 7) == 1)
+		gva &= 0xFFFFFFFF;
+
+	if (!is_canonical_addr(gva)) {
+		vcpu_inject_hardirq(vcpu, seg_offset == 2 ? X86_TRAP_SS : X86_TRAP_GP, 0);
+		return false;
+	}
+
+	*out = gva;
+	return true;
+}
+
 static bool vcpu_nop(struct vcpu *vcpu)
 {
 	VCPU_TRACER_START();
@@ -1199,70 +1263,6 @@ static inline bool vcpu_enter_nested_guest(struct vcpu *vcpu)
 	return prepare_nested_guest(vcpu, vmcs);
 }
 
-static inline bool vcpu_parse_vmx_addr(struct vcpu *vcpu, u64 disp, u64 inst, u64 *out)
-{
-	/*
-	 * Register access is handled before this call or not
-	 * supported at all.
-	 *
-	 * Register access is only valid in those cases:
-	 *	1) vmwrite
-	 *	2) vmread
-	 *
-	 * Other cases such as vmptrld, vmptrst, vmclear, vmon, etc, must
-	 * be passed through a memory reference, e.g. stack, something
-	 * like:
-	 *	pushq	phys_add
-	 *	vmon	0(%rsp)
-	 *
-	 * or even:
-	 *	vmon	%cs:some_global_phys_addr
-	 *
-	 * C:
-	 *	u64 phys = __pa(vmon);
-	 *	__vmxon(&phys);
-	 *
-	 * See also vcpu.c.
-	 *
-	 * So we need to first get the address, then dereference to get the
-	 * actual physical address, note that dereferencing does not happen
-	 * here, here we only validate the address and return the virtual address.
-	 *
-	 * Dereferencing happens in:
-	 *	vcpu_read_vmx_addr()
-	 *	vcpu_write_vmx_addr()
-	 */
-	if ((inst >> 10) & 1) {
-		vcpu_inject_hardirq_noerr(vcpu, X86_TRAP_UD);
-		return false;
-	}
-
-	u64 seg_offset = (inst >> 15) & 7;
-	if (vcpu_inject_gp_if(vcpu, seg_offset > 5))
-		return false;
-
-	uintptr_t base = 0;
-	if (!((inst >> 27) & 1))
-		base = ksm_read_reg(vcpu, (inst >> 23) & 15);
-
-	uintptr_t index = 0;
-	if (!((inst >> 22) & 1))
-		index = ksm_read_reg(vcpu, (inst >> 18) & 15) << (inst & 3);
-
-	uintptr_t gva = vmcs_read(GUEST_ES_BASE + (seg_offset << 1)) +
-			base + index + disp;
-	if (((inst >> 7) & 7) == 1)
-		gva &= 0xFFFFFFFF;
-
-	if (!is_canonical_addr(gva)) {
-		vcpu_inject_hardirq(vcpu, seg_offset == 2 ? X86_TRAP_SS : X86_TRAP_GP, 0);
-		return false;
-	}
-
-	*out = gva;
-	return true;
-}
-
 static inline bool vcpu_read_vmx_addr(struct vcpu *vcpu, u64 gva, u64 *value)
 {
 	return ksm_read_virt(vcpu, gva, value, 8);
@@ -2108,14 +2108,8 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 	uintptr_t addr = disp;
 	struct gdtr dt;
 
-	if (!((info >> 27) & 1))
-		addr += ksm_read_reg(vcpu, (info >> 23) & 15);
-
-	if (!((info >> 22) & 1))
-		addr += ksm_read_reg(vcpu, (info >> 18) & 15) << (info & 3);
-
-	if (((info >> 7) & 7) == 1)
-		addr &= 0xFFFFFFFF;
+	if (!vcpu_parse_vmx_addr(vcpu, disp, info, &addr))
+		goto out;
 
 	KSM_DEBUG("GDT/IDT access, addr %p\n", (void *)addr);
 	switch ((info >> 28) & 3) {
@@ -2147,6 +2141,7 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 		break;
 	}
 
+out:
 	vcpu_advance_rip(vcpu);
 	return true;
 }
@@ -2176,14 +2171,8 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 			break;
 		}
 	} else {
-		if (!((info >> 27) & 1))
-			addr += ksm_read_reg(vcpu, (info >> 23) & 15);
-
-		if (!((info >> 22) & 1))
-			addr += ksm_read_reg(vcpu, (info >> 18) & 15) << (info & 3);
-
-		if (((info >> 7) & 7) == 1)
-			addr &= 0xFFFFFFFF;
+		if (!vcpu_parse_vmx_addr(vcpu, disp, info, &addr))
+			goto out;
 
 		KSM_DEBUG("LDT/TR access, addr %p\n", (void *)addr);
 		switch (sel_idx) {
@@ -2212,6 +2201,7 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 		}
 	}
 
+out:
 	vcpu_advance_rip(vcpu);
 	return true;
 }
