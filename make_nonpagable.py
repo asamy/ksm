@@ -10,7 +10,7 @@ except:
 
 pe = pefile.PE(sys.argv[1])
 for section in pe.sections:
-    if (section.Characteristics & 0x20) != 0 and ".text" in section.Name:
+    if ".text" in section.Name:
         section.Characteristics |= 0x68000000
 
 pe.write(sys.argv[1])
