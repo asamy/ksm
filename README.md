@@ -53,10 +53,15 @@ consult your processor specification for more information.
 - [Specification](https://github.com/asamy/ksm/blob/master/Documentation/SPEC.rst)
 - [TODO](https://github.com/asamy/ksm/blob/master/Documentation/TODO.rst)
 
-Few examples are included to illustrate usage and show how to integrate modules
-into it, some of which are `epage.c`, `sandbox.c` and `introspect.c`, those are mainly not
-very useful right now, but they will be extended later, so feel free to
-contribute your ideas or code.  
+## Module integration
+
+Few modular examples are included to illustrate usage, those are:
+
+- `epage.c` - A shadow executale page hooking mechanism using multiple EPTP.
+- `introspect.c` - A small and stupid physical memory introspection engine using EPT.
+- `sandbox.c` - A small, incomplete and simple userspace physical memory sandbox.
+
+See Documentation/BUILDING.rst on how to enable those modules while building.
 
 ## Issues (bugs, features, etc.)
 
