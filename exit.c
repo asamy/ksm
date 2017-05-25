@@ -2105,7 +2105,7 @@ static bool vcpu_handle_gdt_idt_access(struct vcpu *vcpu)
 {
 	uintptr_t info = vmcs_read(VMX_INSTRUCTION_INFO);
 	uintptr_t disp = vmcs_read(EXIT_QUALIFICATION);
-	uintptr_t addr = disp;
+	u64 addr;
 	struct gdtr dt;
 
 	if (!vcpu_parse_vmx_addr(vcpu, disp, info, &addr))
@@ -2150,7 +2150,7 @@ static bool vcpu_handle_ldt_tr_access(struct vcpu *vcpu)
 {
 	uintptr_t info = vmcs_read(VMX_INSTRUCTION_INFO);
 	uintptr_t disp = vmcs_read(EXIT_QUALIFICATION);
-	uintptr_t addr = disp;
+	u64 addr;
 	u16 sel;
 	int sel_idx = (info >> 28) & 3;
 	int reg_idx = (info >> 3) & 15;
