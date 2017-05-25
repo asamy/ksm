@@ -22,27 +22,25 @@ matrix:
   - os: linux
     env:
       - B=MinGW
-    before_install:
-      - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-certificates.crt
     install:
       - sudo apt-get install -y gcc-mingw-w64-x86-64 binutils-mingw-w64-x86-64
     script:
       - make -f Makefile.windows C=1 Q=1
+  - os: linux
+    env:
+      - B=Linux
+    before_install:
+      - echo -n | openssl s_client -connect scan.coverity.com:443 | sed -ne '/-BEGIN CERTIFICATE-/,/-END CERTIFICATE-/p' | sudo tee -a /etc/ssl/certs/ca-certificates.crt
+    install:
+      - sudo apt-get install -y linux-headers-$(uname -r)
+    script:
+      - make
     addons:
       coverity_scan:
         project:
           name: "asamy/ksm"
           description: "Build submitted via Travis CI"
         notification_email: f.fallen45@gmail.com
-        build_command_prepend: |
-          cov-configure --compiler=x86_64-w64-mingw32-gcc --comptype=gcc --template
-          make -f Makefile.windows clean
-        build_command: "make -f Makefile.windows C=1 Q=1"
+        build_command_prepend: "make clean"
+        build_command: "make"
         branch_pattern: master
-  - os: linux
-    env:
-      - B=Linux
-    install:
-      - sudo apt-get install -y linux-headers-$(uname -r)
-    script:
-      - make
