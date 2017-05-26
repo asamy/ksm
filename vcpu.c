@@ -220,9 +220,12 @@ bool ept_create_ptr(struct ept *ept, int access, u16 *out)
 	u64 **pml4;
 	u16 eptp;
 
-	eptp = (u16)find_first_zero_bit(ept->ptr_bitmap, sizeof(ept->ptr_bitmap));
-	if (eptp == sizeof(ept->ptr_bitmap))
+	eptp = (u16)find_first_zero_bit(ept->ptr_bitmap, EPT_MAX_EPTP_LIST);
+	if (eptp == EPT_MAX_EPTP_LIST)
 		return false;
+
+	/* find_first_zero_bit returns a number, not an index.  */
+	eptp--;
 
 	pml4 = &EPT4(ept, eptp);
 	if (!(*pml4 = mm_alloc_page()))
