@@ -817,7 +817,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write32(HOST_IA32_SYSENTER_CS, (u32)__readmsr(MSR_IA32_SYSENTER_CS));
 	err |= vmcs_write(HOST_IA32_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
 	err |= vmcs_write(HOST_IA32_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
-	err |= vmcs_write(HOST_RSP, (uintptr_t)vcpu->stack + KERNEL_STACK_SIZE - 8);
+	err |= vmcs_write(HOST_RSP, (uintptr_t)vcpu->stack + HOST_STACK_SIZE - 8);
 	err |= vmcs_write(HOST_RIP, (uintptr_t)__vmx_entrypoint);
 
 	if (err == 0) {
@@ -880,7 +880,7 @@ int vcpu_init(struct vcpu *vcpu)
 	vcpu->cr0_guest_host_mask = 0;
 	vcpu->cr4_guest_host_mask = X86_CR4_VMXE;
 
-	*(struct vcpu **)((uintptr_t)vcpu->stack + KERNEL_STACK_SIZE - 8) = vcpu;
+	*(struct vcpu **)((uintptr_t)vcpu->stack + HOST_STACK_SIZE - 8) = vcpu;
 	return 0;
 }
 

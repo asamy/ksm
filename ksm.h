@@ -372,8 +372,9 @@ struct ept {
 	DECLARE_BITMAP(ptr_bitmap, EPT_MAX_EPTP_LIST);
 };
 
+#define HOST_STACK_SIZE	(2 << PAGE_SHIFT)
 struct vcpu {
-	__align(PAGE_SIZE) u8 stack[KERNEL_STACK_SIZE];
+	__align(PAGE_SIZE) u8 stack[HOST_STACK_SIZE];
 	__align(PAGE_SIZE) u8 vapic_page[PAGE_SIZE];
 #ifdef ENABLE_PML
 	__align(PAGE_SIZE) u64 pml[PML_MAX_ENTRIES];

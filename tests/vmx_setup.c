@@ -12,7 +12,7 @@
 extern void vmx_ep(void);
 
 /* stack  */
-extern __align(PAGE_SIZE) u8 kstack[KERNEL_STACK_SIZE];
+extern __align(PAGE_SIZE) u8 kstack[HOST_STACK_SIZE];
 
 int initialize_features(void)
 {
@@ -223,7 +223,7 @@ bool setup_basic_vmcs(u32 other_primary, u32 other_secondary, uintptr_t sp, uint
 	err |= __vmx_vmwrite(HOST_IA32_SYSENTER_CS, __readmsr(MSR_IA32_SYSENTER_CS));
 	err |= __vmx_vmwrite(HOST_IA32_SYSENTER_ESP, __readmsr(MSR_IA32_SYSENTER_ESP));
 	err |= __vmx_vmwrite(HOST_IA32_SYSENTER_EIP, __readmsr(MSR_IA32_SYSENTER_EIP));
-	err |= __vmx_vmwrite(HOST_RSP, (uintptr_t)kstack + KERNEL_STACK_SIZE);
+	err |= __vmx_vmwrite(HOST_RSP, (uintptr_t)kstack + HOST_STACK_SIZE);
 	err |= __vmx_vmwrite(HOST_RIP, (uintptr_t)vmx_ep);
 
 	return err == 0;

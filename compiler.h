@@ -172,7 +172,6 @@ NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(PEPROCESS process);
 #include <asm-generic/errno-base.h>
 
 #define __align(alignment)	__attribute__((__aligned__(alignment)))
-#define KERNEL_STACK_SIZE	(6 << PAGE_SHIFT)
 
 #define ERR_NOTH 		-ENOENT
 #define ERR_CPUID		-EOPNOTSUPP
