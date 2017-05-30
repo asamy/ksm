@@ -2242,7 +2242,7 @@ static bool vcpu_handle_ept_misconfig(struct vcpu *vcpu)
 	u16 eptp = vcpu_eptp_idx(vcpu);
 
 	u64 *epte = ept_pte(EPT4(ept, eptp), gpa);
-	KSM_PANIC(EPT_BUGCHECK_MISCONFIG, vcpi->rip, gpa, epte ? *epte : 0);
+	KSM_PANIC(EPT_BUGCHECK_MISCONFIG, vcpu->rip, gpa, epte ? *epte : 0);
 	return false;
 }
 
