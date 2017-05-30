@@ -153,7 +153,7 @@ static void print_payload(const u8 *payload, size_t len)
 int main(int ac, char *av[])
 {
 	devfd_t dev;
-	int ret;
+	int ret = -1;
 	int pid;
 	u32 cmd;
 	char c;
