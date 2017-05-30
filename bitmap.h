@@ -76,9 +76,9 @@ static inline unsigned long __ffs(unsigned long x)
 	_BitScanForward(&i, x);
 	return i + 1;
 #else
-	asm("rep; bsf %1, %0"
-	    : "=r" (x)
-	    : "rm" (x));
+	__asm __volatile("rep; bsf %1, %0"
+			 : "=r" (x)
+			 : "rm" (x));
 	return x;
 #endif
 }
