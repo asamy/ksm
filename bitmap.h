@@ -69,6 +69,17 @@ static inline void clear_bits(unsigned long *bmp, unsigned long count)
 	return fill_bits(bmp, 0, count);
 }
 
+static inline unsigned long long __ffs64(unsigned long long x)
+{
+#ifdef _MSC_VER
+	unsigned long long i;
+	_BitScanForward64(&i, x);
+	return i + 1;
+#else
+	return __builtin_ffsl(x);
+#endif
+}
+
 static inline unsigned long __ffs(unsigned long x)
 {
 #ifdef _MSC_VER

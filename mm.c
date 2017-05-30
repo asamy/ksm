@@ -175,3 +175,60 @@ int mm_cache_ram_ranges(struct pmem_range *ranges, int *range_count)
 }
 #endif
 
+static inline void make_mtrr_range(struct mtrr_range *range, bool fixed, u8 type,
+				   u64 start, u64 end)
+{
+	range->enabled = true;
+	range->fixed = fixed;
+	range->type = type;
+	range->start = start;
+	range->end = end;
+}
+
+void mm_cache_mtrr_ranges(struct mtrr_range *ranges, int *range_count, u8 *def_type)
+{
+	u64 def, cap;
+	u64 msr;
+	u32 val;
+	u64 base;
+	u64 offset;
+	int num_var;
+	int idx = 0;
+	int i;
+	u32 len;
+
+	def = __readmsr(MSR_MTRRdefType);
+	*def_type = def & 0xFF;
+
+	cap = __readmsr(MSR_MTRRcap);
+	num_var = cap & 0xFF;
+
+	if ((cap >> 8) & 1 && (def >> 10) & 1) {
+		/* Read fixed range MTRRs.  */
+		for (msr = __readmsr(MSR_MTRRfix64K_00000), offset = 0, base = 0;
+		     msr != 0; msr >>= 8, offset += 0x10000, base += offset)
+			make_mtrr_range(&ranges[idx++], true, msr & 0xff, base, base + 0x10000 - 1);
+
+		for (val = MSR_MTRRfix16K_80000, offset = 0; val <= MSR_MTRRfix16K_A0000; ++val)
+			for (msr = __readmsr(val), base = 0x80000;
+			     msr != 0; msr >>= 8, offset += 0x4000, base += offset)
+				make_mtrr_range(&ranges[idx++], true, msr & 0xff, base, base + 0x4000 - 1);
+
+		for (val = MSR_MTRRfix4K_C0000, offset = 0; val <= MSR_MTRRfix4K_F8000; ++val)
+			for (msr = __readmsr(val), base = 0xC0000;
+			     msr != 0; msr >>= 8, offset += 0x1000, base += offset)
+				make_mtrr_range(&ranges[idx++], true, msr & 0xff, base, base + 0x1000 - 1);
+	}
+
+	for (i = 0; i < num_var; i++) {
+		msr = __readmsr(MSR_MTRR_PHYS_MASK + i * 2);
+		if (!((msr >> 11) & 1))
+			continue;
+
+		len = 1 << (__ffs64(msr & PAGE_PA_MASK) - 1);
+		base = __readmsr(MSR_MTRR_PHYS_BASE + i * 2) & PAGE_PA_MASK;
+		make_mtrr_range(&ranges[idx++], false, msr & 0xff, base, base + len - 1);
+	}
+
+	*range_count = idx;
+}

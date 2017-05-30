@@ -98,6 +98,7 @@ bool ksm_introspect_handle_vmcall(struct vcpu *vcpu, uintptr_t arg)
 	struct introspect_call *call;
 	struct introspect_addr *addr;
 	u64 *epte;
+	int mt;
 
 	call = (struct introspect_call *)arg;
 	addr = call->addr;
@@ -107,8 +108,9 @@ bool ksm_introspect_handle_vmcall(struct vcpu *vcpu, uintptr_t arg)
 		 * ->access is what they want to monitor, so take those bits
 		 * out so we can trap on that access.
 		 */
+		mt = ept_memory_type(k, addr->gpa);
 		epte = ept_alloc_page(EPT4(ept, EPTP_DEFAULT),
-				      addr->access ^ EPT_ACCESS_ALL, addr->gpa, addr->gpa);
+				      addr->access ^ EPT_ACCESS_ALL, mt, addr->gpa, addr->gpa);
 		if (!epte)
 			return false;
 

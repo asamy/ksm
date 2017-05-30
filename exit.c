@@ -655,9 +655,10 @@ static bool vcpu_handle_hook(struct vcpu *vcpu, struct epage_info *h)
 static inline bool vcpu_handle_unhook(struct vcpu *vcpu, uintptr_t dpa)
 {
 	struct ept *ept = &vcpu->ept;
+	int mt = ept_memory_type(vcpu_to_ksm(vcpu), dpa);
 	KSM_DEBUG("unhook page %p\n", dpa);
 	for_each_eptp(ept, i)
-		ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, dpa, dpa);
+		ept_alloc_page(EPT4(ept, i), EPT_ACCESS_ALL, mt, dpa, dpa);
 	__invept_all();
 	return true;
 }

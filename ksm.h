@@ -492,6 +492,9 @@ struct ksm {
 	struct vcpu vcpu_list[KSM_MAX_VCPUS];
 	struct pmem_range ranges[MAX_RANGES];
 	int range_count;
+	struct mtrr_range mtrr_ranges[MAX_MTRR];
+	int mtrr_count;
+	u8 mtrr_def;
 	uintptr_t host_pgd;
 	u64 vpid_ept;
 #ifdef EPAGE_HOOK
@@ -670,11 +673,12 @@ extern int ksm_introspect_collect(struct ksm *k, struct watch_ioctl *watch);
 extern int vcpu_init(struct vcpu *vcpu);
 extern void vcpu_free(struct vcpu *vcpu);
 extern void vcpu_switch_root_eptp(struct vcpu *vcpu, u16 index);
-extern u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa);
+extern u64 *ept_alloc_page(u64 *pml4, int access, int mtype, u64 gpa, u64 hpa);
 extern u64 *ept_pte(u64 *pml4, u64 gpa);
 extern bool ept_handle_violation(struct vcpu *vcpu);
 extern bool ept_create_ptr(struct ept *ept, int access, u16 *out_eptp);
 extern void ept_free_ptr(struct ept *ept, u16 eptp);
+extern u8 ept_memory_type(struct ksm *k, u64 gpa);
 
 static inline void __set_epte_pfn(u64 *epte, u64 pfn)
 {

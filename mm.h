@@ -418,4 +418,17 @@ struct pmem_range {
 #define MAX_RANGES	8
 extern int mm_cache_ram_ranges(struct pmem_range *ranges, int *count);
 
+struct mtrr_range {
+	bool enabled;
+	bool fixed;
+	u8 type;
+	u64 start;
+	u64 end;
+};
+
+#define MAX_VAR_MTRR		255
+#define MAX_FIXED_MTRR		11
+#define MAX_MTRR		MAX_VAR_MTRR + MAX_FIXED_MTRR
+extern void mm_cache_mtrr_ranges(struct mtrr_range *ranges, int *count, u8 *def_type);
+
 #endif

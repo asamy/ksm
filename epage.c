@@ -46,11 +46,12 @@ void ksm_handle_epage(struct vcpu *vcpu, struct epage_info *epage)
 {
 	struct ept *ept = &vcpu->ept;
 	struct ksm *k = vcpu_to_ksm(vcpu);
+	int mt = ept_memory_type(k, epage->dpa);
 
 	/* Called from vmcall (exit.c)  */
-	ept_alloc_page(EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, epage->dpa, epage->cpa);
-	ept_alloc_page(EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, epage->dpa, epage->dpa);
-	ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_ALL, epage->dpa, epage->dpa);
+	ept_alloc_page(EPT4(ept, EPTP_EXHOOK), EPT_ACCESS_EXEC, mt, epage->dpa, epage->cpa);
+	ept_alloc_page(EPT4(ept, EPTP_RWHOOK), EPT_ACCESS_RW, mt, epage->dpa, epage->dpa);
+	ept_alloc_page(EPT4(ept, EPTP_NORMAL), EPT_ACCESS_ALL, mt, epage->dpa, epage->dpa);
 
 	cpu_invvpid(k, epage->origin);
 	cpu_invept(k, epage->dpa, EPTP(ept, vcpu_eptp_idx(vcpu)));

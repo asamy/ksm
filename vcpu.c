@@ -36,6 +36,46 @@ static inline u64 *ept_page_addr(u64 *pte)
 	return __va(PAGE_PA(*pte));
 }
 
+static inline bool in_bounds(u64 gpa, u64 start, u64 end)
+{
+	return gpa >= start && gpa < end;
+}
+
+u8 ept_memory_type(struct ksm *k, u64 gpa)
+{
+	/*
+	 * Alex Ionescue reports on Intel KabyLake, without the correct memory type for a mapping,
+	 * he gets an MCE, which is always an L2 Data Cache Read in one of the processor's banks.
+	 *
+	 * Some memory ranges require that the memory type is uncachable or write-through or even
+	 * write-protected (this is the case for most fixed range MTRRs.
+	 *
+	 * See also: mm_cache_mtrr_ranges() in mm.c
+	 */
+	int i;
+	struct mtrr_range *range;
+	u8 type = 0xff;
+
+	for (i = 0; i < k->mtrr_count; ++i) {
+		range = &k->mtrr_ranges[i];
+		if (!range->enabled || !in_bounds(gpa, range->start, range->end))
+			continue;
+
+		if (range->fixed || range->type == EPT_MT_UNCACHABLE)
+			return range->type;
+
+		if (range->type == EPT_MT_WRITETHROUGH && type == EPT_MT_WRITEBACK)
+			type = EPT_MT_WRITETHROUGH;
+		else
+			type = range->type;
+	}
+
+	if (type == 0xff)
+		type = k->mtrr_def;
+
+	return type;
+}
+
 /*
  * Sets up page tables for the required guest physical address, aka AMD64 page
  * tables, which are ugly and can be confusing, so here's an explanation of what
@@ -72,7 +112,7 @@ static inline u64 *ept_page_addr(u64 *pte)
  *	- epage.c
  *	- sandbox.c
  */
-u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
+u64 *ept_alloc_page(u64 *pml4, int access, int mtype, u64 gpa, u64 hpa)
 {
 	/* PML4 (512 GB) */
 	u64 *pml4e = &pml4[PGD_INDEX_P(gpa)];
@@ -111,7 +151,7 @@ u64 *ept_alloc_page(u64 *pml4, int access, u64 gpa, u64 hpa)
 	/* PT (4 KB)  */
 	u64 *page = &pt[PTE_INDEX_P(gpa)];
 	*page = mkepte(access, hpa);
-	*page |= EPT_MT_WRITEBACK << VMX_EPT_MT_EPTE_SHIFT;
+	*page |= mtype << VMX_EPT_MT_EPTE_SHIFT;
 	return page;
 }
 
@@ -172,9 +212,12 @@ static bool setup_pml4(struct ept *ept, int access, u16 eptp)
 	 * See mm_cache_ram_ranges() in mm.c for how this is optained.
 	 */
 	int i;
+	int mt;
 	u64 addr;
 	u64 apic;
 	struct pmem_range *range;
+	struct vcpu *vcpu = container_of(ept, struct vcpu, ept);
+	struct ksm *k = vcpu_to_ksm(vcpu);
 
 	for (i = 0; i < ksm->range_count; ++i) {
 		range = &ksm->ranges[i];
@@ -183,14 +226,16 @@ static bool setup_pml4(struct ept *ept, int access, u16 eptp)
 			if (access != EPT_ACCESS_ALL && mm_is_kernel_addr(__va(addr)))
 				r = EPT_ACCESS_ALL;
 
-			if (!ept_alloc_page(EPT4(ept, eptp), r, addr, addr))
+			mt = ept_memory_type(k, addr);
+			if (!ept_alloc_page(EPT4(ept, eptp), r, mt, addr, addr))
 				return false;
 		}
 	}
 
 	/* Allocate APIC page  */
 	apic = __readmsr(MSR_IA32_APICBASE) & MSR_IA32_APICBASE_BASE;
-	if (!ept_alloc_page(EPT4(ept, eptp), EPT_ACCESS_ALL, apic, apic))
+	mt = ept_memory_type(k, apic);
+	if (!ept_alloc_page(EPT4(ept, eptp), EPT_ACCESS_ALL, mt, apic, apic))
 		return false;
 
 	return true;
@@ -313,10 +358,12 @@ static bool do_ept_violation(struct ept_ve_around *ve)
 	struct ept *ept = &vcpu->ept;
 	struct ksm *k = vcpu_to_ksm(vcpu);
 	struct ve_except_info *info = ve->info;
+	int mt;
 
 	if ((info->exit & EPT_VE_RWX) == 0) {	/* no access  */
+		mt = ept_memory_type(k, info->gpa);
 		if (!ept_alloc_page(EPT4(ept, info->eptp),
-				    EPT_ACCESS_ALL, info->gpa, info->gpa))
+				    EPT_ACCESS_ALL, mt, info->gpa, info->gpa))
 			return false;
 
 		return true;

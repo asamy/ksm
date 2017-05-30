@@ -172,6 +172,7 @@ int ksm_subvert(struct ksm *k)
  */
 int ksm_init(struct ksm **kp)
 {
+	struct mtrr_range *range;
 	struct ksm *k;
 	int info[4];
 	int ret = ERR_NOMEM;
@@ -211,6 +212,16 @@ int ksm_init(struct ksm **kp)
 	KSM_DEBUG("%d physical memory ranges\n", k->range_count);
 	for (i = 0; i < k->range_count; ++i)
 		KSM_DEBUG("Range: 0x%016llX -> 0x%016llX\n", k->ranges[i].start, k->ranges[i].end);
+
+	/* MTRR   */
+	mm_cache_mtrr_ranges(&k->mtrr_ranges[0], &k->mtrr_count, &k->mtrr_def);
+	KSM_DEBUG("%d MTRR ranges (%d default type)\n", k->mtrr_count, k->mtrr_def);
+	for (i = 0; i < k->mtrr_count; i++) {
+		range = &k->mtrr_ranges[i];
+		if (range->enabled)
+			KSM_DEBUG("MTRR Range: %p -> %p fixed: %d type: %d\n",
+				  range->start, range->end, range->fixed, range->type);
+	}
 
 #ifdef EPAGE_HOOK
 	ret = ksm_epage_init(k);
@@ -321,6 +332,7 @@ int ksm_free(struct ksm *k)
 
 	unregister_cpu_callback();
 	unregister_power_callback();
+	mm_free_pool(k, sizeof(*k));
 	return ret;
 }
 
