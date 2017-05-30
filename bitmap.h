@@ -69,17 +69,6 @@ static inline void clear_bits(unsigned long *bmp, unsigned long count)
 	return fill_bits(bmp, 0, count);
 }
 
-static inline unsigned long long __ffs64(unsigned long long x)
-{
-#ifdef _MSC_VER
-	unsigned long long i;
-	_BitScanForward64(&i, x);
-	return i + 1;
-#else
-	return __builtin_ffsl(x);
-#endif
-}
-
 static inline unsigned long __ffs(unsigned long x)
 {
 #ifdef _MSC_VER
@@ -87,13 +76,26 @@ static inline unsigned long __ffs(unsigned long x)
 	_BitScanForward(&i, x);
 	return i + 1;
 #else
-	return __builtin_ffs(x);
+	asm("rep; bsf %1, %0"
+	    : "=r" (x)
+	    : "rm" (x));
 #endif
 }
 
 static inline unsigned long __ffz(unsigned long x)
 {
 	return __ffs(~x);
+}
+
+static inline unsigned long long __ffs64(unsigned long long x)
+{
+#ifdef _MSC_VER
+	unsigned long long i;
+	_BitScanForward64(&i, x);
+	return i + 1;
+#else
+	return __ffs(x);
+#endif
 }
 
 static inline unsigned long find_first_bit(unsigned long *bmp, unsigned long size)
