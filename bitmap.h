@@ -79,6 +79,7 @@ static inline unsigned long __ffs(unsigned long x)
 	asm("rep; bsf %1, %0"
 	    : "=r" (x)
 	    : "rm" (x));
+	return x;
 #endif
 }
 
