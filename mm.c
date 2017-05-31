@@ -225,7 +225,7 @@ void mm_cache_mtrr_ranges(struct mtrr_range *ranges, int *range_count, u8 *def_t
 		if (!((msr >> 11) & 1))
 			continue;
 
-		len = 1 << (__ffs64(msr & PAGE_PA_MASK) - 1);
+		len = 1 << __ffs64(msr & PAGE_PA_MASK);
 		base = __readmsr(MSR_MTRR_PHYS_BASE + i * 2) & PAGE_PA_MASK;
 		make_mtrr_range(&ranges[idx++], false, msr & 0xff, base, base + len - 1);
 	}

@@ -74,7 +74,7 @@ static inline unsigned long __ffs(unsigned long x)
 #ifdef _MSC_VER
 	unsigned long i;
 	_BitScanForward(&i, x);
-	return i + 1;
+	return i;
 #else
 	__asm __volatile("rep; bsf %1, %0"
 			 : "=r" (x)
@@ -93,7 +93,7 @@ static inline unsigned long long __ffs64(unsigned long long x)
 #ifdef _MSC_VER
 	unsigned long long i;
 	_BitScanForward64(&i, x);
-	return i + 1;
+	return i;
 #else
 	return __ffs(x);
 #endif

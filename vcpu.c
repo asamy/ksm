@@ -269,9 +269,6 @@ bool ept_create_ptr(struct ept *ept, int access, u16 *out)
 	if (eptp == EPT_MAX_EPTP_LIST)
 		return false;
 
-	/* find_first_zero_bit returns a number, not an index.  */
-	eptp--;
-
 	pml4 = &EPT4(ept, eptp);
 	if (!(*pml4 = mm_alloc_page()))
 		return false;
