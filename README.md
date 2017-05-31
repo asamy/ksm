@@ -25,16 +25,12 @@ nesting, that means it can emulate other hardware-assisted virtualization tools
 ## Features
 
 - IDT Shadowing
-- EPT violation #VE (enabled only when support is present)
-- EPTP switching VMFUNC (if not available natively, it will be emulated using a VMCALL)
-- Builtin Userspace physical memory sandboxer (Optional)
-- Builtin Introspection engine (Optional)
+- EPT violation #VE (Disabled when unavailable - At least Broadwell required)
+- EPTP switching VMFUNC (Emulated when unavailable - At least Haswell required)
 - APIC virtualization (Experimental, do not use)
 - VMX Nesting (Experimental, do not use)
-
-For VMFUNC to work, at least Haswell is required, for #VE to work, at least
-Broadwell is required (Backward compatibility for both is also supported),
-consult your processor specification for more information.
+- Builtin Userspace physical memory sandboxer (Optional)
+- Builtin Introspection engine (Optional)
 
 ## Requirements
 
