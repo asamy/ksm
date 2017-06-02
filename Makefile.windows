@@ -95,8 +95,8 @@ $(OBJ_DIR)/%.o: %.c $(DEP_DIR)/%.d
 	$(PREPEND)$(CC) -c $(CFLAGS) $(DEPFLAGS) -o $@ $<
 	@echo "  CC   $@"
 
-$(OBJ_DIR)/%.o: %.S
-	$(PREPEND)$(CC) -c $(AFLAGS) -o $@ $<
+$(OBJ_DIR)/%.o: %.S $(DEP_DIR)/%.d
+	$(PREPEND)$(CC) -c $(AFLAGS) $(DEPFLAGS) -o $@ $<
 	@echo "  AS   $@"
 
 -include $(DEP)
