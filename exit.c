@@ -204,11 +204,7 @@ static inline void vcpu_inject_irq(struct vcpu *vcpu, u32 instr_len, u16 intr_ty
 	struct pending_irq *pirq = &vcpu->irq;
 	if (pirq->pending) {
 		u8 prev_vec = (u8)pirq->bits;
-		if (prev_vec == X86_TRAP_DF) {
-			/* FIXME:  Triple fault  */
-			dbgbreak();
-			return;
-		}
+		BREAK_ON(prev_vec == X86_TRAP_DF);	/* FIXME: Triple fault  */
 
 		except_class_t lhs = exception_class(prev_vec);
 		except_class_t rhs = exception_class(vector);
@@ -1323,7 +1319,7 @@ static bool vcpu_handle_vmlaunch(struct vcpu *vcpu)
 		return true;
 	}
 
-	dbgbreak();
+	BREAK();
 out:
 	vcpu_advance_rip(vcpu);
 	return true;
@@ -1447,7 +1443,7 @@ static bool vcpu_handle_vmresume(struct vcpu *vcpu)
 	}
 
 	/* Should never happen, throw bogus error code for fun.  */
-	dbgbreak();
+	BREAK();
 	vcpu_vm_fail_valid(vcpu, VMXERR_VMRESUME_AFTER_VMXOFF);
 
 out:
@@ -1489,7 +1485,7 @@ static bool vcpu_handle_vmwrite(struct vcpu *vcpu)
 	}
 
 	if (__nested_vmcs_read(vmcs, field) != value)
-		dbgbreak();
+		BREAK();
 
 	vcpu_vm_succeed(vcpu);
 out:
@@ -2064,7 +2060,7 @@ static bool vcpu_handle_apic_access(struct vcpu *vcpu)
 
 	KSM_DEBUG("!!! APIC access using offset 0x%04X and type 0x%X\n",
 		   offset, type);
-	dbgbreak();
+	BREAK();
 	return true;
 }
 
@@ -2074,7 +2070,7 @@ static bool vcpu_handle_eoi_induced(struct vcpu *vcpu)
 	u16 vector = exit & 0xFFF;
 
 	KSM_DEBUG("!!! EOI induced, vector: 0x%04X\n", vector);
-	dbgbreak();
+	BREAK();
 	return true;
 }
 
@@ -2290,7 +2286,7 @@ static bool vcpu_handle_apic_write(struct vcpu *vcpu)
 	u16 offset = exit & 0xFF0;
 
 	KSM_DEBUG("!!! APIC write at offset 0x%04X\n", offset);
-	dbgbreak();
+	BREAK();
 	return true;
 }
 
@@ -2711,7 +2707,7 @@ bool vcpu_handle_exit(uintptr_t *stack)
 		 * Mostly comes via invalid guest state, and is due to a cruical
 		 * error that happened past VM-exit.
 		 */
-		dbgbreak();
+		BREAK();
 		KSM_PANIC(KSM_PANIC_FAILED_VMENTRY, vcpu->ip,
 			  vmcs_read(EXIT_QUALIFICATION), vcpu->curr_handler);
 	}
@@ -2759,6 +2755,6 @@ void vcpu_handle_fail(uintptr_t *stack)
 		err = vmcs_read32(VM_INSTRUCTION_ERROR);
 
 	vcpu_dump_state(stack);
-	dbgbreak();
+	BREAK();
 	KSM_PANIC(KSM_PANIC_CODE, err, vcpu->curr_handler, vcpu->prev_handler);
 }

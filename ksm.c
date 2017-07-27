@@ -218,9 +218,8 @@ int ksm_init(struct ksm **kp)
 	KSM_DEBUG("%d MTRR ranges (%d default type)\n", k->mtrr_count, k->mtrr_def);
 	for (i = 0; i < k->mtrr_count; i++) {
 		range = &k->mtrr_ranges[i];
-		if (range->enabled)
-			KSM_DEBUG("MTRR Range: 0x%016llX -> 0x%016llX fixed: %d type: %d\n",
-				  range->start, range->end, range->fixed, range->type);
+		KSM_DEBUG("MTRR Range: 0x%016llX -> 0x%016llX fixed: %d type: %d\n",
+			  range->start, range->end, range->fixed, range->type);
 	}
 
 #ifdef EPAGE_HOOK

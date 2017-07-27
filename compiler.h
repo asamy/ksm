@@ -14,20 +14,20 @@
 
 #ifdef DBG
 #ifdef __linux__
-#define dbgbreak()	(void)0		//__asm __volatile("int $3")
+#define BREAK()	(void)0		//__asm __volatile("int $3")
 #else
-#define dbgbreak() do {		\
+#define BREAK() do {		\
 	if (KD_DEBUGGER_ENABLED && !KD_DEBUGGER_NOT_PRESENT)	\
 		__debugbreak();		\
 } while (0)
 #endif
 #else
-#define dbgbreak()	(void)0
+#define BREAK()	(void)0
 #endif
 
 #define BREAK_ON(cond)	do {	\
 	if (!!(cond))		\
-		dbgbreak();	\
+		BREAK();	\
 } while (0)
 
 #ifndef __linux__

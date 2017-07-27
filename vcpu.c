@@ -58,7 +58,7 @@ u8 ept_memory_type(struct ksm *k, u64 gpa)
 
 	for (i = 0; i < k->mtrr_count; ++i) {
 		range = &k->mtrr_ranges[i];
-		if (!range->enabled || !in_bounds(gpa, range->start, range->end))
+		if (!in_bounds(gpa, range->start, range->end))
 			continue;
 
 		if (range->fixed || range->type == EPT_MT_UNCACHABLE)

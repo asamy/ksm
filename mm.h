@@ -419,7 +419,6 @@ struct pmem_range {
 extern int mm_cache_ram_ranges(struct pmem_range *ranges, int *count);
 
 struct mtrr_range {
-	bool enabled;
 	bool fixed;
 	u8 type;
 	u64 start;

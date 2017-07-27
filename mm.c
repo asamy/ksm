@@ -178,7 +178,6 @@ int mm_cache_ram_ranges(struct pmem_range *ranges, int *range_count)
 static inline void make_mtrr_range(struct mtrr_range *range, bool fixed, u8 type,
 				   u64 start, u64 end)
 {
-	range->enabled = true;
 	range->fixed = fixed;
 	range->type = type;
 	range->start = start;
