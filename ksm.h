@@ -581,8 +581,14 @@ static inline u16 vcpu_eptp_idx(const struct vcpu *vcpu)
 static inline u8 vcpu_vmfunc(u32 eptp, u32 func)
 {
 	struct vcpu *vcpu = ksm_current_cpu();
-	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VMFUNC)
+	struct ve_except_info *ve = &vcpu->ve;
+
+	if (vcpu->secondary_ctl & SECONDARY_EXEC_ENABLE_VMFUNC) {
+		if (func == VM_FUNCTION_CTL_EPTP_SWITCHING)
+			ve->eptp = (u16)eptp;
+
 		return __vmx_vmfunc(eptp, func);
+	}
 
 	return __vmx_vmcall(HCALL_VMFUNC, &(struct h_vmfunc) {
 		.eptp = eptp,
