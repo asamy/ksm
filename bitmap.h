@@ -88,10 +88,10 @@ static inline unsigned long __ffz(unsigned long x)
 	return __ffs(~x);
 }
 
-static inline unsigned long long __ffs64(unsigned long long x)
+static inline unsigned long __ffs64(unsigned long long x)
 {
 #ifdef _MSC_VER
-	unsigned long long i;
+	unsigned long i;
 	_BitScanForward64(&i, x);
 	return i;
 #else
