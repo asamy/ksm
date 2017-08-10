@@ -748,13 +748,10 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	err |= vmcs_write(CR4_READ_SHADOW, cr4 & ~vcpu->cr4_guest_host_mask);
 
 	/* See if we need to emulate VMFUNC via a VMCALL  */
-	vcpu->vm_func_ctl = 0;
+	vcpu->vm_func_ctl = VM_FUNCTION_CTL_EPTP_SWITCHING;
 	if (vm_2ndctl & SECONDARY_EXEC_ENABLE_VMFUNC) {
 		err |= vmcs_write64(VM_FUNCTION_CTRL, VM_FUNCTION_CTL_EPTP_SWITCHING);
 		err |= vmcs_write64(EPTP_LIST_ADDRESS, __pa(ept->ptr_list));
-	} else {
-		/* Enable emulation for VMFUNC  */
-		vcpu->vm_func_ctl |= VM_FUNCTION_CTL_EPTP_SWITCHING;
 	}
 
 	/*
