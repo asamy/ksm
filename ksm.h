@@ -119,16 +119,16 @@
 
 #ifdef ENABLE_PRINT
 #ifdef __linux__
-#define KSM_DEBUG(fmt, args...)		printk(KERN_INFO "ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
-#define KSM_DEBUG_RAW(str)		printk(KERN_INFO "ksm: CPU %d: %s: " str, cpu_nr(), __func__)
+#define KSM_DEBUG(fmt, args...)		printk(KERN_INFO "ksm: CPU %hd: %s: " fmt, cpu_nr(), __func__, ##args)
+#define KSM_DEBUG_RAW(str)		printk(KERN_INFO "ksm: CPU %hd: %s: " str, cpu_nr(), __func__)
 #else
 #ifdef _MSC_VER
-#define KSM_DEBUG(fmt, ...)		do_print("ksm: CPU %d: " __func__ ": " fmt, cpu_nr(), __VA_ARGS__)
-#define KSM_DEBUG_RAW(str)		do_print("ksm: CPU %d: " __func__ ": " str, cpu_nr())
+#define KSM_DEBUG(fmt, ...)		do_print("ksm: CPU %hd: " __func__ ": " fmt, cpu_nr(), __VA_ARGS__)
+#define KSM_DEBUG_RAW(str)		do_print("ksm: CPU %hd: " __func__ ": " str, cpu_nr())
 #else
 /* avoid warning on empty argument list  */
-#define KSM_DEBUG(fmt, args...)		do_print("ksm: CPU %d: %s: " fmt, cpu_nr(), __func__, ##args)
-#define KSM_DEBUG_RAW(str)		do_print("ksm: CPU %d: %s: " str, cpu_nr(), __func__)
+#define KSM_DEBUG(fmt, args...)		do_print("ksm: CPU %hd: %s: " fmt, cpu_nr(), __func__, ##args)
+#define KSM_DEBUG_RAW(str)		do_print("ksm: CPU %hd: %s: " str, cpu_nr(), __func__)
 #endif
 #endif
 #else
