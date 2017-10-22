@@ -44,7 +44,7 @@ void unregister_power_callback(void)
 #else
 typedef struct _DEV_EXT {
 	void *CbRegistration;
-	void *CbObject;
+	PCALLBACK_OBJECT CbObject;
 } DEV_EXT, *PDEV_EXT;
 static DEV_EXT g_dev_ext;
 

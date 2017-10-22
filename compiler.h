@@ -116,14 +116,11 @@ NTKERNELAPI UCHAR *NTAPI PsGetProcessImageFileName(PEPROCESS process);
 /* Disable annoying warnings  */
 #pragma warning(disable:4115)		/* 'type' : named type definition in parentheses  */
 #pragma warning(disable:4201)		/* nonstandard extension used : nameless struct/union  */
-#pragma warning(disable:4311)		/* 'variable' : pointer truncation from 'type' to 'type'  */
 #pragma warning(disable:4214)		/* nonstandard extension used : bit field types other than int  */
-#pragma warning(disable:4133)		/* 'type' : incompatible types - from 'type1' to 'type2'  */
 #pragma warning(disable:4702)		/* unreachable code  */
 #pragma warning(disable:4100)		/* 'identifier' : unreferenced formal parameter  */
 #pragma warning(disable:4200)		/* nonstandard extension used : zero-sized array in struct/union  */
 #pragma warning(disable:4098)		/* 'function' : void function returning a value  */
-#pragma warning(disable:4152)		/* non standard extension, function/data ptr conversion in expression  */
 #pragma warning(disable:4204)		/* nonstandard extension used : non-constant aggregate initializer  */
 #pragma warning(disable:4189)		/* 'identifier' : local variable is initialized but not referenced  */
 #pragma warning(disable:4706)		/* assignment within conditional expression  */

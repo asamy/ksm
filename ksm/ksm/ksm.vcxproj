@@ -68,7 +68,7 @@
       <FileDigestAlgorithm>sha256</FileDigestAlgorithm>
     </DriverSign>
     <ClCompile>
-      <PreprocessorDefinitions>ENABLE_DBGPRINT;ENABLE_FILEPRINT;NESTED_VMX;PMEM_SANDBOX;EPAGE_HOOK;INTROSPECT_ENGINE;%(PreprocessorDefinitions)</PreprocessorDefinitions>
+      <PreprocessorDefinitions>ENABLE_DBGPRINT;NESTED_VMX;%(PreprocessorDefinitions)</PreprocessorDefinitions>
       <TreatWarningAsError>false</TreatWarningAsError>
     </ClCompile>
     <Link>

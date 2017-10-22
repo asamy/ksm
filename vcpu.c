@@ -761,7 +761,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	if (vm_2ndctl & SECONDARY_EXEC_ENABLE_VE) {
 		err |= vmcs_write16(EPTP_INDEX, EPTP_DEFAULT);
 		err |= vmcs_write64(VE_INFO_ADDRESS, __pa(&vcpu->ve));
-		vcpu_put_idt(vcpu, cs, X86_TRAP_VE, __ept_violation);
+		vcpu_put_idt(vcpu, cs, X86_TRAP_VE, (void *)__ept_violation);
 	} else {
 		/* Emulate EPTP Index  */
 		struct ve_except_info *ve = &vcpu->ve;
