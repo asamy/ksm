@@ -16,5 +16,5 @@ matrix:
 
 artifacts:
         - path: ksm\x64\**\ksm.sys
+        - path: ksm\x64\**\ksm.pdb
         - path: ksm\x64\**\ksm_um.exe
-
