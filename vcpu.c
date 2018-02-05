@@ -642,6 +642,7 @@ void vcpu_run(struct vcpu *vcpu, uintptr_t gsp, uintptr_t gip)
 	u32 vm_2ndctl = req_2ndctl
 		| SECONDARY_EXEC_XSAVES //| SECONDARY_EXEC_UNRESTRICTED_GUEST
 		| SECONDARY_EXEC_ENABLE_VMFUNC | SECONDARY_EXEC_ENABLE_VE
+		| SECONDARY_EXEC_ENABLE_INVPCID
 #if 0
 		| /* apic virtualization  */ apicv
 #endif

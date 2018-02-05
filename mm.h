@@ -26,21 +26,10 @@
 #include <linux/sched.h>
 #endif
 
-#ifndef PGD_SHIFT_P
 #define PGD_SHIFT_P		39
-#endif
-
-#ifndef PUD_SHIFT_P
 #define PUD_SHIFT_P		30
-#endif
-
-#ifndef PMD_SHIFT_P
 #define PMD_SHIFT_P		21
-#endif
-
-#ifndef PTE_SHIFT_P
 #define PTE_SHIFT_P		12
-#endif
 
 #define VA_BITS			48
 #define VA_MASK			((1ULL << VA_BITS) - 1)
@@ -49,18 +38,9 @@
 #ifndef PTX_MASK
 #define PTX_MASK		0x1FF
 #endif
-
-#ifndef PUD_MASK_P
 #define PUD_MASK_P		0x3FFFF
-#endif
-
-#ifndef PMD_MASK_P
 #define PMD_MASK_P		0x7FFFFFF
-#endif
-
-#ifndef PTE_MASK_P
 #define PTE_MASK_P		0xFFFFFFFFF
-#endif
 
 /*
  * The traditional page table management carries on, but 
@@ -126,6 +106,26 @@ extern uintptr_t pte_base;
 	(uintptr_t *)MmGetVirtualForPhysical((PHYSICAL_ADDRESS) { .QuadPart = (uintptr_t)(pa) })
 
 #define pte_present(p)		((((pte_t *)(&(p)))->pte) & (PAGE_PRESENT | PAGE_GLOBAL))
+
+static inline pgd_t *pgd_offset(uintptr_t cr3, uintptr_t va)
+{
+	return (pgd_t *)__va(PAGE_PA(cr3)) + PGD_INDEX_P(va);
+}
+
+static inline pud_t *pud_offset(pgd_t *pgd, uintptr_t va)
+{
+	return (pud_t *)__va(PAGE_PPA(pgd)) + PUD_INDEX_P(va);
+}
+
+static inline pmd_t *pmd_offset(pud_t *pud, uintptr_t va)
+{
+	return (pmd_t *)__va(PAGE_PPA(pud)) + PMD_INDEX_P(va);
+}
+
+static inline pte_t *pte_offset(pmd_t *pmd, uintptr_t va)
+{
+	return (pte_t *)__va(PAGE_PPA(pmd)) + PTE_INDEX_P(va);
+}
 #endif
 
 #define pte_large(p)		((((pte_t *)(&(p)))->pte) & PAGE_LARGE)
@@ -269,26 +269,6 @@ static inline pte_t *va_to_pte(uintptr_t va)
 {
 	uintptr_t off = (va >> PTE_SHIFT_P) & PTE_MASK_P;
 	return (pte_t *)pte_base + off;
-}
-
-static inline pgd_t *pgd_offset(uintptr_t cr3, uintptr_t va)
-{
-	return (pgd_t *)__va(PAGE_PA(cr3)) + PGD_INDEX_P(va);
-}
-
-static inline pud_t *pud_offset(pgd_t *pgd, uintptr_t va)
-{
-	return (pud_t *)__va(PAGE_PPA(pgd)) + PUD_INDEX_P(va);
-}
-
-static inline pmd_t *pmd_offset(pud_t *pud, uintptr_t va)
-{
-	return (pmd_t *)__va(PAGE_PPA(pud)) + PMD_INDEX_P(va);
-}
-
-static inline pte_t *pte_offset(pmd_t *pmd, uintptr_t va)
-{
-	return (pte_t *)__va(PAGE_PPA(pmd)) + PTE_INDEX_P(va);
 }
 
 static inline pte_t *pte_from_cr3_va(uintptr_t cr3, uintptr_t va)

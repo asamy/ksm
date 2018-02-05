@@ -1698,7 +1698,7 @@ static bool vcpu_handle_cr_access(struct vcpu *vcpu)
 			ksm_sandbox_handle_cr3(vcpu, *val);
 #endif
 			__invvpid_no_global(vpid_nr());
-			vmcs_write(GUEST_CR3, *val);
+			vmcs_write(GUEST_CR3, *val & ~(1ULL << 63));
 			break;
 		case 4:
 			__invvpid_single(vpid_nr());
