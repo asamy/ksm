@@ -204,18 +204,18 @@ void mm_cache_mtrr_ranges(struct mtrr_range *ranges, int *range_count, u8 *def_t
 
 	if ((cap >> 8) & 1 && (def >> 10) & 1) {
 		/* Read fixed range MTRRs.  */
-		for (msr = __readmsr(MSR_MTRRfix64K_00000), offset = 0, base = 0;
-		     msr != 0; msr >>= 8, offset += 0x10000, base += offset)
+		for (msr = __readmsr(MSR_MTRRfix64K_00000), offset = 0x10000, base = 0;
+		     msr != 0; msr >>= 8, base += offset)
 			make_mtrr_range(&ranges[idx++], true, msr & 0xff, base, base + 0x10000 - 1);
 
-		for (val = MSR_MTRRfix16K_80000, offset = 0; val <= MSR_MTRRfix16K_A0000; ++val)
+		for (val = MSR_MTRRfix16K_80000, offset = 0x4000; val <= MSR_MTRRfix16K_A0000; ++val)
 			for (msr = __readmsr(val), base = 0x80000;
-			     msr != 0; msr >>= 8, offset += 0x4000, base += offset)
+			     msr != 0; msr >>= 8, base += offset)
 				make_mtrr_range(&ranges[idx++], true, msr & 0xff, base, base + 0x4000 - 1);
 
-		for (val = MSR_MTRRfix4K_C0000, offset = 0; val <= MSR_MTRRfix4K_F8000; ++val)
+		for (val = MSR_MTRRfix4K_C0000, offset = 0x1000; val <= MSR_MTRRfix4K_F8000; ++val)
 			for (msr = __readmsr(val), base = 0xC0000;
-			     msr != 0; msr >>= 8, offset += 0x1000, base += offset)
+			     msr != 0; msr >>= 8, base += offset)
 				make_mtrr_range(&ranges[idx++], true, msr & 0xff, base, base + 0x1000 - 1);
 	}
 
