@@ -229,7 +229,7 @@ void mm_cache_mtrr_ranges(struct mtrr_range *ranges, int *range_count, u8 *def_t
 		make_mtrr_range(&ranges[idx++], false,
 				base & 0xff,
 				base & PAGE_PA_MASK,
-				(base & PAGE_PA_MASK) + len - 1);
+				(base & PAGE_PA_MASK) + len);
 	}
 
 	*range_count = idx;
