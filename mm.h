@@ -406,7 +406,7 @@ struct mtrr_range {
 };
 
 #define MAX_VAR_MTRR		255
-#define MAX_FIXED_MTRR		11
+#define MAX_FIXED_MTRR		11*8
 #define MAX_MTRR		MAX_VAR_MTRR + MAX_FIXED_MTRR
 extern void mm_cache_mtrr_ranges(struct mtrr_range *ranges, int *count, u8 *def_type);
 
