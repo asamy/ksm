@@ -217,7 +217,9 @@
 	TRAP_ENTER
 	movq	KFRAME_CS(%rbp), REG_A1
 	movq	KFRAME_IP(%rbp), REG_A2
+	subq	$0x20, %rsp
 	call	\handler
+	addq	$0x20, %rsp
 	TRAP_EXIT
 .endm
 
@@ -234,7 +236,10 @@ __vmx_vminit:
 	/* parameter one is pass-through (vcpu).  */
 	movq	%rsp, REG_A2
 	movabs	$do_resume, REG_A3
+
+	subq	$0x20, %rsp
 	call	vcpu_run
+	addq	$0x20, %rsp
 
 	/* If we get here, we failed  */
 	POP_REGS
@@ -289,7 +294,10 @@ __vmx_entrypoint:
 	 */
 	PUSH_REGS
 	movq	%rsp, REG_A1
+
+	subq	$0x20, %rsp
 	call	vcpu_handle_exit
+	addq	$0x20, %rsp
 
 	testb	%al, %al
 	jz	1f
@@ -326,7 +334,10 @@ __vmx_entrypoint:
 	pushfq
 	PUSH_REGS
 	movq	%rsp, REG_A1
+	subq	$0x20, %rsp
 	call	vcpu_handle_fail
+	addq	$0x20, %rsp
+
 
 3:	/* shouldn't come here, but incase it does, hlt forever:  */
 	hlt
