@@ -254,6 +254,7 @@ NTSTATUS DriverEntry(PDRIVER_OBJECT driverObject, PUNICODE_STRING registryPath)
 		goto err2;
 
 	driverObject->DriverUnload = DriverUnload;
+	driverObject->MajorFunction[IRP_MJ_SHUTDOWN] =
 	driverObject->MajorFunction[IRP_MJ_CREATE] =
 		driverObject->MajorFunction[IRP_MJ_CLOSE] =
 		driverObject->MajorFunction[IRP_MJ_DEVICE_CONTROL] = DriverDispatch;
