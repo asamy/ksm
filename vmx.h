@@ -543,7 +543,7 @@ static inline u8 __vmx_vmfunc(u32 eptp, u32 func)
 	return error;
 }
 
-static inline u8 __invept(int ext, const invept_t *i)
+static inline u8 __invept(u64 ext, const invept_t *i)
 {
 	u8 error;
 	__asm __volatile(ASM_VMX_INVEPT "; setna %0"
@@ -553,7 +553,7 @@ static inline u8 __invept(int ext, const invept_t *i)
 	return error;
 }
 
-static inline u8 __invvpid(int ext, const invvpid_t *i)
+static inline u8 __invvpid(u64 ext, const invvpid_t *i)
 {
 	u8 error;
 	__asm __volatile(ASM_VMX_INVVPID "; setna %0"
@@ -563,8 +563,8 @@ static inline u8 __invvpid(int ext, const invvpid_t *i)
 	return error;
 }
 #else
-extern u8 __invvpid(u32 type, const invvpid_t *i);
-extern u8 __invept(u32 type, const invept_t *i);
+extern u8 __invvpid(u64 type, const invvpid_t *i);
+extern u8 __invept(u64 type, const invept_t *i);
 
 extern u8 __vmx_vmcall(uintptr_t, void *);
 extern u8 __vmx_vmfunc(u32, u32);

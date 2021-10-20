@@ -381,13 +381,13 @@ __invd PROC
 __invd ENDP
 
 __invept PROC
-	invept	ecx, oword ptr [rdx]
+	invept	rcx, oword ptr [rdx]
 	setna 	al
 	ret
 __invept ENDP
 
 __invvpid PROC
-	invvpid	ecx, oword ptr [rdx]
+	invvpid	rcx, oword ptr [rdx]
 	setna 	al
 	ret
 __invvpid ENDP

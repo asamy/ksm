@@ -262,7 +262,7 @@ static inline void vcpu_advance_rip(struct vcpu *vcpu)
 
 	size_t interruptibility = vmcs_read32(GUEST_INTERRUPTIBILITY_INFO);
 	vmcs_write32(GUEST_INTERRUPTIBILITY_INFO,
-		   interruptibility & ~(GUEST_INTR_STATE_MOV_SS | GUEST_INTR_STATE_STI));
+		     interruptibility & ~(GUEST_INTR_STATE_MOV_SS | GUEST_INTR_STATE_STI));
 }
 
 #ifdef NESTED_VMX
@@ -1601,7 +1601,7 @@ static bool vcpu_handle_invept(struct vcpu *vcpu)
 		goto out;
 
 	u32 info = vmcs_read32(VMX_INSTRUCTION_INFO);
-	u32 type = ksm_read_reg32(vcpu, (info >> 28) & 15);
+	u64 type = ksm_read_reg(vcpu, (info >> 28) & 15);
 	if (!cpu_supports_invepttype(k, type)) {
 		vcpu_vm_fail_valid(vcpu, VMXERR_INVALID_OPERAND_TO_INVEPT_INVVPID);
 		goto out;
